@@ -83,3 +83,14 @@ class EquityPoint:
     position_qty: float
     mark_price: float
     equity: float
+
+
+@dataclass(frozen=True)
+class ChartMarker:
+    marker_id: str
+    instrument_id: str
+    time_ms: int
+    action: str
+    price: float
+    quantity_delta: float
+    label: str
