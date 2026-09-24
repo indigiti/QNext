@@ -31,19 +31,19 @@ func (q Quality) Valid() bool {
 }
 
 type CanonicalTick struct {
-	Schema         string    `json:"schema"`
-	InstrumentID   string    `json:"instrument_id"`
-	Provider       string    `json:"provider"`
-	ProviderKey    string    `json:"provider_key"`
-	Price          float64   `json:"price"`
-	LastQuantity   float64   `json:"last_quantity,omitempty"`
-	VolumeDelta    float64   `json:"volume_delta,omitempty"`
-	EventTime      time.Time `json:"event_time"`
-	ReceivedTime   time.Time `json:"received_time"`
-	ProcessedTime  time.Time `json:"processed_time"`
-	PublishedTime  time.Time `json:"published_time,omitempty"`
-	Sequence       uint64    `json:"sequence"`
-	Quality        Quality   `json:"quality"`
+	Schema        string    `json:"schema"`
+	InstrumentID  string    `json:"instrument_id"`
+	Provider      string    `json:"provider"`
+	ProviderKey   string    `json:"provider_key"`
+	Price         float64   `json:"price"`
+	LastQuantity  float64   `json:"last_quantity,omitempty"`
+	VolumeDelta   float64   `json:"volume_delta,omitempty"`
+	EventTime     time.Time `json:"event_time"`
+	ReceivedTime  time.Time `json:"received_time"`
+	ProcessedTime time.Time `json:"processed_time"`
+	PublishedTime time.Time `json:"published_time,omitempty"`
+	Sequence      uint64    `json:"sequence"`
+	Quality       Quality   `json:"quality"`
 }
 
 func (t CanonicalTick) Validate() error {
