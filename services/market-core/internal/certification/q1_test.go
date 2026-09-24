@@ -104,11 +104,16 @@ func TestQ1NiftySyntheticUsesCanonicalCandleHistory(t *testing.T) {
 	}
 
 	legs := []synthetic.LegBinding{
-		{"CE25000", 25000, synthetic.LegCall}, {"PE25000", 25000, synthetic.LegPut},
-		{"CE25050", 25050, synthetic.LegCall}, {"PE25050", 25050, synthetic.LegPut},
-		{"CE25100", 25100, synthetic.LegCall}, {"PE25100", 25100, synthetic.LegPut},
-		{"CE25150", 25150, synthetic.LegCall}, {"PE25150", 25150, synthetic.LegPut},
-		{"CE25200", 25200, synthetic.LegCall}, {"PE25200", 25200, synthetic.LegPut},
+		{InstrumentID: "CE25000", Strike: 25000, Side: synthetic.LegCall},
+		{InstrumentID: "PE25000", Strike: 25000, Side: synthetic.LegPut},
+		{InstrumentID: "CE25050", Strike: 25050, Side: synthetic.LegCall},
+		{InstrumentID: "PE25050", Strike: 25050, Side: synthetic.LegPut},
+		{InstrumentID: "CE25100", Strike: 25100, Side: synthetic.LegCall},
+		{InstrumentID: "PE25100", Strike: 25100, Side: synthetic.LegPut},
+		{InstrumentID: "CE25150", Strike: 25150, Side: synthetic.LegCall},
+		{InstrumentID: "PE25150", Strike: 25150, Side: synthetic.LegPut},
+		{InstrumentID: "CE25200", Strike: 25200, Side: synthetic.LegCall},
+		{InstrumentID: "PE25200", Strike: 25200, Side: synthetic.LegPut},
 	}
 	var syntheticSequence uint64
 	assembler, err := synthetic.NewAssembler(synthetic.Definition{
