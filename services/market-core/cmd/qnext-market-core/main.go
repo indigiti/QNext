@@ -21,8 +21,8 @@ func main() {
 	})
 	mux.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"service": "qnext-market-core",
-			"version": version,
+			"service":  "qnext-market-core",
+			"version":  version,
 			"built_at": os.Getenv("QNEXT_BUILT_AT"),
 		})
 	})
