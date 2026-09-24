@@ -36,10 +36,10 @@ type ProviderInstrument struct {
 }
 
 type Registry struct {
-	mu             sync.RWMutex
-	instruments    map[string]Instrument
-	providerByKey  map[string]ProviderInstrument
-	providerByID   map[string]ProviderInstrument
+	mu            sync.RWMutex
+	instruments   map[string]Instrument
+	providerByKey map[string]ProviderInstrument
+	providerByID  map[string]ProviderInstrument
 }
 
 func NewRegistry() *Registry {
