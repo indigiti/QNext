@@ -17,22 +17,22 @@ const (
 )
 
 type Tick struct {
-	InstrumentID string
-	Provider     string
-	Price        float64
-	EventTime    time.Time
-	ReceivedTime time.Time
+	InstrumentID  string
+	Provider      string
+	Price         float64
+	EventTime     time.Time
+	ReceivedTime  time.Time
 	ProcessedTime time.Time
 	PublishedTime time.Time
-	Sequence     uint64
-	Quality      Quality
+	Sequence      uint64
+	Quality       Quality
 }
 
 type Bar struct {
-	InstrumentID       string
-	Timeframe          string
-	OpenTime           time.Time
-	CloseTime          time.Time
+	InstrumentID        string
+	Timeframe           string
+	OpenTime            time.Time
+	CloseTime           time.Time
 	Open                float64
 	High                float64
 	Low                 float64
