@@ -1,6 +1,6 @@
 # Q2 — QNext Workspace
 
-Status: **IMPLEMENTED / CERTIFICATION PENDING**
+Status: **CERTIFIED**
 
 Q2 closes the first browser-facing vertical slice:
 
@@ -103,6 +103,6 @@ The `Q2 Workspace` workflow must pass both jobs.
 - [x] Vela package pinned
 - [x] Vela constructor/workspace state API runtime parity probe
 - [x] release artifact name `digiops-release`
-- [ ] **Vela runtime/parity PASS in GitHub CI**
+- [x] **Vela runtime/parity PASS in GitHub CI**
 
-Q2 is complete only when the combined workflow is green.
+Q2 certification is complete: the combined workflow is green.
