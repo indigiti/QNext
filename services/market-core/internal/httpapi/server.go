@@ -65,10 +65,10 @@ type symbolResponse struct {
 }
 
 type calendarResponse struct {
-	CalendarID string      `json:"calendar_id"`
-	Version    string      `json:"version"`
-	Timezone   string      `json:"timezone"`
-	Session    string      `json:"session"`
+	CalendarID string     `json:"calendar_id"`
+	Version    string     `json:"version"`
+	Timezone   string     `json:"timezone"`
+	Session    string     `json:"session"`
 	Windows    [][2]int64 `json:"windows"`
 }
 
