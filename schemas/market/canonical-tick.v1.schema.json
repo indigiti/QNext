@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qnext.dev/schemas/market/canonical-tick.v1.schema.json",
+  "title": "QNext Canonical Tick v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "instrument_id",
+    "provider",
+    "provider_key",
+    "price",
+    "event_time",
+    "received_time",
+    "processed_time",
+    "sequence",
+    "quality"
+  ],
+  "properties": {
+    "schema": { "const": "QNEXT.MARKET.CANONICAL_TICK/1" },
+    "instrument_id": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "provider_key": { "type": "string", "minLength": 1 },
+    "price": { "type": "number", "exclusiveMinimum": 0 },
+    "last_quantity": { "type": "number", "minimum": 0 },
+    "volume_delta": { "type": "number", "minimum": 0 },
+    "event_time": { "type": "string", "format": "date-time" },
+    "received_time": { "type": "string", "format": "date-time" },
+    "processed_time": { "type": "string", "format": "date-time" },
+    "published_time": { "type": "string", "format": "date-time" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "quality": {
+      "enum": ["GOOD", "RECOVERED", "PARTIAL", "STALE", "DEGRADED", "INVALID"]
+    }
+  }
+}
