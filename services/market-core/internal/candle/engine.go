@@ -88,14 +88,14 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 
 func newBar(tick domain.Tick, timeframe string, openTime, closeTime time.Time, version string) domain.Bar {
 	return domain.Bar{
-		InstrumentID:       tick.InstrumentID,
-		Timeframe:          timeframe,
-		OpenTime:           openTime,
-		CloseTime:          closeTime,
-		Open:               tick.Price,
-		High:               tick.Price,
-		Low:                tick.Price,
-		Close:              tick.Price,
+		InstrumentID:        tick.InstrumentID,
+		Timeframe:           timeframe,
+		OpenTime:            openTime,
+		CloseTime:           closeTime,
+		Open:                tick.Price,
+		High:                tick.Price,
+		Low:                 tick.Price,
+		Close:               tick.Price,
 		Final:               false,
 		Revision:            0,
 		AuthorityProvider:   tick.Provider,
