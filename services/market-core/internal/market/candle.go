@@ -52,7 +52,7 @@ func (b *CandleBuilder) Apply(t CanonicalTick) (updated Bar, finalized *Bar, err
 		b.current.Low = t.Price
 	}
 	b.current.Close = t.Price
-	b.current.Volume += t.Volume
+	b.current.Volume += t.VolumeDelta
 	b.current.SourceSequence = t.Sequence
 	b.current.Quality = worstQuality(b.current.Quality, t.Quality)
 	return *b.current, nil, nil
@@ -67,7 +67,7 @@ func (b *CandleBuilder) newBar(t CanonicalTick, openTime, closeTime time.Time) *
 		High:              t.Price,
 		Low:               t.Price,
 		Close:             t.Price,
-		Volume:            t.Volume,
+		Volume:            t.VolumeDelta,
 		OpenTime:          openTime,
 		CloseTime:         closeTime,
 		Final:             false,

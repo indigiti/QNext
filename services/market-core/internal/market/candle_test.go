@@ -12,13 +12,14 @@ func TestCandleBuilderBuildsAndFinalizes(t *testing.T) {
 	}
 
 	base := time.Date(2026, 9, 24, 9, 15, 10, 0, time.FixedZone("IST", 5*60*60+30*60))
-	tick := func(seq uint64, at time.Time, price, volume float64) CanonicalTick {
+	tick := func(seq uint64, at time.Time, price, volumeDelta float64) CanonicalTick {
 		return CanonicalTick{
 			Schema:        SchemaCanonicalTickV1,
 			InstrumentID:  "NSE:NIFTY50",
 			Provider:      "upstox",
+			ProviderKey:   "NSE_INDEX|Nifty 50",
 			Price:         price,
-			Volume:        volume,
+			VolumeDelta:   volumeDelta,
 			EventTime:     at,
 			ReceivedTime:  at.Add(5 * time.Millisecond),
 			ProcessedTime: at.Add(8 * time.Millisecond),
@@ -64,6 +65,7 @@ func TestCanonicalTickRejectsInvalidOrdering(t *testing.T) {
 		Schema:        SchemaCanonicalTickV1,
 		InstrumentID:  "NSE:NIFTY50",
 		Provider:      "upstox",
+		ProviderKey:   "NSE_INDEX|Nifty 50",
 		Price:         25180,
 		EventTime:     event,
 		ReceivedTime:  event.Add(-time.Millisecond),

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qnext.dev/schemas/market/instrument.v1.schema.json",
+  "title": "QNext Instrument v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "instrument_id",
+    "symbol",
+    "name",
+    "asset_class",
+    "exchange",
+    "currency",
+    "timezone",
+    "synthetic"
+  ],
+  "properties": {
+    "instrument_id": { "type": "string", "minLength": 1 },
+    "symbol": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "asset_class": { "type": "string", "minLength": 1 },
+    "exchange": { "type": "string", "minLength": 1 },
+    "currency": { "type": "string", "minLength": 1 },
+    "timezone": { "type": "string", "minLength": 1 },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "synthetic": { "type": "boolean" }
+  }
+}
