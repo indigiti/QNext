@@ -1,0 +1,43 @@
+name: Q2 Symbol Authority
+
+on:
+  pull_request:
+    paths:
+      - "services/market-core/internal/authority/**"
+      - "services/market-core/internal/symbol/**"
+      - "docs/architecture/q2-symbol-authority.md"
+      - ".github/workflows/q2-symbol-authority.yml"
+  push:
+    branches:
+      - q2-mainline
+    paths:
+      - "services/market-core/internal/authority/**"
+      - "services/market-core/internal/symbol/**"
+      - "docs/architecture/q2-symbol-authority.md"
+      - ".github/workflows/q2-symbol-authority.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/market-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.mod
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l internal/authority internal/symbol)"
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+      - name: Test symbol and authority contracts
+        run: go test -race ./internal/symbol ./internal/authority
+      - name: Full market-core regression
+        run: go test -race ./...
