@@ -1,0 +1,108 @@
+name: Q2 Workspace
+
+on:
+  pull_request:
+    paths:
+      - "apps/workspace/**"
+      - "services/market-core/cmd/qnext-market-core/**"
+      - "services/market-core/internal/authority/**"
+      - "services/market-core/internal/httpapi/**"
+      - "services/market-core/internal/marketcalendar/**"
+      - "services/market-core/internal/symbol/**"
+      - "docs/architecture/q2-workspace.md"
+      - ".github/workflows/q2-workspace.yml"
+  push:
+    branches:
+      - q2-workspace
+    paths:
+      - "apps/workspace/**"
+      - "services/market-core/cmd/qnext-market-core/**"
+      - "services/market-core/internal/authority/**"
+      - "services/market-core/internal/httpapi/**"
+      - "services/market-core/internal/marketcalendar/**"
+      - "services/market-core/internal/symbol/**"
+      - "docs/architecture/q2-workspace.md"
+      - ".github/workflows/q2-workspace.yml"
+
+jobs:
+  market-core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/market-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.mod
+
+      - name: Resolve modules
+        run: go mod tidy
+
+      - name: Verify module files are tidy
+        run: git diff --exit-code -- go.mod go.sum
+
+      - name: Verify Go formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "The following Go files are not gofmt-clean:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Race tests
+        run: go test -race ./...
+
+      - name: Build market core
+        run: go build ./cmd/qnext-market-core
+
+  workspace:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/workspace
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install workspace dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Provider tests
+        run: npm test
+
+      - name: Vela runtime parity
+        run: npm run vela:parity
+
+      - name: Build static workspace
+        run: npm run build
+
+      - name: Upload release payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: digiops-release
+          path: apps/workspace/dist
+          if-no-files-found: error
+
+  q2-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - market-core
+      - workspace
+    steps:
+      - name: Certify Q2 workspace
+        run: echo "Q2_WORKSPACE_PASS"
