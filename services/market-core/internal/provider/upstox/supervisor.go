@@ -31,13 +31,13 @@ type GapRecovery interface {
 }
 
 type Supervisor struct {
-	Runner      StreamRunner
-	Recovery    GapRecovery
-	MinBackoff  time.Duration
-	MaxBackoff  time.Duration
-	ResetAfter  time.Duration
-	Now         func() time.Time
-	Sleep       func(context.Context, time.Duration) error
+	Runner     StreamRunner
+	Recovery   GapRecovery
+	MinBackoff time.Duration
+	MaxBackoff time.Duration
+	ResetAfter time.Duration
+	Now        func() time.Time
+	Sleep      func(context.Context, time.Duration) error
 }
 
 func (s *Supervisor) Run(
@@ -137,4 +137,3 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
-}
