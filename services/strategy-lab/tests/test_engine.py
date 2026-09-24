@@ -5,6 +5,7 @@ from pathlib import Path
 from qnext_strategy_lab.engine import BacktestEngine
 from qnext_strategy_lab.execution import ExecutionConfig
 from qnext_strategy_lab.models import Bar
+from qnext_strategy_lab.paper import PaperEngine
 from qnext_strategy_lab.storage import ImmutableRunStore
 from qnext_strategy_lab.strategies import MovingAverageCross
 
@@ -74,6 +75,61 @@ class BacktestEngineTest(unittest.TestCase):
             second = store.write(result)
             self.assertEqual(first, second)
             self.assertTrue(Path(first).exists())
+
+    def test_chart_markers_are_emitted_for_every_fill(self):
+        result = BacktestEngine().run(bars(), MovingAverageCross())
+        self.assertEqual(len(result.chart_markers), result.fill_count)
+        self.assertTrue(result.chart_markers)
+        for marker in result.chart_markers:
+            self.assertIn(marker.action, {"BUY", "SELL"})
+            self.assertGreater(marker.price, 0)
+            self.assertTrue(marker.label)
+
+    def test_replay_paper_parity(self):
+        strategy = MovingAverageCross(fast=2, slow=3)
+        execution = ExecutionConfig(slippage_bps=2, fee_bps=1)
+        replay = BacktestEngine(
+            initial_capital=100_000,
+            unit_size=10,
+            execution_config=execution,
+        ).run(bars(), strategy)
+
+        paper = PaperEngine(
+            strategy,
+            session_id=replay.run_id,
+            initial_capital=100_000,
+            unit_size=10,
+            execution_config=execution,
+        )
+        for bar in bars():
+            paper.process_bar(bar)
+        paper_result = paper.finalize(liquidate=True)
+
+        self.assertEqual(paper_result.fills, replay.fills)
+        self.assertEqual(paper_result.equity_curve, replay.equity_curve)
+        self.assertEqual(paper_result.chart_markers, replay.chart_markers)
+        self.assertEqual(paper_result.ending_equity, replay.ending_equity)
+        self.assertEqual(paper_result.net_pnl, replay.net_pnl)
+        self.assertEqual(paper_result.fees, replay.fees)
+        self.assertEqual(paper_result.slippage_cost, replay.slippage_cost)
+        self.assertEqual(paper_result.max_drawdown, replay.max_drawdown)
+
+    def test_paper_engine_is_incremental(self):
+        strategy = MovingAverageCross(fast=2, slow=3)
+        paper = PaperEngine(strategy, session_id="paper-test")
+        series = bars()
+
+        paper.process_bar(series[0])
+        paper.process_bar(series[1])
+        self.assertEqual(len(paper.fills), 0)
+
+        paper.process_bar(series[2])
+        self.assertIsNotNone(paper.pending)
+        self.assertEqual(len(paper.fills), 0)
+
+        paper.process_bar(series[3])
+        self.assertGreater(len(paper.fills), 0)
+        self.assertGreater(len(paper.markers), 0)
 
 
 if __name__ == "__main__":
