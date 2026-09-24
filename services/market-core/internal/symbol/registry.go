@@ -15,8 +15,10 @@ type Instrument struct {
 	Exchange   string   `json:"exchange"`
 	Currency   string   `json:"currency"`
 	Timezone   string   `json:"timezone"`
+	CalendarID string   `json:"calendar_id,omitempty"`
 	Aliases    []string `json:"aliases,omitempty"`
 	Synthetic  bool     `json:"synthetic"`
+	Visible    bool     `json:"visible"`
 }
 
 func (i Instrument) Validate() error {
@@ -115,6 +117,28 @@ func (r *Registry) ProviderMapping(provider, instrumentID string) (ProviderInstr
 	defer r.mu.RUnlock()
 	mapping, ok := r.providerByID[providerLookupKey(provider, instrumentID)]
 	return mapping, ok
+}
+
+func (r *Registry) ListVisible() []Instrument {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]Instrument, 0, len(r.instruments))
+	for _, instrument := range r.instruments {
+		if instrument.Visible {
+			result = append(result, instrument)
+		}
+	}
+	sort.Slice(result, func(a, b int) bool {
+		if result[a].Exchange == result[b].Exchange {
+			if result[a].Symbol == result[b].Symbol {
+				return result[a].ID < result[b].ID
+			}
+			return result[a].Symbol < result[b].Symbol
+		}
+		return result[a].Exchange < result[b].Exchange
+	})
+	return result
 }
 
 func (r *Registry) Search(query string) []Instrument {
