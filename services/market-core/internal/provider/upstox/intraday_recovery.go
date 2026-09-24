@@ -23,7 +23,8 @@ type IntradayRecovery struct {
 	AccessToken string
 	Registry    *symbol.Registry
 	History     RecoveredHistoryWriter
-	Timeframes  []string
+	Timeframes    []string
+	InstrumentIDs map[string]bool
 }
 
 func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest) error {
@@ -46,6 +47,9 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 		instrument, ok := r.Registry.ResolveProviderKey(ProviderName, providerKey)
 		if !ok {
 			return fmt.Errorf("recovery instrument is not registered: %s", providerKey)
+		}
+		if len(r.InstrumentIDs) > 0 && !r.InstrumentIDs[instrument.ID] {
+			continue
 		}
 
 		for _, timeframe := range timeframes {
