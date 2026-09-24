@@ -1,0 +1,37 @@
+name: Q1 gofmt repair
+
+on:
+  push:
+    branches:
+      - q1-completion
+    paths:
+      - .github/workflows/q1-gofmt-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: q1-completion
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+      - name: Apply gofmt
+        run: gofmt -w services/market-core
+      - name: Commit formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- services/market-core; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/market-core
+          git commit -m "chore(q1): apply gofmt"
+          git push origin HEAD:q1-completion
