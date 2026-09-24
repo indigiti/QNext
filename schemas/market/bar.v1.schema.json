@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qnext.dev/schemas/market/bar.v1.schema.json",
+  "title": "QNext Canonical Bar v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "instrument_id",
+    "timeframe",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "open_time",
+    "close_time",
+    "final",
+    "revision",
+    "authority_provider",
+    "quality",
+    "recovered",
+    "corrected",
+    "source_sequence",
+    "candle_engine_version",
+    "created_at"
+  ],
+  "properties": {
+    "schema": { "const": "QNEXT.MARKET.BAR/1" },
+    "instrument_id": { "type": "string", "minLength": 1 },
+    "timeframe": { "type": "string", "minLength": 1 },
+    "open": { "type": "number" },
+    "high": { "type": "number" },
+    "low": { "type": "number" },
+    "close": { "type": "number" },
+    "volume": { "type": "number", "minimum": 0 },
+    "open_time": { "type": "string", "format": "date-time" },
+    "close_time": { "type": "string", "format": "date-time" },
+    "final": { "type": "boolean" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "authority_provider": { "type": "string", "minLength": 1 },
+    "quality": {
+      "enum": ["GOOD", "RECOVERED", "PARTIAL", "STALE", "DEGRADED", "INVALID"]
+    },
+    "recovered": { "type": "boolean" },
+    "corrected": { "type": "boolean" },
+    "source_sequence": { "type": "integer", "minimum": 1 },
+    "candle_engine_version": { "type": "string", "minLength": 1 },
+    "synthetic_version": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "corrected_at": { "type": "string", "format": "date-time" }
+  }
+}
