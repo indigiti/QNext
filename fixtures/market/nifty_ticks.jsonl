@@ -1,0 +1,6 @@
+{"fixture":true,"schema":"QNEXT.MARKET.TICK/1","instrument_id":"NSE:NIFTY50","provider":"fixture","price":25100.0,"event_time_ms":1790221500000,"sequence":1,"quality":"GOOD"}
+{"fixture":true,"schema":"QNEXT.MARKET.TICK/1","instrument_id":"NSE:NIFTY50","provider":"fixture","price":25102.0,"event_time_ms":1790221510000,"sequence":2,"quality":"GOOD"}
+{"fixture":true,"schema":"QNEXT.MARKET.TICK/1","instrument_id":"NSE:NIFTY50","provider":"fixture","price":25099.0,"event_time_ms":1790221520000,"sequence":3,"quality":"GOOD"}
+{"fixture":true,"schema":"QNEXT.MARKET.TICK/1","instrument_id":"NSE:NIFTY50","provider":"fixture","price":25105.0,"event_time_ms":1790221530000,"sequence":4,"quality":"GOOD"}
+{"fixture":true,"schema":"QNEXT.MARKET.TICK/1","instrument_id":"NSE:NIFTY50","provider":"fixture","price":25101.0,"event_time_ms":1790221540000,"sequence":5,"quality":"GOOD"}
+{"fixture":true,"schema":"QNEXT.MARKET.TICK/1","instrument_id":"NSE:NIFTY50","provider":"fixture","price":25104.0,"event_time_ms":1790221550000,"sequence":6,"quality":"GOOD"}
