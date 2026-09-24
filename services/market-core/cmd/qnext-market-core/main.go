@@ -16,6 +16,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 	"github.com/indigiti/QNext/services/market-core/internal/httpapi"
 	"github.com/indigiti/QNext/services/market-core/internal/integrity"
+	"github.com/indigiti/QNext/services/market-core/internal/marketcalendar"
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
@@ -38,6 +39,26 @@ func main() {
 	storageRoot := env("QNEXT_STORAGE_ROOT", "./storage")
 	started := time.Now().UTC()
 
+	var config *marketconfig.Config
+	var accessToken string
+	if configPath := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG")); configPath != "" {
+		loaded, err := marketconfig.Load(configPath)
+		if err != nil {
+			log.Fatalf("load QNext market config: %v", err)
+		}
+		config = &loaded
+		accessToken = strings.TrimSpace(os.Getenv("UPSTOX_ACCESS_TOKEN"))
+		if accessToken == "" {
+			log.Fatal("UPSTOX_ACCESS_TOKEN is required when QNEXT_MARKET_CONFIG is set")
+		}
+	}
+
+	registry, err := buildRegistry(config)
+	if err != nil {
+		log.Fatalf("build symbol registry: %v", err)
+	}
+	calendars := marketcalendar.DefaultRegistry()
+
 	store := history.New(storageRoot)
 	broker := stream.NewBroker(1024, 128)
 	handler := httpapi.New(store, httpapi.Options{
@@ -45,6 +66,8 @@ func main() {
 		Commit:        commit,
 		StartedAt:     started,
 		StreamHandler: stream.NewWebSocketHandler(broker),
+		Symbols:       registry,
+		Calendars:     calendars,
 	})
 
 	server := &http.Server{
@@ -61,23 +84,14 @@ func main() {
 		}
 	}()
 
-	if configPath := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG")); configPath != "" {
-		accessToken := strings.TrimSpace(os.Getenv("UPSTOX_ACCESS_TOKEN"))
-		if accessToken == "" {
-			log.Fatal("UPSTOX_ACCESS_TOKEN is required when QNEXT_MARKET_CONFIG is set")
-		}
-		config, err := marketconfig.Load(configPath)
-		if err != nil {
-			log.Fatalf("load QNext market config: %v", err)
-		}
-
+	if config != nil {
 		go func() {
-			if err := runMarket(ctx, config, accessToken, store, broker); err != nil && ctx.Err() == nil {
+			if err := runMarket(ctx, *config, accessToken, registry, store, broker); err != nil && ctx.Err() == nil {
 				errCh <- err
 			}
 		}()
 	} else {
-		log.Printf("QNEXT_MARKET_CONFIG is not set; HTTP/history/stream services are running without live provider ingestion")
+		log.Printf("QNEXT_MARKET_CONFIG is not set; workspace catalog and HTTP/history/stream services are running without live provider ingestion")
 	}
 
 	select {
@@ -94,34 +108,57 @@ func main() {
 	}
 }
 
-func runMarket(
-	ctx context.Context,
-	config marketconfig.Config,
-	accessToken string,
-	store *history.Store,
-	broker *stream.Broker,
-) error {
+func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 	registry := symbol.NewRegistry()
+	niftyID := "NSE:NIFTY50"
+	syntheticID := "QNEXT:NIFTY-SYN"
+	if config != nil {
+		niftyID = config.Nifty.InstrumentID
+		syntheticID = config.Synthetic.InstrumentID
+	}
+
 	if err := registry.Register(symbol.Instrument{
-		ID:         config.Nifty.InstrumentID,
+		ID:         niftyID,
 		Symbol:     "NIFTY",
 		Name:       "Nifty 50",
 		AssetClass: "INDEX",
 		Exchange:   "NSE",
 		Currency:   "INR",
 		Timezone:   "Asia/Kolkata",
+		CalendarID: "NSE_EQ",
+		Aliases:    []string{"NIFTY 50"},
+		Visible:    true,
 	}); err != nil {
-		return err
+		return nil, err
 	}
+	if err := registry.Register(symbol.Instrument{
+		ID:         syntheticID,
+		Symbol:     "NIFTY-SYN",
+		Name:       "QNext Nifty Synthetic",
+		AssetClass: "INDEX",
+		Exchange:   "QNEXT",
+		Currency:   "INR",
+		Timezone:   "Asia/Kolkata",
+		CalendarID: "NSE_EQ",
+		Aliases:    []string{"NIFTY SYN", "SYNTHETIC NIFTY"},
+		Synthetic:  true,
+		Visible:    true,
+	}); err != nil {
+		return nil, err
+	}
+
+	if config == nil {
+		return registry, nil
+	}
+
 	if err := registry.RegisterProvider(symbol.ProviderInstrument{
 		Provider:     upstox.ProviderName,
 		InstrumentID: config.Nifty.InstrumentID,
 		ProviderKey:  config.Nifty.ProviderKey,
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
-	legs := make([]synthetic.LegBinding, 0, len(config.Synthetic.Legs))
 	for _, leg := range config.Synthetic.Legs {
 		if err := registry.Register(symbol.Instrument{
 			ID:         leg.InstrumentID,
@@ -131,17 +168,33 @@ func runMarket(
 			Exchange:   "NSE",
 			Currency:   "INR",
 			Timezone:   "Asia/Kolkata",
+			CalendarID: "NSE_EQ",
+			Visible:    false,
 		}); err != nil {
-			return err
+			return nil, err
 		}
 		if err := registry.RegisterProvider(symbol.ProviderInstrument{
 			Provider:     upstox.ProviderName,
 			InstrumentID: leg.InstrumentID,
 			ProviderKey:  leg.ProviderKey,
 		}); err != nil {
-			return err
+			return nil, err
 		}
+	}
 
+	return registry, nil
+}
+
+func runMarket(
+	ctx context.Context,
+	config marketconfig.Config,
+	accessToken string,
+	registry *symbol.Registry,
+	store *history.Store,
+	broker *stream.Broker,
+) error {
+	legs := make([]synthetic.LegBinding, 0, len(config.Synthetic.Legs))
+	for _, leg := range config.Synthetic.Legs {
 		side := synthetic.LegCall
 		if strings.EqualFold(leg.Side, "PUT") {
 			side = synthetic.LegPut
