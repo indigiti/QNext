@@ -10,8 +10,8 @@ type SubscriptionMethod string
 type SubscriptionMode string
 
 const (
-	MethodSubscribe  SubscriptionMethod = "sub"
-	MethodChangeMode SubscriptionMethod = "change_mode"
+	MethodSubscribe   SubscriptionMethod = "sub"
+	MethodChangeMode  SubscriptionMethod = "change_mode"
 	MethodUnsubscribe SubscriptionMethod = "unsub"
 
 	ModeLTPC         SubscriptionMode = "ltpc"
