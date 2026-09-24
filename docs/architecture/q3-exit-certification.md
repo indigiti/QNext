@@ -1,6 +1,6 @@
 # Q3 — Python Intelligence Exit Certification
 
-Status: **CANDIDATE**
+Status: **COMPLETE**
 
 Q3 is complete when the Q3 workflow is green on the completion PR and the service remains downstream-only from Go Market Core.
 
@@ -39,7 +39,7 @@ Q3 is complete when the Q3 workflow is green on the completion PR and the servic
 - [x] degraded-quality withholding
 - [x] horizon completion outcome gate
 - [x] immutable JSONL duplicate rejection
-- [ ] final CI PASS
+- [x] final CI PASS
 
 ## Deployment note
 
