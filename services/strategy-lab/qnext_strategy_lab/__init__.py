@@ -2,7 +2,8 @@
 
 from .engine import BacktestEngine, BacktestResult
 from .execution import ExecutionConfig
-from .models import Bar, Signal
+from .models import Bar, ChartMarker, Signal
+from .paper import PaperEngine, PaperResult
 from .strategies import MovingAverageCross
 
 __all__ = [
@@ -10,6 +11,9 @@ __all__ = [
     "BacktestResult",
     "ExecutionConfig",
     "Bar",
+    "ChartMarker",
     "Signal",
+    "PaperEngine",
+    "PaperResult",
     "MovingAverageCross",
 ]
