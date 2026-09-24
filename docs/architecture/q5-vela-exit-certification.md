@@ -1,0 +1,39 @@
+# Q5 — Vela / Browser Exit Certification
+
+Status: **CI CANDIDATE**
+
+This track certifies the browser presentation boundary without replacing the separate Q5 Python intelligence certification.
+
+## Provider gates
+
+- [x] thin `QNextProvider` package exists
+- [x] REST history loads before live subscription
+- [x] browser stream uses `QNEXT.STREAM/1`
+- [x] canonical history/live bar identity is preserved
+- [x] forming bars update without creating duplicates
+- [x] finalized bars reject same-revision regressions
+- [x] higher-revision historical corrections apply
+- [x] sequence gaps trigger REST resynchronization
+- [x] reconnect can issue `RESUME` with last applied sequence
+- [x] `RESYNC_REQUIRED` establishes a fresh history/live boundary
+- [x] no provider secrets or provider-specific failover exist in browser code
+
+## Runtime gates
+
+- [x] TypeScript is browser/build-time code
+- [x] no production Node.js application server introduced
+- [x] no application database introduced
+- [x] Go remains canonical realtime/candle authority
+- [x] Python Intelligence remains downstream-only
+- [x] Strategy Lab remains separate from presentation
+
+## Certification tests
+
+- [x] forming/final bar reconciliation
+- [x] higher revision correction
+- [x] history-before-live subscription order
+- [x] sequence-gap resync
+- [x] cursor resume
+- [x] Vela presentation binding
+
+Full Vela package/theme import and workspace-shell composition remain follow-on presentation work around this provider boundary.
