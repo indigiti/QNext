@@ -24,8 +24,9 @@ type Tick struct {
 	ReceivedTime  time.Time
 	ProcessedTime time.Time
 	PublishedTime time.Time
-	Sequence      uint64
-	Quality       Quality
+	Sequence         uint64
+	Quality          Quality
+	SyntheticVersion string
 }
 
 type Bar struct {

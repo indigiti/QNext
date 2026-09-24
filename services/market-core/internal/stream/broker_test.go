@@ -1,0 +1,77 @@
+package stream
+
+import (
+	"testing"
+	"time"
+
+	"github.com/indigiti/QNext/services/market-core/internal/domain"
+)
+
+func bar(instrument, timeframe string, at time.Time, close float64) domain.Bar {
+	return domain.Bar{
+		InstrumentID: instrument,
+		Timeframe:    timeframe,
+		OpenTime:     at,
+		CloseTime:    at.Add(time.Minute),
+		Open:         close,
+		High:         close,
+		Low:          close,
+		Close:        close,
+		Quality:      domain.QualityGood,
+	}
+}
+
+func TestBrokerReplayAndResume(t *testing.T) {
+	broker := NewBroker(3, 4)
+	base := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		broker.PublishBar(bar("NSE:NIFTY50", "1m", base.Add(time.Duration(i)*time.Minute), 25100+float64(i)))
+	}
+
+	after := uint64(1)
+	sub, err := broker.Subscribe("NSE:NIFTY50", "1m", &after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Cancel()
+	if sub.ResyncRequired {
+		t.Fatal("replay should be available")
+	}
+	if len(sub.Replay) != 2 || sub.Replay[0].Seq != 2 || sub.Replay[1].Seq != 3 {
+		t.Fatalf("unexpected replay: %+v", sub.Replay)
+	}
+
+	broker.PublishBar(bar("NSE:NIFTY50", "1m", base.Add(3*time.Minute), 25103))
+	event := <-sub.Events
+	if event.Seq != 4 || event.Bar.Close != 25103 {
+		t.Fatalf("unexpected live event: %+v", event)
+	}
+}
+
+func TestBrokerRequiresResyncWhenReplayExpired(t *testing.T) {
+	broker := NewBroker(2, 4)
+	base := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		broker.PublishBar(bar("NSE:NIFTY50", "1m", base.Add(time.Duration(i)*time.Minute), 25100+float64(i)))
+	}
+
+	after := uint64(1)
+	sub, err := broker.Subscribe("NSE:NIFTY50", "1m", &after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sub.ResyncRequired {
+		t.Fatal("expected resync when requested sequence is older than replay buffer")
+	}
+}
+
+func TestStreamIDRoundTrip(t *testing.T) {
+	id := streamID("QNEXT:NIFTY-SYN", "30s")
+	instrument, timeframe, err := parseStreamID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instrument != "QNEXT:NIFTY-SYN" || timeframe != "30s" {
+		t.Fatalf("unexpected stream id decode: %s %s", instrument, timeframe)
+	}
+}
