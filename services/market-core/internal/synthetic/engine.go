@@ -9,11 +9,11 @@ import (
 )
 
 type Definition struct {
-	ID                    string
-	Version               string
+	ID                     string
+	Version                string
 	MinimumValidCandidates int
-	MaxLegAge             time.Duration
-	MaxLegTimeSkew        time.Duration
+	MaxLegAge              time.Duration
+	MaxLegTimeSkew         time.Duration
 }
 
 type Candidate struct {
