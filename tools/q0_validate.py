@@ -6,11 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 required = [
-    "schemas/protobuf/qnext_market.proto",
-    "schemas/protobuf/qnext_instrument.proto",
-    "schemas/protobuf/qnext_synthetic.proto",
-    "schemas/protobuf/qnext_intelligence.proto",
-    "schemas/protobuf/qnext_strategy.proto",
+    "schemas/protobuf/qnext/market/v1/market.proto",
+    "schemas/protobuf/qnext/instrument/v1/instrument.proto",
+    "schemas/protobuf/qnext/synthetic/v1/synthetic.proto",
+    "schemas/protobuf/qnext/intelligence/v1/intelligence.proto",
+    "schemas/protobuf/qnext/strategy/v1/strategy.proto",
     "schemas/openapi/qnext.yaml",
     "schemas/asyncapi/qnext-stream.yaml",
 ]
