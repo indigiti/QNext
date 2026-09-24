@@ -1,0 +1,14 @@
+{
+  "type": "live_feed",
+  "feeds": {
+    "NSE_INDEX|Nifty 50": {
+      "ltpc": {
+        "ltp": 219.3,
+        "ltt": "1740729552723",
+        "ltq": "75",
+        "cp": 494.05
+      }
+    }
+  },
+  "currentTs": "1740729566039"
+}
