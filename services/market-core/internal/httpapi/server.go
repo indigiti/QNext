@@ -69,7 +69,7 @@ type calendarResponse struct {
 	Version    string      `json:"version"`
 	Timezone   string      `json:"timezone"`
 	Session    string      `json:"session"`
-	Windows    [][2]int64  `json:"windows"`
+	Windows    [][2]int64 `json:"windows"`
 }
 
 func New(history HistoryReader, options Options) http.Handler {
