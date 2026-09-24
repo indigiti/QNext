@@ -1,11 +1,11 @@
 .PHONY: q0-check q0-fixtures proto-lint proto-generate
 
 q0-check:
-	@test -f schemas/protobuf/qnext_market.proto
-	@test -f schemas/protobuf/qnext_instrument.proto
-	@test -f schemas/protobuf/qnext_synthetic.proto
-	@test -f schemas/protobuf/qnext_intelligence.proto
-	@test -f schemas/protobuf/qnext_strategy.proto
+	@test -f schemas/protobuf/qnext/market/v1/market.proto
+	@test -f schemas/protobuf/qnext/instrument/v1/instrument.proto
+	@test -f schemas/protobuf/qnext/synthetic/v1/synthetic.proto
+	@test -f schemas/protobuf/qnext/intelligence/v1/intelligence.proto
+	@test -f schemas/protobuf/qnext/strategy/v1/strategy.proto
 	@test -f schemas/openapi/qnext.yaml
 	@test -f schemas/asyncapi/qnext-stream.yaml
 	@test -f tests/certification/README.md
