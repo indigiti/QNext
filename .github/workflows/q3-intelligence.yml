@@ -1,0 +1,29 @@
+name: Q3 Intelligence
+
+on:
+  pull_request:
+    paths:
+      - "services/intelligence/**"
+      - "docs/architecture/q3-*.md"
+      - ".github/workflows/q3-intelligence.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/intelligence/**"
+      - "docs/architecture/q3-*.md"
+      - ".github/workflows/q3-intelligence.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install QNext Intelligence
+        run: python -m pip install ./services/intelligence
+      - name: Compile package
+        run: python -m compileall -q services/intelligence/src
+      - name: Q3 certification tests
+        run: python -m unittest discover -s services/intelligence/tests -v
