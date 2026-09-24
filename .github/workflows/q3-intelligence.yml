@@ -1,0 +1,35 @@
+name: Q3 Intelligence
+
+on:
+  pull_request:
+    paths:
+      - "services/intelligence/**"
+      - "config/q3-intelligence.example.json"
+      - "docs/architecture/q3-*.md"
+      - ".github/workflows/q3-intelligence.yml"
+  push:
+    branches: [main, q3-q5-intelligence-mainline]
+    paths:
+      - "services/intelligence/**"
+      - "config/q3-intelligence.example.json"
+      - "docs/architecture/q3-*.md"
+      - ".github/workflows/q3-intelligence.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile intelligence package
+        run: python -m compileall -q services/intelligence/qnext_intelligence
+      - name: Q3/Q5 certification tests
+        env:
+          PYTHONPATH: services/intelligence
+        run: python -m unittest discover -s services/intelligence/tests -v
+      - name: Validate CLI surface
+        env:
+          PYTHONPATH: services/intelligence
+        run: python -m qnext_intelligence.cli --help

@@ -1,0 +1,19 @@
+{
+  "version": "q3.v1",
+  "market_core_url": "http://127.0.0.1:8080",
+  "storage_root": "/private_html/qnext/storage/intelligence",
+  "instruments": [
+    {
+      "instrument_id": "QNEXT:NIFTY",
+      "timeframe": "1m",
+      "lookback_bars": 20,
+      "horizon_bars": 3
+    },
+    {
+      "instrument_id": "QNEXT:NIFTY-SYN",
+      "timeframe": "1m",
+      "lookback_bars": 20,
+      "horizon_bars": 3
+    }
+  ]
+}
