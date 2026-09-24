@@ -101,6 +101,7 @@ func newBar(tick domain.Tick, timeframe string, openTime, closeTime time.Time, v
 		AuthorityProvider:   tick.Provider,
 		Quality:             tick.Quality,
 		CandleEngineVersion: version,
+		SyntheticVersion:    tick.SyntheticVersion,
 	}
 }
 

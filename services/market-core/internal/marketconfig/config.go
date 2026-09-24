@@ -1,0 +1,140 @@
+package marketconfig
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"sort"
+	"strings"
+)
+
+type Config struct {
+	Timeframes []string        `json:"timeframes"`
+	Nifty      Instrument      `json:"nifty"`
+	Synthetic  SyntheticConfig `json:"synthetic"`
+}
+
+type Instrument struct {
+	InstrumentID string `json:"instrument_id"`
+	ProviderKey  string `json:"provider_key"`
+}
+
+type SyntheticConfig struct {
+	InstrumentID           string `json:"instrument_id"`
+	Version                string `json:"version"`
+	MinimumValidCandidates int    `json:"minimum_valid_candidates"`
+	MaxLegAgeMS            int64  `json:"max_leg_age_ms"`
+	MaxLegTimeSkewMS       int64  `json:"max_leg_time_skew_ms"`
+	Legs                   []Leg  `json:"legs"`
+}
+
+type Leg struct {
+	InstrumentID string  `json:"instrument_id"`
+	ProviderKey  string  `json:"provider_key"`
+	Strike       float64 `json:"strike"`
+	Side         string  `json:"side"`
+}
+
+func Load(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return Config{}, err
+	}
+	if err := config.Validate(); err != nil {
+		return Config{}, err
+	}
+	return config, nil
+}
+
+func (c Config) Validate() error {
+	if len(c.Timeframes) == 0 {
+		return errors.New("at least one timeframe is required")
+	}
+	if len(c.RecoverableTimeframes()) == 0 {
+		return errors.New("Q1 requires at least one recoverable minute timeframe: 1m, 3m, or 5m")
+	}
+	if c.Nifty.InstrumentID == "" || c.Nifty.ProviderKey == "" {
+		return errors.New("NIFTY instrument_id and provider_key are required")
+	}
+	if c.Synthetic.InstrumentID == "" || c.Synthetic.Version == "" {
+		return errors.New("synthetic instrument_id and version are required")
+	}
+	if c.Synthetic.MinimumValidCandidates <= 0 {
+		return errors.New("minimum_valid_candidates must be positive")
+	}
+	if len(c.Synthetic.Legs) != 10 {
+		return errors.New("Q1 NIFTY-SYN requires exactly ten option legs")
+	}
+
+	type strikeSides struct {
+		call bool
+		put  bool
+	}
+	strikes := make(map[float64]*strikeSides)
+	instruments := make(map[string]bool)
+	providerKeys := make(map[string]bool)
+	for _, leg := range c.Synthetic.Legs {
+		if leg.InstrumentID == "" || leg.ProviderKey == "" || leg.Strike <= 0 {
+			return errors.New("synthetic legs require instrument_id, provider_key, and positive strike")
+		}
+		if instruments[leg.InstrumentID] || providerKeys[leg.ProviderKey] {
+			return errors.New("synthetic leg instruments/provider keys must be unique")
+		}
+		instruments[leg.InstrumentID] = true
+		providerKeys[leg.ProviderKey] = true
+
+		side := strings.ToUpper(strings.TrimSpace(leg.Side))
+		pair := strikes[leg.Strike]
+		if pair == nil {
+			pair = &strikeSides{}
+			strikes[leg.Strike] = pair
+		}
+		switch side {
+		case "CALL":
+			if pair.call {
+				return errors.New("duplicate call leg for strike")
+			}
+			pair.call = true
+		case "PUT":
+			if pair.put {
+				return errors.New("duplicate put leg for strike")
+			}
+			pair.put = true
+		default:
+			return errors.New("synthetic leg side must be CALL or PUT")
+		}
+	}
+	if len(strikes) != 5 {
+		return errors.New("Q1 NIFTY-SYN requires exactly five strikes")
+	}
+	for _, pair := range strikes {
+		if !pair.call || !pair.put {
+			return errors.New("every synthetic strike requires call and put legs")
+		}
+	}
+	return nil
+}
+
+func (c Config) ProviderKeys() []string {
+	keys := []string{c.Nifty.ProviderKey}
+	for _, leg := range c.Synthetic.Legs {
+		keys = append(keys, leg.ProviderKey)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (c Config) RecoverableTimeframes() []string {
+	var result []string
+	for _, timeframe := range c.Timeframes {
+		switch timeframe {
+		case "1m", "3m", "5m":
+			result = append(result, timeframe)
+		}
+	}
+	return result
+}

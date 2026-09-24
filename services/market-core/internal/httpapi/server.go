@@ -14,9 +14,10 @@ type HistoryReader interface {
 }
 
 type Options struct {
-	Version   string
-	Commit    string
-	StartedAt time.Time
+	Version       string
+	Commit        string
+	StartedAt     time.Time
+	StreamHandler http.Handler
 }
 
 type Server struct {
@@ -60,6 +61,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/ready", s.ready)
 	s.mux.HandleFunc("/version", s.version)
 	s.mux.HandleFunc("/api/v1/bars", s.bars)
+	if s.options.StreamHandler != nil {
+		s.mux.Handle("/api/v1/stream", s.options.StreamHandler)
+	}
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
