@@ -19,6 +19,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
+	"github.com/indigiti/QNext/services/market-core/internal/resilience"
 	qruntime "github.com/indigiti/QNext/services/market-core/internal/runtime"
 	"github.com/indigiti/QNext/services/market-core/internal/stream"
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
@@ -206,19 +207,36 @@ func runMarket(
 		InstrumentIDs: map[string]bool{config.Nifty.InstrumentID: true},
 	}
 
-	supervisor := &upstox.Supervisor{
-		Runner:   wire,
-		Recovery: recovery,
-	}
-
-	return supervisor.Run(ctx, accessToken, upstox.SubscriptionRequest{
+	request := upstox.SubscriptionRequest{
 		GUID:   "qnext-market-core",
 		Method: upstox.MethodSubscribe,
 		Data: upstox.SubscriptionData{
 			Mode:           upstox.ModeLTPC,
 			InstrumentKeys: config.ProviderKeys(),
 		},
-	}, dedupe.Handle)
+	}
+	if resilienceConfig == nil {
+		supervisor := &upstox.Supervisor{
+			Runner:   wire,
+			Recovery: recovery,
+		}
+		return supervisor.Run(ctx, accessToken, request, dedupe.Handle)
+	}
+	return runResilientMarket(
+		ctx,
+		config,
+		*resilienceConfig,
+		accessToken,
+		dhanClientID,
+		dhanAccessToken,
+		registry,
+		store,
+		wire,
+		recovery,
+		request,
+		dedupe.Handle,
+		resilienceMetrics,
+	)
 }
 
 func env(key, fallback string) string {
