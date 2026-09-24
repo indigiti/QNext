@@ -45,7 +45,9 @@ func (n *Normalizer) NormalizeEnvelope(
 	processedAt time.Time,
 	nextSequence func() uint64,
 ) ([]domain.Tick, error) {
-	if envelope.Type != "" && envelope.Type != "live_feed" {
+	switch envelope.Type {
+	case "", "initial_feed", "live_feed":
+	default:
 		return nil, errors.New("unsupported Upstox message type")
 	}
 	if nextSequence == nil {
