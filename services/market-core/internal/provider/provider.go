@@ -8,13 +8,13 @@ import (
 )
 
 type Health struct {
-	State        string
-	ObservedAt   time.Time
-	LastTickAge  time.Duration
-	Latency      time.Duration
-	GapRate      float64
-	ErrorRate    float64
-	Reconnects   uint64
+	State       string
+	ObservedAt  time.Time
+	LastTickAge time.Duration
+	Latency     time.Duration
+	GapRate     float64
+	ErrorRate   float64
+	Reconnects  uint64
 }
 
 type Subscription interface {
