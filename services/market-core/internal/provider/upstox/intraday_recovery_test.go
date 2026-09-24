@@ -43,7 +43,7 @@ func TestIntradayRecoveryPersistsOnlyClosedGapBars(t *testing.T) {
 	base := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
 	collector := &recoveredCollector{}
 	recovery := &IntradayRecovery{
-		Client:      fakeIntradayFetcher{candles: []ProviderCandle{
+		Client: fakeIntradayFetcher{candles: []ProviderCandle{
 			{OpenTime: base, Open: 25100, High: 25102, Low: 25099, Close: 25101, Volume: 100},
 			{OpenTime: base.Add(time.Minute), Open: 25101, High: 25103, Low: 25100, Close: 25102, Volume: 200},
 		}},

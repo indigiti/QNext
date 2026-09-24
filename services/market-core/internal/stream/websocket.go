@@ -27,18 +27,18 @@ type clientMessage struct {
 }
 
 type serverMessage struct {
-	Op        string    `json:"op"`
-	Protocol  string    `json:"protocol,omitempty"`
-	Channel   string    `json:"channel,omitempty"`
-	StreamID  string    `json:"stream_id,omitempty"`
-	Seq       uint64    `json:"seq,omitempty"`
-	Symbol    string    `json:"symbol,omitempty"`
-	Timeframe string    `json:"timeframe,omitempty"`
-	Quality   string    `json:"quality,omitempty"`
-	Reason    string    `json:"reason,omitempty"`
-	Code      string    `json:"code,omitempty"`
-	Message   string    `json:"message,omitempty"`
-	Bar       *wireBar  `json:"bar,omitempty"`
+	Op        string   `json:"op"`
+	Protocol  string   `json:"protocol,omitempty"`
+	Channel   string   `json:"channel,omitempty"`
+	StreamID  string   `json:"stream_id,omitempty"`
+	Seq       uint64   `json:"seq,omitempty"`
+	Symbol    string   `json:"symbol,omitempty"`
+	Timeframe string   `json:"timeframe,omitempty"`
+	Quality   string   `json:"quality,omitempty"`
+	Reason    string   `json:"reason,omitempty"`
+	Code      string   `json:"code,omitempty"`
+	Message   string   `json:"message,omitempty"`
+	Bar       *wireBar `json:"bar,omitempty"`
 }
 
 type wireBar struct {

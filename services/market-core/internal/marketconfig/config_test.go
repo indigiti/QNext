@@ -19,7 +19,7 @@ func validConfig() Config {
 			MinimumValidCandidates: 3,
 			MaxLegAgeMS:            2000,
 			MaxLegTimeSkewMS:       1000,
-			Legs:                    legs,
+			Legs:                   legs,
 		},
 	}
 }

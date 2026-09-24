@@ -147,14 +147,14 @@ func TestQ1NiftySyntheticUsesCanonicalCandleHistory(t *testing.T) {
 		t.Helper()
 		for i, leg := range legs {
 			if err := sink.Handle(domain.Tick{
-				InstrumentID: leg.InstrumentID,
-				Provider:     "upstox",
-				Price:        values[leg.InstrumentID],
-				EventTime:    at,
-				ReceivedTime: at,
+				InstrumentID:  leg.InstrumentID,
+				Provider:      "upstox",
+				Price:         values[leg.InstrumentID],
+				EventTime:     at,
+				ReceivedTime:  at,
 				ProcessedTime: at,
-				Sequence:     uint64(i + 1),
-				Quality:      domain.QualityGood,
+				Sequence:      uint64(i + 1),
+				Quality:       domain.QualityGood,
 			}); err != nil {
 				t.Fatal(err)
 			}

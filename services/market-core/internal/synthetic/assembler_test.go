@@ -44,13 +44,13 @@ func TestAssemblerProducesFiveStrikeNiftySynthetic(t *testing.T) {
 	var emitted bool
 	for _, leg := range legs {
 		tick := domain.Tick{
-			InstrumentID: leg.InstrumentID,
-			Provider:     "upstox",
-			Price:        values[leg.InstrumentID],
-			EventTime:    at,
-			ReceivedTime: at,
+			InstrumentID:  leg.InstrumentID,
+			Provider:      "upstox",
+			Price:         values[leg.InstrumentID],
+			EventTime:     at,
+			ReceivedTime:  at,
 			ProcessedTime: at,
-			Quality:      domain.QualityGood,
+			Quality:       domain.QualityGood,
 		}
 		got, emitted, err = assembler.Apply(tick)
 		if err != nil {

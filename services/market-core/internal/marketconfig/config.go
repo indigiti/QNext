@@ -25,7 +25,7 @@ type SyntheticConfig struct {
 	MinimumValidCandidates int    `json:"minimum_valid_candidates"`
 	MaxLegAgeMS            int64  `json:"max_leg_age_ms"`
 	MaxLegTimeSkewMS       int64  `json:"max_leg_time_skew_ms"`
-	Legs                    []Leg  `json:"legs"`
+	Legs                   []Leg  `json:"legs"`
 }
 
 type Leg struct {

@@ -19,10 +19,10 @@ type RecoveredHistoryWriter interface {
 }
 
 type IntradayRecovery struct {
-	Client      IntradayFetcher
-	AccessToken string
-	Registry    *symbol.Registry
-	History     RecoveredHistoryWriter
+	Client        IntradayFetcher
+	AccessToken   string
+	Registry      *symbol.Registry
+	History       RecoveredHistoryWriter
 	Timeframes    []string
 	InstrumentIDs map[string]bool
 }

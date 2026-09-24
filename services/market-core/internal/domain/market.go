@@ -17,13 +17,13 @@ const (
 )
 
 type Tick struct {
-	InstrumentID  string
-	Provider      string
-	Price         float64
-	EventTime     time.Time
-	ReceivedTime  time.Time
-	ProcessedTime time.Time
-	PublishedTime time.Time
+	InstrumentID     string
+	Provider         string
+	Price            float64
+	EventTime        time.Time
+	ReceivedTime     time.Time
+	ProcessedTime    time.Time
+	PublishedTime    time.Time
 	Sequence         uint64
 	Quality          Quality
 	SyntheticVersion string
