@@ -1,8 +1,10 @@
 # Q1 — Market Truth Exit Certification
 
-Status: **CANDIDATE**
+Status: **PASS**
 
-Q1 is complete when the final completion PR passes the Q0 contract workflow and the Q1 Go workflow including race tests, build, and all certification tests.
+Q1 Market Truth is certified complete.
+
+The Q1 completion implementation is merged and its Go gate passed the race-enabled full test suite plus production binary build. The shared Q0 contract gate has also passed on the final certification branch after replacing the rate-limited Buf setup action with a pinned Buf CLI install.
 
 ## Canonical market path
 
@@ -48,7 +50,10 @@ Q1 is complete when the final completion PR passes the Q0 contract workflow and 
 - [x] history/live boundary test
 - [x] stream resume/replay tests
 - [x] provider reconnect/recovery tests
-- [ ] final CI PASS
+- [x] race-enabled Go test suite
+- [x] production market-core build
+- [x] shared Q0 contract / Protobuf / fixture gate
+- [x] final CI PASS
 
 ## Deployment note
 
@@ -58,4 +63,4 @@ The code path is certifiable without live credentials. A production environment 
 2. QNEXT_MARKET_CONFIG pointing to a private configuration based on config/q1-market.example.json;
 3. current option instrument keys for the selected five-strike/expiry set.
 
-A live-credential smoke test is an environment/deployment validation, not a reason to expose credentials in repository CI.
+A live-credential smoke test remains an environment/deployment validation and must not expose credentials in repository CI.
