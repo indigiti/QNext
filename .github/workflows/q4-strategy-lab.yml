@@ -1,0 +1,27 @@
+name: Q4 Strategy Lab
+
+on:
+  push:
+    paths:
+      - "services/strategy-lab/**"
+      - ".github/workflows/q4-strategy-lab.yml"
+  pull_request:
+    paths:
+      - "services/strategy-lab/**"
+      - ".github/workflows/q4-strategy-lab.yml"
+
+jobs:
+  strategy-lab:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/strategy-lab
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: PYTHONPATH=. python -m compileall -q qnext_strategy_lab tests
+      - name: Unit and certification tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -v
