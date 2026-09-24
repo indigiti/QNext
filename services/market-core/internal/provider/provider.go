@@ -32,12 +32,12 @@ const (
 )
 
 type Health struct {
-	Status       Status
-	LastTickAt   time.Time
-	Latency      time.Duration
-	ErrorRate    float64
-	Reconnects   uint64
-	ObservedAt   time.Time
+	Status     Status
+	LastTickAt time.Time
+	Latency    time.Duration
+	ErrorRate  float64
+	Reconnects uint64
+	ObservedAt time.Time
 }
 
 type Adapter interface {
