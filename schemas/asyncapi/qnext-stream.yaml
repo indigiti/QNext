@@ -1,0 +1,107 @@
+asyncapi: 3.0.0
+info:
+  title: QNext Realtime Stream
+  version: 0.2.0
+channels:
+  market:
+    address: /api/v1/stream
+    messages:
+      hello:
+        $ref: '#/components/messages/Hello'
+      subscribe:
+        $ref: '#/components/messages/Subscribe'
+      subscribed:
+        $ref: '#/components/messages/Subscribed'
+      bar:
+        $ref: '#/components/messages/Bar'
+      resume:
+        $ref: '#/components/messages/Resume'
+      resyncRequired:
+        $ref: '#/components/messages/ResyncRequired'
+      heartbeat:
+        $ref: '#/components/messages/Heartbeat'
+      error:
+        $ref: '#/components/messages/Error'
+components:
+  messages:
+    Hello:
+      payload:
+        type: object
+        required: [op, protocol]
+        properties:
+          op: { const: hello }
+          protocol: { const: QNEXT.STREAM/1 }
+    Subscribe:
+      payload:
+        type: object
+        required: [op, channel, symbol, timeframe]
+        properties:
+          op: { const: subscribe }
+          channel: { const: bars }
+          symbol: { type: string }
+          timeframe: { type: string }
+    Subscribed:
+      payload:
+        type: object
+        required: [op, stream_id, channel, symbol, timeframe]
+        properties:
+          op: { const: subscribed }
+          stream_id: { type: string }
+          channel: { const: bars }
+          symbol: { type: string }
+          timeframe: { type: string }
+    Bar:
+      payload:
+        type: object
+        required: [channel, stream_id, seq, symbol, timeframe, bar]
+        properties:
+          channel: { const: bars }
+          stream_id: { type: string }
+          seq: { type: integer, minimum: 1 }
+          symbol: { type: string }
+          timeframe: { type: string }
+          quality: { type: string }
+          bar:
+            type: object
+            required: [time, open, high, low, close, final, revision]
+            properties:
+              time: { type: integer }
+              open: { type: number }
+              high: { type: number }
+              low: { type: number }
+              close: { type: number }
+              volume: { type: number }
+              final: { type: boolean }
+              revision: { type: integer, minimum: 0 }
+    Resume:
+      payload:
+        type: object
+        required: [op, stream_id, after_seq]
+        properties:
+          op: { const: resume }
+          stream_id: { type: string }
+          after_seq: { type: integer, minimum: 0 }
+    ResyncRequired:
+      payload:
+        type: object
+        required: [op, stream_id, reason]
+        properties:
+          op: { const: resync_required }
+          stream_id: { type: string }
+          reason: { type: string }
+    Heartbeat:
+      payload:
+        type: object
+        required: [op, server_time_ms]
+        properties:
+          op: { const: heartbeat }
+          server_time_ms: { type: integer }
+    Error:
+      payload:
+        type: object
+        required: [op, code, message]
+        properties:
+          op: { const: error }
+          code: { type: string }
+          message: { type: string }
+          stream_id: { type: string }

@@ -1,0 +1,38 @@
+name: Q0 Contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - q0-foundation
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required Q0 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          make q0-check
+
+      - name: Set up Buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Lint Protobuf contracts
+        run: buf lint
+
+      - name: Validate golden fixtures
+        run: python3 tools/q0_validate.py
+
+      - name: Reject legacy schema namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R "QSYN.MARKET" schemas; then
+            echo "Legacy QSYN schema namespace found"
+            exit 1
+          fi

@@ -1,0 +1,17 @@
+{
+  "fixture": true,
+  "synthetic_id": "QNEXT:NIFTY-SYN",
+  "definition_version": "fixture-v1",
+  "underlying": "NSE:NIFTY50",
+  "atm": 25100,
+  "minimum_valid_candidates": 3,
+  "aggregation": "median",
+  "candidates": [
+    {"strike":25000,"call":160,"put":58,"accepted":true,"expected":25102},
+    {"strike":25050,"call":128,"put":78,"accepted":true,"expected":25100},
+    {"strike":25100,"call":101,"put":100,"accepted":true,"expected":25101},
+    {"strike":25150,"call":74,"put":125,"accepted":true,"expected":25099},
+    {"strike":25200,"call":55,"put":152,"accepted":true,"expected":25103}
+  ],
+  "expected_synthetic": 25101
+}
