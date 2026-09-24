@@ -39,6 +39,8 @@ jobs:
           if [ -n "$files" ]; then
             echo "The following Go files are not gofmt-clean:"
             echo "$files"
+            echo "Go 1.24 formatter diff:"
+            gofmt -d .
             exit 1
           fi
 
