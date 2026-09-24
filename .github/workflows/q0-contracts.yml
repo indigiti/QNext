@@ -12,17 +12,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Check required Q0 files
         shell: bash
         run: |
           set -euo pipefail
-          test -f README.md
-          test -f docs/architecture/README.md
-          test -f docs/adr/0001-realtime-ownership.md
-          test -f schemas/protobuf/qnext_market.proto
-          test -f schemas/openapi/qnext.yaml
-          test -f schemas/asyncapi/qnext-stream.yaml
-          test -f tests/certification/README.md
+          make q0-check
+
+      - name: Set up Buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Lint Protobuf contracts
+        run: buf lint
+
+      - name: Validate golden fixtures
+        run: python3 tools/q0_validate.py
+
       - name: Reject legacy schema namespace
         shell: bash
         run: |
