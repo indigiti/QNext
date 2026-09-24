@@ -1,0 +1,30 @@
+name: Q5 Intelligence
+
+on:
+  pull_request:
+    paths:
+      - "services/intelligence/**"
+      - "docs/architecture/q5-exit-certification.md"
+      - ".github/workflows/q5-intelligence.yml"
+  push:
+    branches: [main, q3-q5-intelligence-mainline]
+    paths:
+      - "services/intelligence/**"
+      - "docs/architecture/q5-exit-certification.md"
+      - ".github/workflows/q5-intelligence.yml"
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/intelligence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile
+        run: python -m compileall -q qnext_intelligence tests
+      - name: Q5 certification tests
+        run: python -m unittest discover -s tests -v
