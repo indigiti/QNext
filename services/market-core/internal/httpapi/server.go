@@ -83,6 +83,13 @@ func (s *Server) version(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+func (s *Server) resilience(w http.ResponseWriter, r *http.Request) {
+	if !requireGET(w, r) {
+		return
+	}
+	writeJSON(w, http.StatusOK, s.options.ResilienceStatus())
+}
+
 func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
