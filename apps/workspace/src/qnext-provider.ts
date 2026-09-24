@@ -10,7 +10,7 @@ export interface QNextRange {
   from?: number;
   to?: number;
   limit?: number;
-  session?: 'regular' | 'extended';
+  session?: string;
 }
 
 export interface QNextBar {
@@ -147,7 +147,7 @@ export class QNextProvider {
       instrument_id: instrument.instrument_id,
       from_ms: String(from),
       to_ms: String(to),
-      session: range.session ?? 'regular',
+      session: normalizeSession(range.session),
     });
 
     const response = await this.fetchImpl(
@@ -165,7 +165,7 @@ export class QNextProvider {
     ticker: string,
     timeframe: string,
     onBar: (bar: QNextBar) => void,
-    _options?: { session?: 'regular' | 'extended' },
+    _options?: { session?: string },
   ): () => void {
     let cancelled = false;
     let socket: WebSocketLike | undefined;
@@ -403,4 +403,8 @@ function timeframeDurationMs(timeframe: string): number {
           ? 3_600_000
           : 86_400_000;
   return value * multiplier;
+}
+
+function normalizeSession(session: string | undefined): 'regular' | 'extended' {
+  return session?.toLowerCase() === 'extended' ? 'extended' : 'regular';
 }
