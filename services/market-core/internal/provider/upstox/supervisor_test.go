@@ -114,11 +114,11 @@ func TestSupervisorFailsClosedWhenRecoveryFails(t *testing.T) {
 	recovery := &fakeRecovery{err: errors.New("history unavailable")}
 
 	supervisor := &Supervisor{
-		Runner:      runner,
-		Recovery:    recovery,
-		MinBackoff:  time.Second,
-		MaxBackoff:  time.Second,
-		Now:         func() time.Time { return clock },
+		Runner:     runner,
+		Recovery:   recovery,
+		MinBackoff: time.Second,
+		MaxBackoff: time.Second,
+		Now:        func() time.Time { return clock },
 		Sleep: func(_ context.Context, delay time.Duration) error {
 			clock = clock.Add(delay)
 			return nil
