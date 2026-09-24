@@ -28,8 +28,8 @@ class DeterministicMarketExecution:
         self.config = config or ExecutionConfig()
 
     def fill(self, order: Order, bar: Bar, fill_id: str) -> Fill:
-        if order.created_at_ms >= bar.open_time_ms:
-            raise ValueError("look-ahead violation: order must execute on a later bar")
+        if order.created_at_ms > bar.open_time_ms:
+            raise ValueError("look-ahead violation: order cannot execute before it exists")
         direction = 1.0 if order.quantity_delta > 0 else -1.0
         slip = self.config.slippage_bps / 10_000.0
         reference = bar.open
