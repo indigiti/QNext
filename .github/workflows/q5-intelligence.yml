@@ -1,0 +1,30 @@
+name: Q5 Intelligence
+
+on:
+  pull_request:
+    paths:
+      - "services/intelligence/**"
+      - "docs/architecture/q5-exit-certification.md"
+      - "Makefile"
+      - ".github/workflows/q5-intelligence.yml"
+  push:
+    branches:
+      - q5-intelligence
+    paths:
+      - "services/intelligence/**"
+      - "docs/architecture/q5-exit-certification.md"
+      - "Makefile"
+      - ".github/workflows/q5-intelligence.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile intelligence package
+        run: python -m compileall -q services/intelligence/qnext_intelligence
+      - name: Run Q5 certification
+        run: make q5-check

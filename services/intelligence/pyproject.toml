@@ -1,0 +1,6 @@
+[project]
+name = "qnext-intelligence"
+version = "0.1.0"
+description = "QNext point-in-time feature, prediction, outcome and model-lifecycle foundation"
+requires-python = ">=3.11"
+dependencies = []

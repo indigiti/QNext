@@ -1,4 +1,4 @@
-.PHONY: q0-check q0-fixtures proto-lint proto-generate
+.PHONY: q0-check q0-fixtures q5-check proto-lint proto-generate
 
 q0-check:
 	@test -f schemas/protobuf/qnext/market/v1/market.proto
@@ -17,6 +17,10 @@ q0-check:
 
 q0-fixtures:
 	@python3 tools/q0_validate.py
+
+q5-check:
+	@PYTHONPATH=services/intelligence python3 -m unittest discover -s services/intelligence/tests -v
+	@echo "Q5 intelligence checks: PASS"
 
 proto-lint:
 	@buf lint
