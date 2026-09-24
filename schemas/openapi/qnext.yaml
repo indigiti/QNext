@@ -1,0 +1,49 @@
+openapi: 3.1.0
+info:
+  title: QNext Market API
+  version: 0.1.0
+paths:
+  /api/v1/symbols/search:
+    get:
+      summary: Search canonical instruments
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/v1/symbols/{id}:
+    get:
+      summary: Resolve canonical instrument
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+  /api/v1/bars:
+    get:
+      summary: Fetch canonical bars
+      responses:
+        "200": { description: OK }
+  /api/v1/markets/calendar:
+    get:
+      summary: Fetch resolved market-session windows
+      responses:
+        "200": { description: OK }
+  /api/v1/market/status:
+    get:
+      summary: Current market status
+      responses:
+        "200": { description: OK }
+  /api/v1/providers/status:
+    get:
+      summary: Provider and authority status
+      responses:
+        "200": { description: OK }
+  /api/v1/system/health:
+    get:
+      summary: System health
+      responses:
+        "200": { description: OK }

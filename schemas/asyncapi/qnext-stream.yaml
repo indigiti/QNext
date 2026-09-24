@@ -1,0 +1,46 @@
+asyncapi: 3.0.0
+info:
+  title: QNext Realtime Stream
+  version: 0.1.0
+channels:
+  market:
+    address: /api/v1/stream
+    messages:
+      subscribe:
+        $ref: '#/components/messages/Subscribe'
+      bar:
+        $ref: '#/components/messages/Bar'
+components:
+  messages:
+    Subscribe:
+      payload:
+        type: object
+        required: [op, channel, symbol, timeframe]
+        properties:
+          op: { const: subscribe }
+          channel: { const: bars }
+          symbol: { type: string }
+          timeframe: { type: string }
+    Bar:
+      payload:
+        type: object
+        required: [channel, stream_id, seq, symbol, timeframe, bar]
+        properties:
+          channel: { const: bars }
+          stream_id: { type: string }
+          seq: { type: integer }
+          symbol: { type: string }
+          timeframe: { type: string }
+          quality: { type: string }
+          bar:
+            type: object
+            required: [time, open, high, low, close, final, revision]
+            properties:
+              time: { type: integer }
+              open: { type: number }
+              high: { type: number }
+              low: { type: number }
+              close: { type: number }
+              volume: { type: number }
+              final: { type: boolean }
+              revision: { type: integer, minimum: 0 }

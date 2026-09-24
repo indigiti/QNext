@@ -1,0 +1,33 @@
+name: Q0 Contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - q0-foundation
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required Q0 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f README.md
+          test -f docs/architecture/README.md
+          test -f docs/adr/0001-realtime-ownership.md
+          test -f schemas/protobuf/qnext_market.proto
+          test -f schemas/openapi/qnext.yaml
+          test -f schemas/asyncapi/qnext-stream.yaml
+          test -f tests/certification/README.md
+      - name: Reject legacy schema namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R "QSYN.MARKET" schemas; then
+            echo "Legacy QSYN schema namespace found"
+            exit 1
+          fi
