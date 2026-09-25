@@ -198,6 +198,70 @@ final class OpsController
         return $decoded;
     }
 
+    public function marketActivation(): array
+    {
+        $available = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX'];
+        $config = $this->getConfig();
+        $configured = $config['active_markets'] ?? null;
+
+        $active = $available;
+        if (is_array($configured) && $configured !== []) {
+            $active = [];
+            foreach ($configured as $symbol) {
+                if (!is_string($symbol)) {
+                    continue;
+                }
+                $normalized = strtoupper(trim($symbol));
+                if (in_array($normalized, $available, true) && !in_array($normalized, $active, true)) {
+                    $active[] = $normalized;
+                }
+            }
+            if ($active === []) {
+                $active = $available;
+            }
+        }
+
+        return [
+            'available' => $available,
+            'active' => $active,
+        ];
+    }
+
+    public function saveActiveMarkets(array $payload): array
+    {
+        $available = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX'];
+        $requested = $payload['active'] ?? null;
+        if (!is_array($requested)) {
+            throw new RuntimeException('active markets must be an array');
+        }
+
+        $active = [];
+        foreach ($requested as $symbol) {
+            if (!is_string($symbol)) {
+                throw new RuntimeException('active market names must be strings');
+            }
+            $normalized = strtoupper(trim($symbol));
+            if (!in_array($normalized, $available, true)) {
+                throw new RuntimeException('unknown active market: ' . $normalized);
+            }
+            if (!in_array($normalized, $active, true)) {
+                $active[] = $normalized;
+            }
+        }
+        if ($active === []) {
+            throw new RuntimeException('at least one market must remain active');
+        }
+
+        $config = $this->getConfig();
+        $config['active_markets'] = $active;
+        AtomicFile::writeJson($this->config->configPath(), $config);
+
+        return [
+            'saved' => true,
+            'active' => $active,
+        ];
+    }
+
     public function saveConfig(array $payload): array
     {
         foreach (['timeframes', 'nifty', 'synthetic'] as $key) {
@@ -456,39 +520,6 @@ final class OpsController
     private function probe(string $path): array
     {
         $url = $this->config->marketCoreUrl . $path;
-
-        if (function_exists('curl_init')) {
-            $handle = curl_init($url);
-            if ($handle !== false) {
-                curl_setopt_array($handle, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_CONNECTTIMEOUT_MS => 750,
-                    CURLOPT_TIMEOUT_MS => 2000,
-                    CURLOPT_HTTPHEADER => ['Accept: application/json'],
-                ]);
-                $body = curl_exec($handle);
-                $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-                $error = curl_error($handle);
-                curl_close($handle);
-
-                if (is_string($body)) {
-                    $decoded = json_decode($body, true);
-                    return [
-                        'ok' => $status >= 200 && $status < 300,
-                        'status' => $status,
-                        'body' => is_array($decoded) ? $decoded : $body,
-                    ];
-                }
-
-                if ($error !== '') {
-                    return [
-                        'ok' => false,
-                        'status' => $status ?: null,
-                        'error' => 'connection failed: ' . $error,
-                    ];
-                }
-            }
-        }
 
         $context = stream_context_create([
             'http' => [

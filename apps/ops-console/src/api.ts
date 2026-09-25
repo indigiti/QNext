@@ -101,6 +101,16 @@ export interface FeedStatusResponse {
   body?: FeedStatusBody;
 }
 
+export interface ActiveMarkets {
+  available: string[];
+  active: string[];
+}
+
+export interface ActiveMarketsSaveResult {
+  saved: boolean;
+  active: string[];
+}
+
 export interface SecretWriteResult {
   stored: string[];
   resilienceConfigured?: boolean;
@@ -160,6 +170,17 @@ export class OpsAPI {
 
   feedStatus(): Promise<FeedStatusResponse> {
     return this.request<FeedStatusResponse>('/feed-status');
+  }
+
+  activeMarkets(): Promise<ActiveMarkets> {
+    return this.request<ActiveMarkets>('/active-markets');
+  }
+
+  saveActiveMarkets(active: string[]): Promise<ActiveMarketsSaveResult> {
+    return this.request<ActiveMarketsSaveResult>('/active-markets', {
+      method: 'PUT',
+      body: JSON.stringify({ active }),
+    });
   }
 
   verifyDhanStandby(): Promise<DhanStandbyCheck> {

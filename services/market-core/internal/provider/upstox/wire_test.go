@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,5 +182,87 @@ func TestWireClientAppliesLiveSubscriptionUpdates(t *testing.T) {
 	}
 	if len(connection.writes) != 2 {
 		t.Fatalf("expected initial and live subscription writes, got %d", len(connection.writes))
+	}
+}
+
+type silentConnection struct {
+	closed chan struct{}
+}
+
+func (c *silentConnection) WriteBinary(context.Context, []byte) error { return nil }
+
+func (c *silentConnection) ReadBinary(ctx context.Context) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.closed:
+		return nil, io.EOF
+	}
+}
+
+func (c *silentConnection) Close() error {
+	select {
+	case <-c.closed:
+	default:
+		close(c.closed)
+	}
+	return nil
+}
+
+type silentDialer struct {
+	connection *silentConnection
+}
+
+func (d silentDialer) Dial(context.Context, string) (BinaryConnection, error) {
+	return d.connection, nil
+}
+
+func TestWireClientTimesOutSilentFeedWhenWatchdogActive(t *testing.T) {
+	connection := &silentConnection{closed: make(chan struct{})}
+	client := &WireClient{
+		Authorizer:        fakeAuthorizer{uri: "wss://feed.example.test/one-time"},
+		Dialer:            silentDialer{connection: connection},
+		InactivityTimeout: 20 * time.Millisecond,
+		WatchdogInterval:  5 * time.Millisecond,
+		WatchdogActive:    func(time.Time) bool { return true },
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err := client.Run(ctx, "token", SubscriptionRequest{
+		GUID:   "qnext-test",
+		Method: MethodSubscribe,
+		Data: SubscriptionData{
+			Mode:           ModeLTPC,
+			InstrumentKeys: []string{"NSE_INDEX|Nifty 50"},
+		},
+	}, func(domain.Tick) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "market feed inactive") {
+		t.Fatalf("expected inactivity timeout, got %v", err)
+	}
+}
+
+func TestWireClientDoesNotTimeoutSilentFeedWhenWatchdogInactive(t *testing.T) {
+	connection := &silentConnection{closed: make(chan struct{})}
+	client := &WireClient{
+		Authorizer:        fakeAuthorizer{uri: "wss://feed.example.test/one-time"},
+		Dialer:            silentDialer{connection: connection},
+		InactivityTimeout: 10 * time.Millisecond,
+		WatchdogInterval:  2 * time.Millisecond,
+		WatchdogActive:    func(time.Time) bool { return false },
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	err := client.Run(ctx, "token", SubscriptionRequest{
+		GUID:   "qnext-test",
+		Method: MethodSubscribe,
+		Data: SubscriptionData{
+			Mode:           ModeLTPC,
+			InstrumentKeys: []string{"NSE_INDEX|Nifty 50"},
+		},
+	}, func(domain.Tick) error { return nil })
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline outside active session, got %v", err)
 	}
 }

@@ -88,6 +88,21 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	}
 }
 
+func (b *Broker) LatestBar(instrumentID, timeframe string) (domain.Bar, bool) {
+	if instrumentID == "" || timeframe == "" {
+		return domain.Bar{}, false
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	state := b.streams[streamKey(instrumentID, timeframe)]
+	if state == nil || len(state.replay) == 0 {
+		return domain.Bar{}, false
+	}
+	return state.replay[len(state.replay)-1].Bar, true
+}
+
 func (b *Broker) Subscribe(instrumentID, timeframe string, afterSeq *uint64) (*Subscription, error) {
 	if instrumentID == "" || timeframe == "" {
 		return nil, errors.New("instrument and timeframe are required")

@@ -103,6 +103,24 @@ root.innerHTML = `
         </div>
       </section>
 
+      <section class="card span-3" id="active-markets-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Subscriptions</p>
+            <h2>Active markets</h2>
+            <p class="muted">Enable only the index + synthetic pairs you need. Disabled pairs create no live index subscription, option basket, or synthetic calculation.</p>
+          </div>
+          <button id="reload-active-markets" class="secondary">Reload</button>
+        </div>
+        <div id="active-markets-grid" class="market-toggle-grid"></div>
+        <div class="actions">
+          <button id="nifty-only" class="secondary">NIFTY only</button>
+          <button id="enable-all-markets" class="secondary">Enable all</button>
+          <button id="save-active-markets">Save & restart</button>
+          <span id="active-markets-note" class="muted">At least one market must remain active.</span>
+        </div>
+      </section>
+
       <section class="card">
         <p class="eyebrow">Secrets</p>
         <h2>Broker credentials</h2>
@@ -338,6 +356,52 @@ async function refresh() {
   }
 }
 
+const marketLabels: Record<string, string> = {
+  NIFTY: 'NIFTY + NIFTY-SYN',
+  BANKNIFTY: 'BANKNIFTY + BANKNIFTY-SYN',
+  MIDCPNIFTY: 'MIDCPNIFTY + MIDCPNIFTY-SYN',
+  FINNIFTY: 'FINNIFTY + FINNIFTY-SYN',
+  SENSEX: 'SENSEX + SENSEX-SYN',
+  BANKEX: 'BANKEX + BANKEX-SYN',
+};
+
+function renderActiveMarkets(available: string[], active: string[]) {
+  const grid = document.querySelector<HTMLDivElement>('#active-markets-grid')!;
+  const activeSet = new Set(active);
+  grid.innerHTML = available.map((symbol) => `
+    <label class="market-toggle">
+      <input type="checkbox" name="active-market" value="${symbol}" ${activeSet.has(symbol) ? 'checked' : ''} />
+      <span>
+        <strong>${marketLabels[symbol] ?? symbol}</strong>
+        <small>${activeSet.has(symbol) ? 'ACTIVE' : 'DISABLED'}</small>
+      </span>
+    </label>
+  `).join('');
+
+  grid.querySelectorAll<HTMLInputElement>('input[name="active-market"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const label = input.closest<HTMLLabelElement>('.market-toggle');
+      const small = label?.querySelector('small');
+      if (small) small.textContent = input.checked ? 'ACTIVE' : 'DISABLED';
+    });
+  });
+}
+
+async function loadActiveMarkets() {
+  try {
+    const state = await api.activeMarkets();
+    renderActiveMarkets(state.available, state.active);
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
+function selectedActiveMarkets() {
+  return Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[name="active-market"]:checked'),
+  ).map((input) => input.value);
+}
+
 async function loadConfig() {
   try {
     const config = await api.getConfig();
@@ -369,6 +433,7 @@ tokenButton.addEventListener('click', async () => {
     api = new OpsAPI({ base: runtime.apiBase, token });
     await refresh();
     await loadConfig();
+    await loadActiveMarkets();
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -414,6 +479,40 @@ document.querySelector('#copy-diagnostics')!.addEventListener('click', async () 
   }
 });
 document.querySelector('#load-config')!.addEventListener('click', () => void loadConfig());
+document.querySelector('#reload-active-markets')!.addEventListener('click', () => void loadActiveMarkets());
+document.querySelector('#nifty-only')!.addEventListener('click', () => {
+  document.querySelectorAll<HTMLInputElement>('input[name="active-market"]').forEach((input) => {
+    input.checked = input.value === 'NIFTY';
+    const small = input.closest<HTMLLabelElement>('.market-toggle')?.querySelector('small');
+    if (small) small.textContent = input.checked ? 'ACTIVE' : 'DISABLED';
+  });
+});
+document.querySelector('#enable-all-markets')!.addEventListener('click', () => {
+  document.querySelectorAll<HTMLInputElement>('input[name="active-market"]').forEach((input) => {
+    input.checked = true;
+    const small = input.closest<HTMLLabelElement>('.market-toggle')?.querySelector('small');
+    if (small) small.textContent = 'ACTIVE';
+  });
+});
+document.querySelector('#save-active-markets')!.addEventListener('click', async () => {
+  const active = selectedActiveMarkets();
+  if (active.length === 0) {
+    toast('At least one market must remain active.', true);
+    return;
+  }
+  try {
+    const saved = await api.saveActiveMarkets(active);
+    const result = await api.service('restart');
+    const queued = result.output.toLowerCase().includes('queued');
+    toast(
+      `Active markets saved: ${saved.active.join(', ')}. Restart ${queued ? 'queued' : 'completed'}.`,
+    );
+    await loadActiveMarkets();
+    await refresh();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
 document.querySelector('#copy-cron')!.addEventListener('click', async () => {
   const command = document.querySelector<HTMLElement>('#cron-command')!.textContent?.trim() ?? '';
   if (!command) {
@@ -536,6 +635,7 @@ async function bootstrapAdmin() {
     if (token) {
       await refresh();
       await loadConfig();
+      await loadActiveMarkets();
     } else {
       toast('Enter the staging admin token to connect to QNext Ops.');
     }

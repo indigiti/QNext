@@ -94,6 +94,7 @@ func main() {
 		Commit:        commit,
 		StartedAt:     started,
 		StreamHandler: stream.NewWebSocketHandler(broker),
+		LiveBars:      broker,
 		Symbols:       registry,
 		Calendars:     calendars,
 		ResilienceStatus: func() any {
@@ -394,6 +395,9 @@ func runMarket(
 		NextSequence: func() uint64 {
 			return providerSequence.Add(1)
 		},
+		InactivityTimeout: 20 * time.Second,
+		WatchdogInterval:  5 * time.Second,
+		WatchdogActive:    regularMarketSessionActive,
 	}
 	if strings.TrimSpace(os.Getenv("QNEXT_RAW_CAPTURE")) == "1" {
 		wire.CaptureFrame = capture.NewFrameStore(env("QNEXT_STORAGE_ROOT", "./storage"), upstox.ProviderName).Append
@@ -434,6 +438,33 @@ func runMarket(
 		dedupe.Handle,
 		resilienceMetrics,
 	)
+}
+
+func regularMarketSessionActive(at time.Time) bool {
+	definition := marketcalendar.NSEEquities2026()
+	location, err := time.LoadLocation(definition.Timezone)
+	if err != nil {
+		return false
+	}
+	local := at.In(location)
+	if local.Weekday() == time.Saturday || local.Weekday() == time.Sunday {
+		return false
+	}
+	if _, closed := definition.ClosedDates[local.Format("2006-01-02")]; closed {
+		return false
+	}
+
+	open := time.Date(
+		local.Year(), local.Month(), local.Day(),
+		definition.RegularOpen.Hour, definition.RegularOpen.Minute,
+		0, 0, location,
+	)
+	closeAt := time.Date(
+		local.Year(), local.Month(), local.Day(),
+		definition.RegularClose.Hour, definition.RegularClose.Minute,
+		0, 0, location,
+	)
+	return !local.Before(open) && local.Before(closeAt)
 }
 
 func env(key, fallback string) string {

@@ -92,7 +92,7 @@ export class QNextProvider {
       options.webSocketFactory ??
       ((url: string) => new WebSocket(url) as unknown as WebSocketLike);
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
-    this.pollIntervalMs = options.pollIntervalMs ?? 1_000;
+    this.pollIntervalMs = options.pollIntervalMs ?? 250;
   }
 
   async listSymbols() {

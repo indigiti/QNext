@@ -75,3 +75,22 @@ func TestStreamIDRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected stream id decode: %s %s", instrument, timeframe)
 	}
 }
+
+func TestLatestBarReturnsMostRecentPublishedUpdate(t *testing.T) {
+	broker := NewBroker(8, 8)
+	at := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	broker.PublishBar(bar("NSE:NIFTY50", "15s", at, 23120))
+	broker.PublishBar(bar("NSE:NIFTY50", "15s", at, 23122.7))
+
+	latest, ok := broker.LatestBar("NSE:NIFTY50", "15s")
+	if !ok {
+		t.Fatal("expected latest bar")
+	}
+	if latest.Close != 23122.7 || latest.OpenTime != at {
+		t.Fatalf("unexpected latest bar: %+v", latest)
+	}
+
+	if _, ok := broker.LatestBar("NSE:NIFTY50", "1m"); ok {
+		t.Fatal("unexpected bar for unknown stream")
+	}
+}
