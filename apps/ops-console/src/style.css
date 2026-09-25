@@ -101,6 +101,7 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; }
 }
 
 .span-2 { grid-column: span 2; }
+.span-3 { grid-column: 1 / -1; }
 
 .card-head, .line, .actions {
   display: flex;
@@ -159,6 +160,28 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; }
   color: #b9c8ff;
   white-space: nowrap;
 }
+
+.diagnostics-meta { margin-bottom: 1rem; }
+.diagnostics-log-wrap {
+  padding: 1rem;
+  border: 1px solid #202635;
+  border-radius: 10px;
+  background: #0c1017;
+}
+.diagnostics-log-wrap .line { margin-bottom: .75rem; }
+.diagnostics-log-wrap pre {
+  max-height: 22rem;
+  margin: 0;
+  overflow: auto;
+  padding: .9rem;
+  border-radius: 8px;
+  background: #070a10;
+  color: #d8deeb;
+  font: .78rem/1.5 "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+button.compact { padding: .45rem .7rem; font-size: .82rem; }
 
 #toast {
   position: fixed;
