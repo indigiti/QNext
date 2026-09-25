@@ -33,10 +33,15 @@ $config = new OpsConfig(
 );
 
 $authPath = $root . '/secrets/ops-auth.json';
-$auth = new Auth($authPath);
+$bootstrapToken = 'bootstrap-0123456789abcdef';
+$auth = new Auth($authPath, '', $bootstrapToken);
 expect(!$auth->initialized(), 'auth should start uninitialized');
+expect($auth->bootstrapConfigured(), 'first-time auth should require a configured bootstrap token');
+expect($auth->bootstrapAuthorized($bootstrapToken), 'matching bootstrap token should authorize first-time setup');
+expect(!$auth->bootstrapAuthorized('wrong-bootstrap'), 'wrong bootstrap token must be rejected');
 $auth->initialize('0123456789abcdef');
 expect($auth->initialized(), 'auth should initialize once');
+expect(!$auth->bootstrapAuthorized($bootstrapToken), 'bootstrap authorization must disable after initialization');
 expect($auth->authorized('0123456789abcdef'), 'auth should accept matching initialized token');
 expect(!$auth->authorized('wrong'), 'auth should reject wrong token');
 expect(is_file($authPath), 'auth hash should be persisted');

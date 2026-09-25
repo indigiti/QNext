@@ -27,6 +27,7 @@ const runtime = window.__QNEXT_OPS_CONFIG__ ?? {};
 let token = sessionStorage.getItem('qnext-ops-token') ?? '';
 let api = new OpsAPI({ base: runtime.apiBase, token });
 let setupInitialized: boolean | null = null;
+let setupBootstrapConfigured = false;
 
 root.innerHTML = `
   <div class="shell">
@@ -993,11 +994,24 @@ tokenButton.addEventListener('click', async () => {
 
   try {
     if (setupInitialized === false) {
-      await api.initializeAdminToken(token);
+      if (!setupBootstrapConfigured) {
+        toast('First-time setup is locked. Configure QNEXT_OPS_BOOTSTRAP_TOKEN on the server and reload.', true);
+        return;
+      }
+      const bootstrapToken = window.prompt(
+        'Enter the one-time QNEXT_OPS_BOOTSTRAP_TOKEN configured on the server.',
+      )?.trim();
+      if (!bootstrapToken) {
+        toast('Setup bootstrap token is required.', true);
+        return;
+      }
+      await api.initializeAdminToken(token, bootstrapToken);
       setupInitialized = true;
+      setupBootstrapConfigured = false;
       tokenLabel.textContent = 'Staging admin token';
       tokenInput.placeholder = 'Enter token';
       tokenButton.textContent = 'Use token';
+      tokenButton.disabled = false;
       toast('QNext admin token initialized');
     }
 
@@ -1318,6 +1332,7 @@ async function bootstrapAdmin() {
   try {
     const setup = await api.setupStatus();
     setupInitialized = setup.initialized;
+    setupBootstrapConfigured = setup.bootstrapConfigured;
 
     if (!setup.initialized) {
       sessionStorage.removeItem('qnext-ops-token');
@@ -1326,10 +1341,16 @@ async function bootstrapAdmin() {
       tokenLabel.textContent = 'Create first-time admin token';
       tokenInput.placeholder = 'Choose token (minimum 16 characters)';
       tokenButton.textContent = 'Initialize';
-      toast('First-time setup: create the QNext admin token.');
+      tokenButton.disabled = !setup.bootstrapConfigured;
+      if (setup.bootstrapConfigured) {
+        toast('First-time setup: choose the admin token, then enter the deployment bootstrap token when prompted.');
+      } else {
+        toast('First-time setup is locked until QNEXT_OPS_BOOTSTRAP_TOKEN is configured on the server.', true);
+      }
       return;
     }
 
+    tokenButton.disabled = false;
     if (token) {
       await refresh();
       await loadConfig();

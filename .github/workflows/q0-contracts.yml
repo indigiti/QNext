@@ -47,3 +47,14 @@ jobs:
             echo "Legacy QSYN schema namespace found"
             exit 1
           fi
+
+      - name: Certify canonical Market Core port references
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq '"market_core_url": "http://127.0.0.1:18080"' config/q3-intelligence.example.json
+          grep -Fq 'QNEXT_MARKET_CORE_URL:=http://127.0.0.1:18080' deploy/qnext-ops-helper
+          if grep -F '127.0.0.1:8080' config/q3-intelligence.example.json deploy/qnext-ops-helper services/ops-api/README.md; then
+            echo "Legacy Market Core port 8080 found in active configuration or runtime documentation"
+            exit 1
+          fi

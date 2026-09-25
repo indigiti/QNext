@@ -12,12 +12,30 @@ final class Auth
     public function __construct(
         private readonly string $authPath,
         private readonly string $legacyExpectedToken = '',
+        private readonly string $bootstrapExpectedToken = '',
     ) {
     }
 
     public function initialized(): bool
     {
         return $this->legacyExpectedToken !== '' || is_file($this->authPath);
+    }
+
+    public function bootstrapConfigured(): bool
+    {
+        return $this->bootstrapExpectedToken !== '';
+    }
+
+    public function bootstrapAuthorized(?string $providedToken): bool
+    {
+        if ($this->initialized() || !$this->bootstrapConfigured()) {
+            return false;
+        }
+        if ($providedToken === null || $providedToken === '') {
+            return false;
+        }
+
+        return hash_equals($this->bootstrapExpectedToken, $providedToken);
     }
 
     public function initialize(string $token): void

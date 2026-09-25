@@ -14,6 +14,7 @@ final class OpsConfig
         public readonly string $marketCoreUrl,
         public readonly string $adminToken,
         public readonly string $helperPath,
+        public readonly string $bootstrapToken = '',
     ) {
     }
 
@@ -45,12 +46,18 @@ final class OpsConfig
             @chmod($helper, 0750);
         }
 
+        $bootstrapToken = self::value('QNEXT_OPS_BOOTSTRAP_TOKEN');
+        if ($bootstrapToken !== '' && strlen($bootstrapToken) < 16) {
+            throw new RuntimeException('QNEXT_OPS_BOOTSTRAP_TOKEN must be at least 16 characters');
+        }
+
         return new self(
             $privateRoot,
             $publicRoot,
             rtrim(self::value('QNEXT_MARKET_CORE_URL', 'http://127.0.0.1:18080'), '/'),
             self::value('QNEXT_OPS_ADMIN_TOKEN'),
             $helper,
+            $bootstrapToken,
         );
     }
 
