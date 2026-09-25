@@ -128,13 +128,14 @@ func runResilientMarket(
 		}
 	})
 
-	router, err := resilience.NewRouter(
+	router, err := resilience.NewRouterWithPolicy(
 		resolver,
 		downstream,
 		metrics,
 		config.GapRecovery(),
 		recoverable,
 		recoverer,
+		config.TransitionPolicy(upstox.ProviderName),
 	)
 	if err != nil {
 		return err
