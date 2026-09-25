@@ -25,6 +25,7 @@ final class OpsConfig
 
         if ($helper === '') {
             $candidates = [
+                $privateRoot . '/deploy/qnext-ops-user',
                 $privateRoot . '/private/deploy/qnext-ops-user',
                 $privateRoot . '/current/private/deploy/qnext-ops-user',
                 '/usr/local/bin/qnext-ops-web',
@@ -61,6 +62,7 @@ final class OpsConfig
     public function configCandidates(): array
     {
         return [
+            $this->privateRoot . '/config/q1-market.example.json',
             $this->privateRoot . '/current/private/config/q1-market.example.json',
             $this->privateRoot . '/private/config/q1-market.example.json',
         ];
