@@ -1,0 +1,247 @@
+import { OpsAPI, type OpsStatus, type ServiceAction } from './api';
+import './style.css';
+
+declare global {
+  interface Window {
+    __QNEXT_OPS_CONFIG__?: {
+      apiBase?: string;
+    };
+  }
+}
+
+const root = document.querySelector<HTMLDivElement>('#app');
+if (!root) {
+  throw new Error('QNext Ops Console root not found');
+}
+
+const runtime = window.__QNEXT_OPS_CONFIG__ ?? {};
+let token = sessionStorage.getItem('qnext-ops-token') ?? '';
+let api = new OpsAPI({ base: runtime.apiBase, token });
+
+root.innerHTML = `
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">QNext</p>
+        <h1>Operations Console</h1>
+        <p class="muted">Restricted deployment and runtime control plane</p>
+      </div>
+      <div class="auth">
+        <label for="token">Staging admin token</label>
+        <input id="token" type="password" autocomplete="off" placeholder="Enter token" />
+        <button id="save-token" class="secondary">Use token</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card span-2">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Runtime</p>
+            <h2>Market Core</h2>
+          </div>
+          <button id="refresh">Refresh</button>
+        </div>
+        <div id="runtime-status" class="status-grid"></div>
+        <div class="actions">
+          <button data-service="start">Start</button>
+          <button data-service="restart">Restart</button>
+          <button data-service="stop" class="danger">Stop</button>
+          <button id="smoke" class="secondary">Run smoke test</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Release</p>
+        <h2>Deploy / rollback</h2>
+        <div id="release-status" class="stack"></div>
+        <div class="actions vertical">
+          <select id="release-select"></select>
+          <button id="activate">Activate selected release</button>
+          <button id="rollback" class="secondary">Rollback previous</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Secrets</p>
+        <h2>Broker credentials</h2>
+        <p class="muted">Values are write-only. Existing secrets are never returned by the API.</p>
+        <form id="secret-form" class="stack">
+          <input name="UPSTOX_ACCESS_TOKEN" type="password" placeholder="Upstox access token" />
+          <input name="DHAN_CLIENT_ID" type="password" placeholder="Dhan client ID" />
+          <input name="DHAN_ACCESS_TOKEN" type="password" placeholder="Dhan access token" />
+          <button type="submit">Save provided secrets</button>
+        </form>
+      </section>
+
+      <section class="card span-2">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Configuration</p>
+            <h2>Market configuration</h2>
+          </div>
+          <button id="load-config" class="secondary">Reload</button>
+        </div>
+        <textarea id="config-editor" spellcheck="false"></textarea>
+        <div class="actions">
+          <button id="save-config">Validate & save</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+  </div>
+`;
+
+const tokenInput = document.querySelector<HTMLInputElement>('#token')!;
+tokenInput.value = token;
+
+function toast(message: string, error = false) {
+  const el = document.querySelector<HTMLDivElement>('#toast')!;
+  el.textContent = message;
+  el.className = error ? 'show error' : 'show';
+  window.setTimeout(() => {
+    el.className = '';
+  }, 4500);
+}
+
+function badge(ok: boolean, label: string) {
+  return `<span class="badge ${ok ? 'good' : 'bad'}">${label}</span>`;
+}
+
+function renderStatus(status: OpsStatus) {
+  const runtimeStatus = document.querySelector<HTMLDivElement>('#runtime-status')!;
+  runtimeStatus.innerHTML = `
+    <div><span>Service</span><strong>${status.service.state}</strong></div>
+    <div><span>/health</span>${badge(status.marketCore.health.ok, status.marketCore.health.ok ? 'PASS' : 'FAIL')}</div>
+    <div><span>/ready</span>${badge(status.marketCore.ready.ok, status.marketCore.ready.ok ? 'PASS' : 'FAIL')}</div>
+    <div><span>/version</span>${badge(status.marketCore.version.ok, status.marketCore.version.ok ? 'PASS' : 'FAIL')}</div>
+    <div><span>Storage</span><strong>${status.storageRoot}</strong></div>
+    <div><span>Config</span><strong>${status.configPath}</strong></div>
+  `;
+
+  const releaseStatus = document.querySelector<HTMLDivElement>('#release-status')!;
+  releaseStatus.innerHTML = `
+    <div class="line"><span>Current</span><strong>${status.release.current ?? 'none'}</strong></div>
+    <div class="line"><span>Available</span><strong>${status.release.available.length}</strong></div>
+  `;
+
+  const select = document.querySelector<HTMLSelectElement>('#release-select')!;
+  select.innerHTML = status.release.available
+    .map((version) => `<option value="${version}" ${version === status.release.current ? 'selected' : ''}>${version}</option>`)
+    .join('');
+}
+
+async function refresh() {
+  try {
+    renderStatus(await api.status());
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
+async function loadConfig() {
+  try {
+    const config = await api.getConfig();
+    document.querySelector<HTMLTextAreaElement>('#config-editor')!.value =
+      JSON.stringify(config, null, 2);
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
+document.querySelector('#save-token')!.addEventListener('click', () => {
+  token = tokenInput.value.trim();
+  sessionStorage.setItem('qnext-ops-token', token);
+  api = new OpsAPI({ base: runtime.apiBase, token });
+  void refresh();
+  void loadConfig();
+});
+
+document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
+document.querySelector('#load-config')!.addEventListener('click', () => void loadConfig());
+
+document.querySelectorAll<HTMLButtonElement>('[data-service]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    try {
+      const action = button.dataset.service as ServiceAction;
+      await api.service(action);
+      toast(`Service ${action} completed`);
+      await refresh();
+    } catch (error) {
+      toast((error as Error).message, true);
+    }
+  });
+});
+
+document.querySelector('#smoke')!.addEventListener('click', async () => {
+  try {
+    const result = await api.smoke();
+    toast(result.ok ? 'Smoke test PASS' : 'Smoke test reported failures', !result.ok);
+    await refresh();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
+
+document.querySelector('#activate')!.addEventListener('click', async () => {
+  const version = document.querySelector<HTMLSelectElement>('#release-select')!.value;
+  if (!version) {
+    toast('No release selected', true);
+    return;
+  }
+  try {
+    await api.activateRelease(version);
+    toast(`Activated release ${version}`);
+    await refresh();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
+
+document.querySelector('#rollback')!.addEventListener('click', async () => {
+  try {
+    await api.rollback();
+    toast('Rollback completed');
+    await refresh();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
+
+document.querySelector('#save-config')!.addEventListener('click', async () => {
+  try {
+    const editor = document.querySelector<HTMLTextAreaElement>('#config-editor')!;
+    const parsed = JSON.parse(editor.value) as Record<string, unknown>;
+    await api.saveConfig(parsed);
+    toast('Configuration saved');
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
+
+document.querySelector<HTMLFormElement>('#secret-form')!.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const secrets: Record<string, string> = {};
+  for (const [key, value] of form.entries()) {
+    const stringValue = String(value).trim();
+    if (stringValue) {
+      secrets[key] = stringValue;
+    }
+  }
+  if (Object.keys(secrets).length === 0) {
+    toast('Enter at least one secret', true);
+    return;
+  }
+  try {
+    const result = await api.saveSecrets(secrets);
+    toast(`Stored: ${result.stored.join(', ')}`);
+    event.currentTarget.reset();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
+
+void refresh();
+void loadConfig();

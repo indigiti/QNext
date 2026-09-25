@@ -1,0 +1,17 @@
+{
+  "name": "@qnext/ops-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "npm run typecheck && vite build"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "8.1.5",
+    "vitest": "4.1.0"
+  }
+}
