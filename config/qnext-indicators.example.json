@@ -1,0 +1,28 @@
+{
+  "schema": "QNEXT.INDICATORS/1",
+  "revision": 1,
+  "indicators": [
+    {
+      "id": "adaptive-ema-qalg",
+      "name": "Adaptive EMA [QALG]",
+      "category": "QNext",
+      "kind": "adaptive-ema-qalg",
+      "enabled": true,
+      "description": "Adaptive EMA trend overlay using EMA, standard deviation and ATR filters.",
+      "defaults": {
+        "priceSource": "close",
+        "emaLength": 20,
+        "lookbackPeriod": 30,
+        "stddevMultiplier": 2.0,
+        "atrLength": 14,
+        "atrMultiplier": 1.5,
+        "upColor": "#00ffaa",
+        "downColor": "#ff0000",
+        "colorBars": true
+      },
+      "attribution": "QuantAlgo",
+      "license": "MPL-2.0",
+      "licenseUrl": "https://mozilla.org/MPL/2.0/"
+    }
+  ]
+}
