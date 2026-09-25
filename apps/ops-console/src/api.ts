@@ -50,6 +50,57 @@ export interface RuntimeDiagnostics {
   helperPath: string;
 }
 
+export interface FeedProviderSnapshot {
+  observed?: number;
+  received?: number;
+  accepted?: number;
+  errors?: number;
+  last_event_time_ms?: number;
+  last_received_time_ms?: number;
+  last_price?: number;
+}
+
+export interface FeedInstrumentSnapshot {
+  provider?: string;
+  price?: number;
+  last_event_time_ms?: number;
+  last_received_time_ms?: number;
+  quality?: string;
+  synthetic_version?: string;
+}
+
+export interface FeedStatusBody {
+  live_configured: boolean;
+  resilience_configured: boolean;
+  nifty_instrument_id: string;
+  synthetic_instrument_id: string;
+  telemetry: {
+    providers: Record<string, FeedProviderSnapshot>;
+    instruments: Record<string, FeedInstrumentSnapshot>;
+    synthetic?: {
+      atm?: number;
+      expiry?: string;
+      generation?: number;
+      pending_atm?: number;
+      pending_expiry?: string;
+      active_legs?: number;
+      warm_subscriptions?: number;
+    };
+  };
+  resilience: {
+    active_authorities?: Record<string, string>;
+    authority_states?: Record<string, string>;
+    providers?: Record<string, FeedProviderSnapshot>;
+  };
+}
+
+export interface FeedStatusResponse {
+  ok: boolean;
+  status?: number | null;
+  error?: string;
+  body?: FeedStatusBody;
+}
+
 export interface SecretWriteResult {
   stored: string[];
 }
@@ -92,6 +143,10 @@ export class OpsAPI {
 
   diagnostics(): Promise<RuntimeDiagnostics> {
     return this.request<RuntimeDiagnostics>('/diagnostics');
+  }
+
+  feedStatus(): Promise<FeedStatusResponse> {
+    return this.request<FeedStatusResponse>('/feed-status');
   }
 
   saveConfig(config: Record<string, unknown>): Promise<{ saved: boolean }> {

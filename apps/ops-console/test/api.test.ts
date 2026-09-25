@@ -78,6 +78,35 @@ describe('OpsAPI', () => {
     expect(calls).toEqual(['/qnext/admin/api/index.php?route=%2Fdiagnostics']);
   });
 
+  it('loads authenticated market feed status', async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify({
+        ok: true,
+        status: 200,
+        body: {
+          live_configured: true,
+          resilience_configured: false,
+          nifty_instrument_id: 'NSE:NIFTY50',
+          synthetic_instrument_id: 'QNEXT:NIFTY-SYN',
+          telemetry: {
+            providers: { upstox: { observed: 10, last_event_time_ms: 1 } },
+            instruments: {},
+          },
+          resilience: { providers: {} },
+        },
+      }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ token: 'secret', fetcher });
+    const feed = await api.feedStatus();
+
+    expect(feed.ok).toBe(true);
+    expect(feed.body?.live_configured).toBe(true);
+    expect(calls).toEqual(['/qnext/admin/api/index.php?route=%2Ffeed-status']);
+  });
+
   it('surfaces API errors', async () => {
     const fetcher: typeof fetch = async () =>
       new Response(JSON.stringify({ error: 'denied' }), { status: 403 });

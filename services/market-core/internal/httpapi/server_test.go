@@ -58,3 +58,29 @@ func TestBarsEndpointRejectsInvalidQuery(t *testing.T) {
 		t.Fatalf("expected 400, got %d", response.Code)
 	}
 }
+
+
+func TestFeedStatusEndpoint(t *testing.T) {
+	handler := New(fakeHistory{}, Options{
+		FeedStatus: func() any {
+			return map[string]any{
+				"live_configured": true,
+				"nifty_instrument_id": "NSE:NIFTY50",
+			}
+		},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/feed-status", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["live_configured"] != true || payload["nifty_instrument_id"] != "NSE:NIFTY50" {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}

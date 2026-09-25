@@ -19,11 +19,16 @@ type MarketSink struct {
 	Synthetic         SyntheticAssembler
 	Publisher         BarPublisher
 	DirectInstruments map[string]bool
+	Observer          func(domain.Tick)
 }
 
 func (s *MarketSink) Handle(tick domain.Tick) error {
 	if s.Pipeline == nil {
 		return errors.New("canonical tick pipeline is required")
+	}
+
+	if s.Observer != nil {
+		s.Observer(tick)
 	}
 
 	if len(s.DirectInstruments) == 0 || s.DirectInstruments[tick.InstrumentID] {
@@ -38,6 +43,9 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 			return err
 		}
 		if emitted {
+			if s.Observer != nil {
+				s.Observer(syntheticTick)
+			}
 			if err := s.applyCanonical(syntheticTick); err != nil {
 				return err
 			}

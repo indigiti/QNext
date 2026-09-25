@@ -1,4 +1,4 @@
-import { OpsAPI, type OpsStatus, type RuntimeDiagnostics, type ServiceAction } from './api';
+import { OpsAPI, type FeedStatusResponse, type OpsStatus, type RuntimeDiagnostics, type ServiceAction } from './api';
 import './style.css';
 
 declare global {
@@ -85,6 +85,18 @@ root.innerHTML = `
           </div>
           <pre id="diagnostics-log">No runtime log available yet.</pre>
         </div>
+      </section>
+
+      <section class="card span-3" id="feed-status-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Market feed</p>
+            <h2>Live feed status</h2>
+          </div>
+          <button id="refresh-feed" class="secondary">Refresh feed</button>
+        </div>
+        <div id="feed-summary" class="status-grid feed-summary"></div>
+        <div id="feed-providers" class="feed-provider-grid"></div>
       </section>
 
       <section class="card">
@@ -187,6 +199,95 @@ function renderStatus(status: OpsStatus) {
   }
 }
 
+function ageLabel(atMS?: number) {
+  if (!atMS || atMS <= 0) return 'never';
+  const age = Math.max(0, Date.now() - atMS);
+  if (age < 1000) return '<1s ago';
+  if (age < 60_000) return `${Math.floor(age / 1000)}s ago`;
+  if (age < 3_600_000) return `${Math.floor(age / 60_000)}m ago`;
+  return `${Math.floor(age / 3_600_000)}h ago`;
+}
+
+function feedState(atMS?: number) {
+  if (!atMS || atMS <= 0) return { ok: false, label: 'WAITING' };
+  return Date.now() - atMS <= 30_000
+    ? { ok: true, label: 'LIVE' }
+    : { ok: false, label: 'STALE' };
+}
+
+function formatPrice(value?: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderFeedStatus(response: FeedStatusResponse) {
+  const summary = document.querySelector<HTMLDivElement>('#feed-summary')!;
+  const providers = document.querySelector<HTMLDivElement>('#feed-providers')!;
+
+  if (!response.ok || !response.body) {
+    summary.innerHTML = `
+      <div><span>Status</span>${badge(false, 'UNAVAILABLE')}</div>
+      <div><span>Reason</span><strong>${response.error ?? 'Market Core feed status unavailable'}</strong></div>
+    `;
+    providers.innerHTML = '';
+    return;
+  }
+
+  const body = response.body;
+  const telemetry = body.telemetry ?? { providers: {}, instruments: {} };
+  const providerTelemetry = telemetry.providers ?? {};
+  const resilienceProviders = body.resilience?.providers ?? {};
+  const nifty = telemetry.instruments?.[body.nifty_instrument_id];
+  const synthetic = telemetry.instruments?.[body.synthetic_instrument_id];
+  const syntheticRuntime = telemetry.synthetic;
+  const niftyState = feedState(nifty?.last_event_time_ms);
+  const syntheticState = feedState(synthetic?.last_event_time_ms);
+  const authority = body.resilience?.active_authorities?.[body.nifty_instrument_id]
+    ?? nifty?.provider
+    ?? '—';
+
+  summary.innerHTML = `
+    <div><span>NIFTY</span>${badge(niftyState.ok, niftyState.label)}<strong class="feed-price">${formatPrice(nifty?.price)}</strong></div>
+    <div><span>NIFTY last tick</span><strong>${ageLabel(nifty?.last_event_time_ms)}</strong></div>
+    <div><span>Authority</span><strong>${authority}</strong></div>
+    <div><span>NIFTY-SYN</span>${badge(syntheticState.ok, syntheticState.label)}<strong class="feed-price">${formatPrice(synthetic?.price)}</strong></div>
+    <div><span>Synthetic last tick</span><strong>${ageLabel(synthetic?.last_event_time_ms)}</strong></div>
+    <div><span>ATM / legs</span><strong>${syntheticRuntime?.atm ?? '—'} / ${syntheticRuntime?.active_legs ?? '—'}</strong></div>
+  `;
+
+  const providerCard = (name: string, configured: boolean) => {
+    const accepted = providerTelemetry[name];
+    const raw = resilienceProviders[name];
+    const lastEvent = Math.max(
+      accepted?.last_event_time_ms ?? 0,
+      raw?.last_event_time_ms ?? 0,
+    );
+    const state = configured ? feedState(lastEvent) : { ok: false, label: 'NOT CONFIGURED' };
+    const received = raw?.received ?? accepted?.observed ?? 0;
+    const errors = raw?.errors ?? 0;
+    return `
+      <div class="feed-provider-card">
+        <div class="line"><strong>${name.toUpperCase()}</strong>${badge(state.ok, state.label)}</div>
+        <div class="feed-kv"><span>Last event</span><strong>${configured ? ageLabel(lastEvent) : '—'}</strong></div>
+        <div class="feed-kv"><span>Received</span><strong>${received}</strong></div>
+        <div class="feed-kv"><span>Errors</span><strong>${errors}</strong></div>
+      </div>
+    `;
+  };
+
+  providers.innerHTML =
+    providerCard('upstox', body.live_configured) +
+    providerCard('dhan', body.resilience_configured);
+}
+
+async function loadFeedStatus() {
+  try {
+    renderFeedStatus(await api.feedStatus());
+  } catch (error) {
+    renderFeedStatus({ ok: false, error: (error as Error).message });
+  }
+}
+
 function renderDiagnostics(diagnostics: RuntimeDiagnostics) {
   const meta = document.querySelector<HTMLDivElement>('#diagnostics-meta')!;
   const heartbeat = diagnostics.cronHeartbeatAgeSeconds === null
@@ -225,6 +326,7 @@ async function refresh() {
     const [status] = await Promise.all([
       api.status(),
       loadDiagnostics(),
+      loadFeedStatus(),
     ]);
     renderStatus(status);
   } catch (error) {
@@ -269,6 +371,7 @@ tokenButton.addEventListener('click', async () => {
 });
 
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
+document.querySelector('#refresh-feed')!.addEventListener('click', () => void loadFeedStatus());
 document.querySelector('#refresh-diagnostics')!.addEventListener('click', () => void loadDiagnostics());
 document.querySelector('#copy-diagnostics')!.addEventListener('click', async () => {
   const log = document.querySelector<HTMLPreElement>('#diagnostics-log')!;
