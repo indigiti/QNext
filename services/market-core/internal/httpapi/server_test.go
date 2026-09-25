@@ -63,7 +63,7 @@ func TestFeedStatusEndpoint(t *testing.T) {
 	handler := New(fakeHistory{}, Options{
 		FeedStatus: func() any {
 			return map[string]any{
-				"live_configured": true,
+				"live_configured":     true,
 				"nifty_instrument_id": "NSE:NIFTY50",
 			}
 		},
