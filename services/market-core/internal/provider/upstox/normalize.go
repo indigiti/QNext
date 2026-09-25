@@ -85,7 +85,8 @@ func (n *Normalizer) NormalizeEnvelope(
 			return nil, errors.New("invalid Upstox ltt for " + providerKey)
 		}
 
-		if _, err := parseOptionalNonNegativeFloat(feed.LTPC.LTQ); err != nil {
+		quantity, err := parseOptionalNonNegativeFloat(feed.LTPC.LTQ)
+		if err != nil {
 			return nil, errors.New("invalid Upstox ltq for " + providerKey)
 		}
 
@@ -97,6 +98,7 @@ func (n *Normalizer) NormalizeEnvelope(
 			InstrumentID:  instrument.ID,
 			Provider:      ProviderName,
 			Price:         feed.LTPC.LTP,
+			Quantity:      quantity,
 			EventTime:     eventTime,
 			ReceivedTime:  receivedTime,
 			ProcessedTime: processedAt.UTC(),
