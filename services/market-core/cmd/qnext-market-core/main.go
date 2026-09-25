@@ -99,6 +99,22 @@ func main() {
 	store := history.New(storageRoot)
 	broker := stream.NewBroker(1024, 128)
 	feedTracker := feedstatus.New()
+
+	var historicalRepairer *upstox.HistoricalRepairer
+	if config != nil {
+		historicalRepairer = &upstox.HistoricalRepairer{
+			Client: upstox.HistoricalRangeClient{
+				Intraday:       upstox.IntradayClient{},
+				MarketTimezone: "Asia/Kolkata",
+			},
+			AccessToken: accessToken,
+			History:     store,
+			Calendars:   calendars,
+			Markets:     config.EffectiveMarkets(),
+			Resync:      broker,
+		}
+	}
+
 	handler := httpapi.New(store, httpapi.Options{
 		Version:       version,
 		Commit:        commit,
@@ -109,6 +125,27 @@ func main() {
 		Calendars:     calendars,
 		ResilienceStatus: func() any {
 			return resilienceMetrics.Snapshot()
+		},
+		HistoricalRepair: func(
+			ctx context.Context,
+			days int,
+			markets []string,
+			reason string,
+		) (any, error) {
+			if historicalRepairer == nil {
+				return nil, errors.New("historical repair is unavailable without live market configuration")
+			}
+			return historicalRepairer.Repair(ctx, upstox.HistoricalRepairRequest{
+				Days:    days,
+				Markets: markets,
+				Reason:  reason,
+			})
+		},
+		HistoricalRepairStatus: func() any {
+			if historicalRepairer == nil {
+				return upstox.HistoricalRepairStatus{}
+			}
+			return historicalRepairer.Status()
 		},
 		FeedStatus: func() any {
 			snapshot := feedTracker.Snapshot()
@@ -159,6 +196,25 @@ func main() {
 			errCh <- err
 		}
 	}()
+
+	if historicalRepairer != nil {
+		go func() {
+			timer := time.NewTimer(3 * time.Second)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			}
+			_, err := historicalRepairer.Repair(ctx, upstox.HistoricalRepairRequest{
+				Days:   3,
+				Reason: "startup_reconciliation",
+			})
+			if err != nil && !errors.Is(err, context.Canceled) {
+				log.Printf("startup historical repair: %v", err)
+			}
+		}()
+	}
 
 	if config != nil {
 		go func() {
