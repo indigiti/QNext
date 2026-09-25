@@ -125,11 +125,25 @@ final class OpsConfig
 
     public function marketCoreBinaryCandidates(): array
     {
-        return [
-            $this->privateRoot . '/bin/qnext-market-core',
-            $this->privateRoot . '/private/bin/qnext-market-core',
-            $this->privateRoot . '/current/private/bin/qnext-market-core',
-        ];
+        $candidates = [];
+
+        foreach ([
+            $this->privateRoot . '/bin',
+            $this->privateRoot . '/private/bin',
+            $this->privateRoot . '/current/private/bin',
+        ] as $binRoot) {
+            $pointer = $binRoot . '/qnext-market-core.current';
+            if (is_file($pointer)) {
+                $name = trim((string) file_get_contents($pointer));
+                if (preg_match('/^qnext-market-core-[A-Za-z0-9._-]+$/', $name)) {
+                    $candidates[] = $binRoot . '/' . $name;
+                }
+            }
+
+            $candidates[] = $binRoot . '/qnext-market-core';
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     private static function value(string $key, string $default = ''): string
