@@ -75,6 +75,21 @@ jobs:
           test "$(tr -d '\r\n' < "$flat_root/run/desired-state")" = "stopped"
           rm -rf "$flat_root"
 
+          adopt_root="$(mktemp -d)"
+          mkdir -p "$adopt_root/deploy" "$adopt_root/bin"
+          install -m 0640 deploy/qnext-ops-user "$adopt_root/deploy/qnext-ops-user"
+          install -m 0750 /bin/sleep "$adopt_root/bin/qnext-market-core"
+          "$adopt_root/bin/qnext-market-core" 30 &
+          orphan_pid=$!
+          /bin/bash "$adopt_root/deploy/qnext-ops-user" status | grep -qx active
+          test "$(cat "$adopt_root/run/market-core.pid")" = "$orphan_pid"
+          /bin/bash "$adopt_root/deploy/qnext-ops-user" stop | grep -qx stopped
+          if kill -0 "$orphan_pid" 2>/dev/null; then
+            echo "adopted Market Core process was not stopped" >&2
+            exit 1
+          fi
+          rm -rf "$adopt_root"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

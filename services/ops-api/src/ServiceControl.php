@@ -43,11 +43,11 @@ final class ServiceControl
 
     public function controlMode(): string
     {
-        if ($this->processControlAvailable()) {
-            return 'direct';
-        }
         if ($this->cronControlAvailable()) {
             return 'cron';
+        }
+        if ($this->processControlAvailable()) {
+            return 'direct';
         }
         return 'setup';
     }
@@ -75,17 +75,7 @@ final class ServiceControl
     {
         $this->validateAction($action, $argument);
 
-        if ($this->processControlAvailable()) {
-            return $this->runDirect($action, $argument);
-        }
-
-        if (in_array($action, ['start', 'stop', 'restart'], true)) {
-            if (!$this->cronControlAvailable()) {
-                throw new RuntimeException(
-                    'Cloudways cron supervisor is not active; add the cron entry shown in QNext Operations'
-                );
-            }
-
+        if ($this->cronControlAvailable() && in_array($action, ['start', 'stop', 'restart'], true)) {
             $desired = $action === 'stop' ? 'stopped' : 'running';
             $this->atomicWrite($this->desiredStatePath, $desired . PHP_EOL, 0640);
             $this->atomicWrite($this->controlRequestPath, $action . PHP_EOL, 0640);
@@ -97,6 +87,16 @@ final class ServiceControl
                 'output' => 'queued for Cloudways cron supervisor',
                 'error' => '',
             ];
+        }
+
+        if ($this->processControlAvailable()) {
+            return $this->runDirect($action, $argument);
+        }
+
+        if (in_array($action, ['start', 'stop', 'restart'], true)) {
+            throw new RuntimeException(
+                'Cloudways cron supervisor is not active; add the cron entry shown in QNext Operations'
+            );
         }
 
         if ($action === 'status') {

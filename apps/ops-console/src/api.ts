@@ -53,7 +53,7 @@ export class OpsAPI {
   constructor(options: APIOptions = {}) {
     this.base = (options.base ?? '/qnext/admin/api/index.php').replace(/\/$/, '');
     this.token = options.token;
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
   }
 
   setupStatus(): Promise<{ initialized: boolean }> {
