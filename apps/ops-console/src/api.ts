@@ -192,24 +192,28 @@ export interface SecretWriteResult {
   resilienceConfigured?: boolean;
 }
 
+export interface CustomIndicatorDefaults {
+  priceSource: string;
+  emaLength: number;
+  lookbackPeriod: number;
+  stddevMultiplier: number;
+  atrLength: number;
+  atrMultiplier: number;
+  upColor: string;
+  downColor: string;
+  colorBars: boolean;
+}
+
 export interface CustomIndicator {
   id: string;
   name: string;
   category: 'QNext';
-  kind: 'adaptive-ema-qalg';
+  kind: 'adaptive-ema-qalg' | 'pine-v6';
+  language?: 'qnext' | 'pine';
   enabled: boolean;
   description?: string;
-  defaults: {
-    priceSource: string;
-    emaLength: number;
-    lookbackPeriod: number;
-    stddevMultiplier: number;
-    atrLength: number;
-    atrMultiplier: number;
-    upColor: string;
-    downColor: string;
-    colorBars: boolean;
-  };
+  defaults?: CustomIndicatorDefaults;
+  script?: string;
   attribution?: string;
   license?: string;
   licenseUrl?: string;
