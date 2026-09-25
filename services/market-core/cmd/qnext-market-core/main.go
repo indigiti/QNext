@@ -341,7 +341,11 @@ func runMarket(
 	feedTracker *feedstatus.Tracker,
 	gapRecoveryTracker *upstox.GapRecoveryTracker,
 ) error {
-	canonicalPipeline, err := pipeline.New(candle.New("candle-v1"), store, config.Timeframes)
+	canonicalPipeline, err := pipeline.New(
+		candle.New("candle-v2-session-aligned"),
+		store,
+		marketconfig.ChartTimeframes(),
+	)
 	if err != nil {
 		return err
 	}
