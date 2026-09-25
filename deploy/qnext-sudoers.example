@@ -1,0 +1,9 @@
+# Replace WEB_USER with the PHP-FPM/web application user.
+# Install through visudo as /etc/sudoers.d/qnext-ops.
+WEB_USER ALL=(root) NOPASSWD: /usr/local/libexec/qnext-ops-helper status
+WEB_USER ALL=(root) NOPASSWD: /usr/local/libexec/qnext-ops-helper start
+WEB_USER ALL=(root) NOPASSWD: /usr/local/libexec/qnext-ops-helper stop
+WEB_USER ALL=(root) NOPASSWD: /usr/local/libexec/qnext-ops-helper restart
+WEB_USER ALL=(root) NOPASSWD: /usr/local/libexec/qnext-ops-helper smoke
+WEB_USER ALL=(root) NOPASSWD: /usr/local/libexec/qnext-ops-helper rollback
+WEB_USER ALL=(root) NOPASSWD: /usr/local/libexec/qnext-ops-helper activate *
