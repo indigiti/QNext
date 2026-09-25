@@ -108,12 +108,12 @@ func main() {
 				syntheticID = config.Synthetic.InstrumentID
 			}
 			return map[string]any{
-				"live_configured":       config != nil,
-				"resilience_configured": resilienceConfig != nil,
+				"live_configured":         config != nil,
+				"resilience_configured":   resilienceConfig != nil,
 				"nifty_instrument_id":     niftyID,
 				"synthetic_instrument_id": syntheticID,
-				"telemetry":             snapshot,
-				"resilience":            resilienceMetrics.Snapshot(),
+				"telemetry":               snapshot,
+				"resilience":              resilienceMetrics.Snapshot(),
 			}
 		},
 	})
