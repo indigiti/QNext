@@ -106,6 +106,30 @@ jobs:
           version="${GITHUB_SHA:0:12}"
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0             go build -trimpath             -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA}"             -o ../../build/qnext-market-core             ./cmd/qnext-market-core
 
+      - name: Validate deployed-binary restart
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_root="$(mktemp -d)"
+          mkdir -p "$runtime_root/deploy" "$runtime_root/bin"
+          install -m 0750 deploy/qnext-ops-user "$runtime_root/deploy/qnext-ops-user"
+          install -m 0750 build/qnext-market-core "$runtime_root/bin/qnext-market-core"
+
+          /bin/bash "$runtime_root/deploy/qnext-ops-user" start | grep -qx active
+          first_pid="$(cat "$runtime_root/run/market-core.pid")"
+          curl --fail --silent --show-error --max-time 3 http://127.0.0.1:18080/health >/dev/null
+
+          install -m 0750 build/qnext-market-core "$runtime_root/bin/qnext-market-core.next"
+          mv -f "$runtime_root/bin/qnext-market-core.next" "$runtime_root/bin/qnext-market-core"
+
+          /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
+          second_pid="$(cat "$runtime_root/run/market-core.pid")"
+          test "$first_pid" != "$second_pid"
+          curl --fail --silent --show-error --max-time 3 http://127.0.0.1:18080/health >/dev/null
+
+          /bin/bash "$runtime_root/deploy/qnext-ops-user" stop | grep -qx stopped
+          rm -rf "$runtime_root"
+
       - name: Assemble public/private release bundle
         shell: bash
         run: |
