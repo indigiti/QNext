@@ -18,21 +18,36 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
 )
 
-func requiredInstrumentIDs(config marketconfig.Config) []string {
-	ids := make([]string, 0, 1+len(config.Synthetic.Legs))
-	ids = append(ids, config.Nifty.InstrumentID)
-	for _, leg := range config.Synthetic.Legs {
-		ids = append(ids, leg.InstrumentID)
+func authorityInstrumentIDs(config marketconfig.Config) []string {
+	seen := make(map[string]bool)
+	ids := make([]string, 0)
+	for _, market := range config.EffectiveMarkets() {
+		if !seen[market.Underlying.InstrumentID] {
+			seen[market.Underlying.InstrumentID] = true
+			ids = append(ids, market.Underlying.InstrumentID)
+		}
+		if market.Synthetic.Auto != nil {
+			continue
+		}
+		for _, leg := range market.Synthetic.Legs {
+			if !seen[leg.InstrumentID] {
+				seen[leg.InstrumentID] = true
+				ids = append(ids, leg.InstrumentID)
+			}
+		}
 	}
 	return ids
 }
 
 func registerDhanMappings(marketConfig marketconfig.Config, config resilience.Config, registry *symbol.Registry) error {
-	required := requiredInstrumentIDs(marketConfig)
-	if err := config.RequireCoverage(required); err != nil {
-		return err
+	active := make(map[string]bool)
+	for _, instrumentID := range authorityInstrumentIDs(marketConfig) {
+		active[instrumentID] = true
 	}
 	for _, mapping := range config.Instruments {
+		if !active[mapping.InstrumentID] {
+			continue
+		}
 		key, err := dhan.ParseInstrumentKey(mapping.DhanProviderKey)
 		if err != nil {
 			return fmt.Errorf("invalid Dhan mapping for %s: %w", mapping.InstrumentID, err)
@@ -40,7 +55,7 @@ func registerDhanMappings(marketConfig marketconfig.Config, config resilience.Co
 		if _, ok := registry.Instrument(mapping.InstrumentID); !ok {
 			return fmt.Errorf("Dhan mapping references unknown canonical instrument: %s", mapping.InstrumentID)
 		}
-		if err := registry.RegisterProvider(symbol.ProviderInstrument{
+		if err := registry.EnsureProvider(symbol.ProviderInstrument{
 			Provider:     dhan.ProviderName,
 			InstrumentID: mapping.InstrumentID,
 			ProviderKey:  key.String(),
@@ -77,27 +92,49 @@ func runResilientMarket(
 	policy := make(map[string][]authority.Preference)
 	recoverable := make(map[string]bool)
 	dhanKeys := make([]dhan.InstrumentKey, 0, len(config.Instruments))
-	for _, instrumentID := range requiredInstrumentIDs(marketConfig) {
-		policy[instrumentID] = []authority.Preference{
+	for _, instrumentID := range authorityInstrumentIDs(marketConfig) {
+		preferences := []authority.Preference{
 			{Provider: upstox.ProviderName, Priority: 10, MaxStaleness: config.MaxStaleness()},
-			{Provider: dhan.ProviderName, Priority: 20, MaxStaleness: config.MaxStaleness()},
 		}
-		mapping, ok := config.Mapping(instrumentID)
-		if !ok {
-			return fmt.Errorf("missing Dhan resilience mapping for %s", instrumentID)
+		if mapping, ok := config.Mapping(instrumentID); ok {
+			if _, registered := registry.ProviderMapping(dhan.ProviderName, instrumentID); registered {
+				key, err := dhan.ParseInstrumentKey(mapping.DhanProviderKey)
+				if err != nil {
+					return err
+				}
+				dhanKeys = append(dhanKeys, key)
+				preferences = append(preferences, authority.Preference{
+					Provider: dhan.ProviderName, Priority: 20, MaxStaleness: config.MaxStaleness(),
+				})
+				recoverable[instrumentID] = mapping.Recoverable
+			}
 		}
-		key, err := dhan.ParseInstrumentKey(mapping.DhanProviderKey)
-		if err != nil {
-			return err
-		}
-		dhanKeys = append(dhanKeys, key)
-		recoverable[instrumentID] = mapping.Recoverable
+		policy[instrumentID] = preferences
 	}
 
 	resolver, err := authority.NewResolver(registry, policy)
 	if err != nil {
 		return err
 	}
+	dhanQuoteKeys := dhan.NewKeyRegistry(dhanKeys)
+	dynamicMapper, err := newDhanDynamicOptionMapper(
+		marketConfig,
+		config,
+		dhan.OptionChainClient{},
+		dhanAccessToken,
+		dhanClientID,
+		registry,
+		resolver,
+		dhanQuoteKeys,
+		func(err error) {
+			metrics.ObserveError(dhan.ProviderName)
+			log.Printf("Dhan dynamic option mapping: %v", err)
+		},
+	)
+	if err != nil {
+		return err
+	}
+	go dynamicMapper.Run(ctx)
 	dhanRecovery := &dhan.Recovery{
 		Client:      dhan.HistoryClient{},
 		AccessToken: dhanAccessToken,
@@ -143,13 +180,16 @@ func runResilientMarket(
 	}
 	router.SetTransitionSink(resilience.NewTransitionStore(env("QNEXT_STORAGE_ROOT", "./storage")).Append)
 	onTick := func(tick domain.Tick) error {
-		if marketConfig.AutoLegsEnabled() &&
-			tick.Provider == upstox.ProviderName &&
-			tick.InstrumentID != marketConfig.Nifty.InstrumentID {
-			// Dynamic option legs are currently Upstox-only synthetic inputs.
-			// They bypass provider-authority routing while the underlying NIFTY
-			// continues through the certified Upstox/Dhan authority state machine.
-			return downstream(tick)
+		if marketConfig.AutoLegsEnabled() && tick.Provider == upstox.ProviderName {
+			if _, staticallyManaged := policy[tick.InstrumentID]; !staticallyManaged {
+				// Preserve the live Upstox path while Dhan security-id discovery runs
+				// asynchronously. Once mapped, this exact canonical option leg joins
+				// the same authority router used by underlyings and fixed legs.
+				dynamicMapper.Observe(tick.InstrumentID)
+				if !dynamicMapper.Covered(tick.InstrumentID) {
+					return downstream(tick)
+				}
+			}
 		}
 		return router.HandleContext(ctx, tick)
 	}
@@ -161,6 +201,7 @@ func runResilientMarket(
 		AccessToken:  dhanAccessToken,
 		ClientID:     dhanClientID,
 		Keys:         dhanKeys,
+		KeysSnapshot: dhanQuoteKeys.Snapshot,
 		Interval:     config.DhanPollInterval(),
 		NextSequence: func() uint64 { return dhanSequence.Add(1) },
 		OnError: func(err error) {
