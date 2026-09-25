@@ -51,7 +51,6 @@ func TestAutoSyntheticConfigRejectsMixedFixedAndDynamicLegs(t *testing.T) {
 	}
 }
 
-
 func TestActiveMarketsLimitAutoProviderSubscriptions(t *testing.T) {
 	config := validConfig()
 	config.Synthetic.Legs = nil

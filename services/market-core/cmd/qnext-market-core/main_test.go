@@ -34,7 +34,6 @@ func TestBuildRegistryExposesSixIndexAndSyntheticPairsWithoutLiveConfig(t *testi
 	}
 }
 
-
 func TestRegularMarketSessionActive(t *testing.T) {
 	ist, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {

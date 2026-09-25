@@ -99,24 +99,24 @@ func TestBarsEndpointIncludesCurrentFormingBar(t *testing.T) {
 	historyBar := domain.Bar{
 		InstrumentID: "NSE:NIFTY50",
 		Timeframe:    "15s",
-		OpenTime:    at.Add(-15 * time.Second),
-		Open:        23118,
-		High:        23120,
-		Low:         23117,
-		Close:       23119,
-		Final:       true,
-		Quality:     domain.QualityGood,
+		OpenTime:     at.Add(-15 * time.Second),
+		Open:         23118,
+		High:         23120,
+		Low:          23117,
+		Close:        23119,
+		Final:        true,
+		Quality:      domain.QualityGood,
 	}
 	forming := domain.Bar{
 		InstrumentID: "NSE:NIFTY50",
 		Timeframe:    "15s",
-		OpenTime:    at,
-		Open:        23119,
-		High:        23124,
-		Low:         23118.5,
-		Close:       23122.7,
-		Final:       false,
-		Quality:     domain.QualityGood,
+		OpenTime:     at,
+		Open:         23119,
+		High:         23124,
+		Low:          23118.5,
+		Close:        23122.7,
+		Final:        false,
+		Quality:      domain.QualityGood,
 	}
 
 	handler := New(fakeHistory{bars: []domain.Bar{historyBar}}, Options{

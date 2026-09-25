@@ -185,7 +185,6 @@ func TestWireClientAppliesLiveSubscriptionUpdates(t *testing.T) {
 	}
 }
 
-
 type silentConnection struct {
 	closed chan struct{}
 }
