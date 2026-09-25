@@ -13,7 +13,9 @@ Browser
   |
   +-- /qnext/admin/ ----------------> static Ops Console
           |
-          +-- /qnext/admin/api -----> private PHP Ops API
+          +-- /qnext/admin/api/index.php
+                  |
+                  +-- public PHP bridge -> private PHP Ops API
                                          |
                                          +-- health probes -> Go Market Core
                                          +-- atomic config/secrets
@@ -40,6 +42,8 @@ public/
   admin/
     index.html
     assets/
+    api/
+      index.php
 private/
   bin/
     qnext-market-core
@@ -115,9 +119,11 @@ Bootstrap responsibilities:
 3. install `qnext-ops-web` as `/usr/local/bin/qnext-ops-web`;
 4. install the narrow sudoers rules;
 5. install the Market Core systemd unit;
-6. configure PHP-FPM/web routing for `/qnext/admin/api` to `private_html/qnext/current/private/ops-api/public/index.php`;
+6. ensure PHP execution is enabled under `/qnext/admin/api/index.php`; no rewrite rule is required;
 7. set the PHP environment values including a staging admin token;
 8. stage the first `digiops-release`.
+
+The packaged public bridge discovers either the direct DigiOps private layout (`private_html/qnext/ops-api`) or the versioned release layout (`private_html/qnext/current/private/ops-api`).
 
 After that, normal deploy/restart/configuration/rollback work is performed from the browser.
 
