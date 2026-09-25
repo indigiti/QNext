@@ -114,18 +114,22 @@ jobs:
           runtime_root="$(mktemp -d)"
           mkdir -p "$runtime_root/deploy" "$runtime_root/bin"
           install -m 0750 deploy/qnext-ops-user "$runtime_root/deploy/qnext-ops-user"
-          install -m 0750 build/qnext-market-core "$runtime_root/bin/qnext-market-core"
 
+          # Simulate the currently deployed legacy fixed-name binary.
+          install -m 0750 build/qnext-market-core "$runtime_root/bin/qnext-market-core"
           /bin/bash "$runtime_root/deploy/qnext-ops-user" start | grep -qx active
           first_pid="$(cat "$runtime_root/run/market-core.pid")"
           curl --fail --silent --show-error --max-time 3 http://127.0.0.1:18080/health >/dev/null
 
-          install -m 0750 build/qnext-market-core "$runtime_root/bin/qnext-market-core.next"
-          mv -f "$runtime_root/bin/qnext-market-core.next" "$runtime_root/bin/qnext-market-core"
+          # Simulate the new DigiOps contract: copy a new filename, then publish a tiny pointer.
+          versioned="qnext-market-core-testv2"
+          install -m 0750 build/qnext-market-core "$runtime_root/bin/$versioned"
+          printf '%s\n' "$versioned" > "$runtime_root/bin/qnext-market-core.current"
 
           /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
           second_pid="$(cat "$runtime_root/run/market-core.pid")"
           test "$first_pid" != "$second_pid"
+          test "$(readlink -f "/proc/$second_pid/exe")" = "$runtime_root/bin/$versioned"
           curl --fail --silent --show-error --max-time 3 http://127.0.0.1:18080/health >/dev/null
 
           /bin/bash "$runtime_root/deploy/qnext-ops-user" stop | grep -qx stopped
@@ -141,7 +145,10 @@ jobs:
 
           cp -a apps/workspace/dist/. release/public/
           cp -a apps/ops-console/dist/. release/public/admin/
-          install -m 0750 build/qnext-market-core release/private/bin/qnext-market-core
+          version="${GITHUB_SHA:0:12}"
+          binary_name="qnext-market-core-${version}"
+          install -m 0750 build/qnext-market-core "release/private/bin/${binary_name}"
+          printf '%s\n' "${binary_name}" > release/private/bin/qnext-market-core.current
           cp -a services/ops-api release/private/ops-api
 
           cp config/q1-market.example.json release/private/config/q1-market.example.json
@@ -156,7 +163,6 @@ jobs:
           cp deploy/qnext-runtime.env.example release/private/deploy/
           cp deploy/qnext-sudoers.example release/private/deploy/
 
-          version="${GITHUB_SHA:0:12}"
           cat > release/release-manifest.json <<EOF
           {
             "schema": "QNEXT.RELEASE/1",
@@ -185,7 +191,9 @@ jobs:
           test -s release/public/admin/index.html
           test -f release/public/admin/api/index.php
           php -l release/public/admin/api/index.php
-          test -s release/private/bin/qnext-market-core
+          test ! -e release/private/bin/qnext-market-core
+          test -s "release/private/bin/qnext-market-core-${version}"
+          test "$(cat release/private/bin/qnext-market-core.current)" = "qnext-market-core-${version}"
           test -f release/private/ops-api/public/index.php
           test -x release/private/deploy/qnext-ops-helper
           test -x release/private/deploy/qnext-ops-user

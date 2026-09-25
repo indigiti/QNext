@@ -142,7 +142,13 @@ expect(
 
 mkdir($flatRoot . '/logs', 0750, true);
 mkdir($flatRoot . '/bin', 0750, true);
-file_put_contents($flatRoot . '/bin/qnext-market-core', 'binary');
+file_put_contents($flatRoot . '/bin/qnext-market-core', 'legacy-binary');
+file_put_contents($flatRoot . '/bin/qnext-market-core-testv2', 'versioned-binary');
+file_put_contents($flatRoot . '/bin/qnext-market-core.current', "qnext-market-core-testv2\n");
+expect(
+    $flatConfig->marketCoreBinaryCandidates()[0] === $flatRoot . '/bin/qnext-market-core-testv2',
+    'diagnostics should prefer the versioned binary selected by qnext-market-core.current'
+);
 file_put_contents(
     $flatRoot . '/logs/market-core.log',
     "market-core starting\nAuthorization: Bearer secret-token\naccess_token=secret-value\nmarket-core stopped\n"
