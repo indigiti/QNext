@@ -187,6 +187,7 @@ jobs:
               "public_bars": "/qnext/api/v1/bars/",
               "public_calendar": "/qnext/api/v1/calendar/",
               "public_feed_status": "/qnext/api/v1/feed-status/",
+              "public_indicators": "/qnext/api/v1/indicators/",
               "public_stream": "/qnext/api/v1/stream",
               "ops_console": "/qnext/admin/",
               "ops_api": "/qnext/admin/api/index.php"
