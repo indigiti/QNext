@@ -512,14 +512,15 @@ function normalizeBar(bar: QNextBar): QNextBar {
 }
 
 function timeframeDurationMs(timeframe: string): number {
-  const normalized = timeframe.trim().toLowerCase();
-  const match = normalized.match(/^(\d+)(s|m|h|d)?$/);
+  const normalized = timeframe.trim();
+  const match = normalized.match(/^(\d+)(s|m|h|D|W|M)$/);
   if (!match) {
     throw new Error(`Unsupported QNext timeframe: ${timeframe}`);
   }
 
   const value = Number(match[1]);
-  const unit = match[2] ?? 'm';
+  const unit = match[2];
+  const day = 86_400_000;
   const multiplier =
     unit === 's'
       ? 1_000
@@ -527,7 +528,11 @@ function timeframeDurationMs(timeframe: string): number {
         ? 60_000
         : unit === 'h'
           ? 3_600_000
-          : 86_400_000;
+          : unit === 'D'
+            ? day
+            : unit === 'W'
+              ? 7 * day
+              : 30 * day;
   return value * multiplier;
 }
 
