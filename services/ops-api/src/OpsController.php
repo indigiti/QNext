@@ -108,6 +108,63 @@ final class OpsController
         ];
     }
 
+
+    public function historicalRepairStatus(): array
+    {
+        $probe = $this->probe('/api/v1/history-repair');
+        if (!($probe['ok'] ?? false)) {
+            return [
+                'ok' => false,
+                'status' => $probe['status'] ?? null,
+                'error' => $probe['error'] ?? 'historical repair status unavailable',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'status' => $probe['status'] ?? 200,
+            'body' => is_array($probe['body'] ?? null) ? $probe['body'] : [],
+        ];
+    }
+
+    public function runHistoricalRepair(array $payload): array
+    {
+        $days = $payload['days'] ?? null;
+        if (!is_int($days) || !in_array($days, [3, 7, 15, 30], true)) {
+            throw new RuntimeException('historical repair days must be 3, 7, 15, or 30');
+        }
+
+        $markets = $payload['markets'] ?? [];
+        if (!is_array($markets)) {
+            throw new RuntimeException('historical repair markets must be an array');
+        }
+        foreach ($markets as $market) {
+            if (!is_string($market) || trim($market) === '') {
+                throw new RuntimeException('historical repair market names must be strings');
+            }
+        }
+
+        $probe = $this->requestCore(
+            '/api/v1/history-repair',
+            'POST',
+            [
+                'days' => $days,
+                'markets' => array_values($markets),
+                'reason' => 'admin_manual',
+            ],
+            120.0,
+        );
+        if (!($probe['ok'] ?? false)) {
+            $body = $probe['body'] ?? null;
+            $message = is_array($body)
+                ? (string) ($body['message'] ?? $body['error'] ?? 'historical repair failed')
+                : (string) ($probe['error'] ?? 'historical repair failed');
+            throw new RuntimeException($message);
+        }
+
+        return is_array($probe['body'] ?? null) ? $probe['body'] : [];
+    }
+
     public function diagnostics(): array
     {
         $pid = null;
@@ -519,16 +576,34 @@ final class OpsController
 
     private function probe(string $path): array
     {
-        $url = $this->config->marketCoreUrl . $path;
+        return $this->requestCore($path, 'GET', null, 2.0);
+    }
 
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'timeout' => 2.0,
-                'ignore_errors' => true,
-                'header' => "Accept: application/json\r\n",
-            ],
-        ]);
+    private function requestCore(
+        string $path,
+        string $method,
+        ?array $payload,
+        float $timeout,
+    ): array {
+        $url = $this->config->marketCoreUrl . $path;
+        $headers = "Accept: application/json\r\n";
+        $content = null;
+        if ($payload !== null) {
+            $content = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $headers .= "Content-Type: application/json\r\n";
+        }
+
+        $http = [
+            'method' => $method,
+            'timeout' => $timeout,
+            'ignore_errors' => true,
+            'header' => $headers,
+        ];
+        if ($content !== null) {
+            $http['content'] = $content;
+        }
+
+        $context = stream_context_create(['http' => $http]);
         $body = @file_get_contents($url, false, $context);
         $status = $this->responseStatus($http_response_header ?? []);
         if ($body === false) {
