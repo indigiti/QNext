@@ -1,0 +1,48 @@
+name: Q6 Stream Load
+
+on:
+  pull_request:
+    paths:
+      - "services/market-core/internal/stream/**"
+      - "services/market-core/internal/httpapi/server_stream_test.go"
+      - ".github/workflows/q6-stream-load.yml"
+  push:
+    branches:
+      - "q6-*"
+    paths:
+      - "services/market-core/internal/stream/**"
+      - "services/market-core/internal/httpapi/server_stream_test.go"
+      - ".github/workflows/q6-stream-load.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/market-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.mod
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l internal/stream)"
+          if [ -n "$files" ]; then
+            echo "The following stream files are not gofmt-clean:"
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Vet stream package
+        run: go vet ./internal/stream
+
+      - name: Race-certified stream fan-out
+        run: go test -race -count=1 ./internal/stream
+
+      - name: 100-subscriber fan-out benchmark
+        run: go test -run '^$' -bench '^BenchmarkBrokerFanout100$' -benchtime=500ms -benchmem ./internal/stream

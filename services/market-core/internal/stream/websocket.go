@@ -198,6 +198,20 @@ func forwardSubscription(
 			return
 		case event, ok := <-subscription.Events:
 			if !ok {
+				reason := ""
+				if subscription.closeReason != nil {
+					select {
+					case reason = <-subscription.closeReason:
+					default:
+					}
+				}
+				if reason != "" {
+					_ = write(serverMessage{
+						Op:       "resync_required",
+						StreamID: subscription.StreamID,
+						Reason:   reason,
+					})
+				}
 				return
 			}
 			if event.ResyncRequired {

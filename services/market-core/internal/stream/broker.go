@@ -28,7 +28,17 @@ type Broker struct {
 type streamState struct {
 	seq    uint64
 	replay []BarEvent
-	subs   map[uint64]chan BarEvent
+	subs   map[uint64]*subscriberState
+}
+
+type subscriberState struct {
+	events      chan BarEvent
+	closeReason chan string
+}
+
+type BrokerSnapshot struct {
+	Streams     int
+	Subscribers int
 }
 
 type Subscription struct {
@@ -37,6 +47,7 @@ type Subscription struct {
 	Replay         []BarEvent
 	Events         <-chan BarEvent
 	ResyncRequired bool
+	closeReason    <-chan string
 
 	broker *Broker
 	key    string
@@ -66,7 +77,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 
 	state := b.streams[key]
 	if state == nil {
-		state = &streamState{subs: make(map[uint64]chan BarEvent)}
+		state = &streamState{subs: make(map[uint64]*subscriberState)}
 		b.streams[key] = state
 	}
 	state.seq++
@@ -80,12 +91,11 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		state.replay = append([]BarEvent(nil), state.replay[len(state.replay)-b.retention:]...)
 	}
 
-	for id, ch := range state.subs {
+	for id, subscriber := range state.subs {
 		select {
-		case ch <- event:
+		case subscriber.events <- event:
 		default:
-			close(ch)
-			delete(state.subs, id)
+			closeSlowSubscriber(state, id, subscriber)
 		}
 	}
 }
@@ -108,12 +118,11 @@ func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
 		ResyncRequired: true,
 		Reason:         reason,
 	}
-	for id, ch := range state.subs {
+	for id, subscriber := range state.subs {
 		select {
-		case ch <- event:
+		case subscriber.events <- event:
 		default:
-			close(ch)
-			delete(state.subs, id)
+			closeSlowSubscriber(state, id, subscriber)
 		}
 	}
 }
@@ -154,7 +163,7 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 
 	state := b.streams[key]
 	if state == nil {
-		state = &streamState{subs: make(map[uint64]chan BarEvent)}
+		state = &streamState{subs: make(map[uint64]*subscriberState)}
 		b.streams[key] = state
 	}
 
@@ -184,10 +193,14 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 	}
 
 	b.nextSubscriberID++
-	ch := make(chan BarEvent, b.subscriberBuffer)
-	state.subs[b.nextSubscriberID] = ch
+	subscriber := &subscriberState{
+		events:      make(chan BarEvent, b.subscriberBuffer),
+		closeReason: make(chan string, 1),
+	}
+	state.subs[b.nextSubscriberID] = subscriber
 	sub.id = b.nextSubscriberID
-	sub.Events = ch
+	sub.Events = subscriber.events
+	sub.closeReason = subscriber.closeReason
 	return sub, nil
 }
 
@@ -202,11 +215,33 @@ func (s *Subscription) Cancel() {
 		if state == nil {
 			return
 		}
-		if ch, ok := state.subs[s.id]; ok {
-			close(ch)
+		if subscriber, ok := state.subs[s.id]; ok {
+			close(subscriber.events)
+			close(subscriber.closeReason)
 			delete(state.subs, s.id)
 		}
 	})
+}
+
+func (b *Broker) Snapshot() BrokerSnapshot {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	snapshot := BrokerSnapshot{Streams: len(b.streams)}
+	for _, state := range b.streams {
+		snapshot.Subscribers += len(state.subs)
+	}
+	return snapshot
+}
+
+func closeSlowSubscriber(state *streamState, id uint64, subscriber *subscriberState) {
+	select {
+	case subscriber.closeReason <- "slow_consumer":
+	default:
+	}
+	close(subscriber.events)
+	close(subscriber.closeReason)
+	delete(state.subs, id)
 }
 
 func streamKey(instrumentID, timeframe string) string {
