@@ -22,9 +22,9 @@ type FrameStore struct {
 }
 
 type frameRecord struct {
-	Schema       string `json:"schema"`
-	Provider     string `json:"provider"`
-	CapturedAtMS int64  `json:"captured_at_ms"`
+	Schema        string `json:"schema"`
+	Provider      string `json:"provider"`
+	CapturedAtMS  int64  `json:"captured_at_ms"`
 	PayloadBase64 string `json:"payload_base64"`
 }
 
