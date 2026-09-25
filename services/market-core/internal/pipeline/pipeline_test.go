@@ -68,7 +68,6 @@ func TestPipelineRejectsUnsupportedTimeframe(t *testing.T) {
 	}
 }
 
-
 func TestPipelineRollsUpTwoMinuteBarsFromCanonicalOneMinute(t *testing.T) {
 	store := history.New(t.TempDir())
 	pipe, err := New(candle.New("candle-v2"), store, []string{"1m", "2m"})
