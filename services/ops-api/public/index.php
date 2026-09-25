@@ -88,6 +88,9 @@ try {
     if ($method === 'GET' && $path === '/config') {
         respond(200, $controller->getConfig());
     }
+    if ($method === 'GET' && $path === '/diagnostics') {
+        respond(200, $controller->diagnostics());
+    }
     if ($method === 'PUT' && $path === '/config') {
         respond(200, $controller->saveConfig(request_body()));
     }
