@@ -116,9 +116,9 @@ func main() {
 		}
 	}
 
-	enabledTimeframes := marketconfig.DefaultChartTimeframes()
+	chartTimeframes := marketconfig.DefaultChartTimeframes()
 	if config != nil {
-		enabledTimeframes = config.EffectiveChartTimeframes()
+		chartTimeframes = config.EffectiveChartTimeframes()
 	}
 
 	handler := httpapi.New(store, httpapi.Options{
@@ -126,7 +126,7 @@ func main() {
 		Commit:            commit,
 		StartedAt:         started,
 		StreamHandler:     stream.NewWebSocketHandler(broker),
-		EnabledTimeframes: enabledTimeframes,
+		ChartTimeframes: chartTimeframes,
 		LiveBars:          broker,
 		Symbols:           registry,
 		Calendars:         calendars,
