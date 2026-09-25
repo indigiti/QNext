@@ -20,12 +20,21 @@ type Instrument struct {
 }
 
 type SyntheticConfig struct {
-	InstrumentID           string `json:"instrument_id"`
-	Version                string `json:"version"`
-	MinimumValidCandidates int    `json:"minimum_valid_candidates"`
-	MaxLegAgeMS            int64  `json:"max_leg_age_ms"`
-	MaxLegTimeSkewMS       int64  `json:"max_leg_time_skew_ms"`
-	Legs                   []Leg  `json:"legs"`
+	InstrumentID           string         `json:"instrument_id"`
+	Version                string         `json:"version"`
+	MinimumValidCandidates int            `json:"minimum_valid_candidates"`
+	MaxLegAgeMS            int64          `json:"max_leg_age_ms"`
+	MaxLegTimeSkewMS       int64          `json:"max_leg_time_skew_ms"`
+	Legs                   []Leg          `json:"legs,omitempty"`
+	Auto                   *AutoLegConfig `json:"auto,omitempty"`
+}
+
+type AutoLegConfig struct {
+	StrikeInterval       float64 `json:"strike_interval"`
+	ActiveStrikes        int     `json:"active_strikes"`
+	WarmStrikes          int     `json:"warm_strikes"`
+	ATMHysteresisPoints  float64 `json:"atm_hysteresis_points"`
+	ATMConfirmationMS    int64   `json:"atm_confirmation_ms"`
 }
 
 type Leg struct {
@@ -66,8 +75,48 @@ func (c Config) Validate() error {
 	if c.Synthetic.MinimumValidCandidates <= 0 {
 		return errors.New("minimum_valid_candidates must be positive")
 	}
-	if len(c.Synthetic.Legs) != 10 {
-		return errors.New("Q1 NIFTY-SYN requires exactly ten option legs")
+	if c.Synthetic.MaxLegAgeMS <= 0 || c.Synthetic.MaxLegTimeSkewMS <= 0 {
+		return errors.New("synthetic leg age and time-skew limits must be positive")
+	}
+
+	if c.Synthetic.Auto != nil {
+		if len(c.Synthetic.Legs) != 0 {
+			return errors.New("synthetic auto mode cannot also define fixed legs")
+		}
+		return validateAuto(c.Synthetic)
+	}
+	return validateFixedLegs(c.Synthetic)
+}
+
+func validateAuto(s SyntheticConfig) error {
+	auto := s.Auto
+	if auto == nil {
+		return errors.New("auto leg configuration is required")
+	}
+	if auto.StrikeInterval <= 0 {
+		return errors.New("auto strike_interval must be positive")
+	}
+	if auto.ActiveStrikes < 3 || auto.ActiveStrikes%2 == 0 {
+		return errors.New("auto active_strikes must be odd and at least 3")
+	}
+	if auto.WarmStrikes < auto.ActiveStrikes || auto.WarmStrikes%2 == 0 {
+		return errors.New("auto warm_strikes must be odd and no smaller than active_strikes")
+	}
+	if auto.ATMHysteresisPoints < 0 || auto.ATMHysteresisPoints >= auto.StrikeInterval/2 {
+		return errors.New("auto ATM hysteresis must be non-negative and below half the strike interval")
+	}
+	if auto.ATMConfirmationMS < 0 {
+		return errors.New("auto ATM confirmation cannot be negative")
+	}
+	if s.MinimumValidCandidates > auto.ActiveStrikes {
+		return errors.New("minimum_valid_candidates cannot exceed auto active_strikes")
+	}
+	return nil
+}
+
+func validateFixedLegs(s SyntheticConfig) error {
+	if len(s.Legs) != 10 {
+		return errors.New("fixed NIFTY-SYN requires exactly ten option legs")
 	}
 
 	type strikeSides struct {
@@ -77,7 +126,7 @@ func (c Config) Validate() error {
 	strikes := make(map[float64]*strikeSides)
 	instruments := make(map[string]bool)
 	providerKeys := make(map[string]bool)
-	for _, leg := range c.Synthetic.Legs {
+	for _, leg := range s.Legs {
 		if leg.InstrumentID == "" || leg.ProviderKey == "" || leg.Strike <= 0 {
 			return errors.New("synthetic legs require instrument_id, provider_key, and positive strike")
 		}
@@ -109,7 +158,7 @@ func (c Config) Validate() error {
 		}
 	}
 	if len(strikes) != 5 {
-		return errors.New("Q1 NIFTY-SYN requires exactly five strikes")
+		return errors.New("fixed NIFTY-SYN requires exactly five strikes")
 	}
 	for _, pair := range strikes {
 		if !pair.call || !pair.put {
@@ -119,10 +168,16 @@ func (c Config) Validate() error {
 	return nil
 }
 
+func (c Config) AutoLegsEnabled() bool {
+	return c.Synthetic.Auto != nil
+}
+
 func (c Config) ProviderKeys() []string {
 	keys := []string{c.Nifty.ProviderKey}
-	for _, leg := range c.Synthetic.Legs {
-		keys = append(keys, leg.ProviderKey)
+	if c.Synthetic.Auto == nil {
+		for _, leg := range c.Synthetic.Legs {
+			keys = append(keys, leg.ProviderKey)
+		}
 	}
 	sort.Strings(keys)
 	return keys
