@@ -36,6 +36,9 @@ type WireClient struct {
 	Now                 func() time.Time
 	CaptureFrame        func([]byte) error
 	SubscriptionUpdates <-chan SubscriptionRequest
+	InactivityTimeout   time.Duration
+	WatchdogInterval    time.Duration
+	WatchdogActive      func(time.Time) bool
 }
 
 func (c *WireClient) Open(
@@ -107,6 +110,27 @@ func (c *WireClient) Run(
 	}
 	defer connection.Close()
 
+	now := time.Now
+	if c.Now != nil {
+		now = c.Now
+	}
+	lastFrameAt := now().UTC()
+
+	var watchdogTicker *time.Ticker
+	var watchdog <-chan time.Time
+	if c.InactivityTimeout > 0 {
+		interval := c.WatchdogInterval
+		if interval <= 0 {
+			interval = c.InactivityTimeout / 4
+			if interval <= 0 {
+				interval = time.Second
+			}
+		}
+		watchdogTicker = time.NewTicker(interval)
+		defer watchdogTicker.Stop()
+		watchdog = watchdogTicker.C
+	}
+
 	frames := make(chan frameResult, 1)
 	go func() {
 		for {
@@ -122,6 +146,19 @@ func (c *WireClient) Run(
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+
+		case <-watchdog:
+			current := now().UTC()
+			active := true
+			if c.WatchdogActive != nil {
+				active = c.WatchdogActive(current)
+			}
+			if active && current.Sub(lastFrameAt) >= c.InactivityTimeout {
+				return fmt.Errorf(
+					"Upstox market feed inactive for %s",
+					current.Sub(lastFrameAt).Round(time.Second),
+				)
+			}
 
 		case update, ok := <-c.SubscriptionUpdates:
 			if !ok {
@@ -140,6 +177,7 @@ func (c *WireClient) Run(
 			}
 
 		case result := <-frames:
+			lastFrameAt = now().UTC()
 			if result.err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
