@@ -521,39 +521,6 @@ final class OpsController
     {
         $url = $this->config->marketCoreUrl . $path;
 
-        if (function_exists('curl_init')) {
-            $handle = curl_init($url);
-            if ($handle !== false) {
-                curl_setopt_array($handle, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_CONNECTTIMEOUT_MS => 750,
-                    CURLOPT_TIMEOUT_MS => 2000,
-                    CURLOPT_HTTPHEADER => ['Accept: application/json'],
-                ]);
-                $body = curl_exec($handle);
-                $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-                $error = curl_error($handle);
-                curl_close($handle);
-
-                if (is_string($body)) {
-                    $decoded = json_decode($body, true);
-                    return [
-                        'ok' => $status >= 200 && $status < 300,
-                        'status' => $status,
-                        'body' => is_array($decoded) ? $decoded : $body,
-                    ];
-                }
-
-                if ($error !== '') {
-                    return [
-                        'ok' => false,
-                        'status' => $status ?: null,
-                        'error' => 'connection failed: ' . $error,
-                    ];
-                }
-            }
-        }
-
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',
