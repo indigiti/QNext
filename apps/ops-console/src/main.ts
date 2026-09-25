@@ -301,9 +301,26 @@ function renderFeedStatus(response: FeedStatusResponse) {
     `;
   };
 
+  const gap = body.gap_recovery;
+  const gapState = (gap?.failures ?? 0) > 0 && (gap?.failures ?? 0) >= (gap?.successes ?? 0)
+    ? { ok: false, label: 'CHECK' }
+    : { ok: true, label: (gap?.attempts ?? 0) > 0 ? 'ARMED / USED' : 'ARMED' };
+  const gapCard = `
+    <div class="feed-provider-card">
+      <div class="line"><strong>AUTO GAP RECOVERY</strong>${badge(gapState.ok, gapState.label)}</div>
+      <div class="feed-kv"><span>Attempts / success</span><strong>${gap?.attempts ?? 0} / ${gap?.successes ?? 0}</strong></div>
+      <div class="feed-kv"><span>Recovered bars</span><strong>${gap?.recovered_bars ?? 0}</strong></div>
+      <div class="feed-kv"><span>Exact tick replay</span><strong>${gap?.exact_tick_replay ? 'YES' : 'NO'}</strong></div>
+      <div class="feed-kv"><span>Exact history TF</span><strong>${gap?.recovered_timeframes?.join(', ') || '—'}</strong></div>
+      <div class="feed-kv"><span>Non-exact TF</span><strong>${gap?.non_exact_timeframes?.join(', ') || '—'}</strong></div>
+      ${gap?.last_error ? `<div class="feed-kv"><span>Last error</span><strong>${gap.last_error}</strong></div>` : ''}
+    </div>
+  `;
+
   providers.innerHTML =
     providerCard('upstox', body.live_configured) +
-    providerCard('dhan', body.resilience_configured);
+    providerCard('dhan', body.resilience_configured) +
+    gapCard;
 }
 
 async function probeBrowserStream() {
