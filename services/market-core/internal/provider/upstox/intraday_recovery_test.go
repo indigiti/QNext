@@ -125,7 +125,7 @@ func TestIntradayRecoveryUsesInstrumentCursorAndSignalsResync(t *testing.T) {
 		InstrumentKeys: []string{"NSE_INDEX|Nifty 50"},
 		From:           base.Add(-10 * time.Minute),
 		FromByInstrumentID: map[string]time.Time{
-			"NSE:NIFTY50": base.Add(30 * time.Second),
+			"NSE:NIFTY50": base.Add(70 * time.Second),
 		},
 		To:    base.Add(150 * time.Second),
 		Cause: "watchdog",
