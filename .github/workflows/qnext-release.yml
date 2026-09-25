@@ -148,6 +148,7 @@ jobs:
           mkdir -p release/private/bin release/private/config release/private/deploy
 
           cp -a apps/workspace/dist/. release/public/
+          cp apps/workspace/public/.htaccess release/public/.htaccess
           cp -a apps/ops-console/dist/. release/public/admin/
           version="${GITHUB_SHA:0:12}"
           binary_name="qnext-market-core-${version}"
@@ -184,6 +185,7 @@ jobs:
               "public_bars": "/qnext/api/v1/bars/",
               "public_calendar": "/qnext/api/v1/calendar/",
               "public_feed_status": "/qnext/api/v1/feed-status/",
+              "public_stream": "/qnext/api/v1/stream",
               "ops_console": "/qnext/admin/",
               "ops_api": "/qnext/admin/api/index.php"
             }
@@ -193,6 +195,37 @@ jobs:
           cp release/release-manifest.json release/public/qnext-release.json
 
           test -s release/public/index.html
+          test -f release/public/.htaccess
+          grep -Fq 'ws://127.0.0.1:18080/api/v1/stream' release/public/.htaccess
+          grep -Fq 'RewriteRule ^api/v1/stream/?          test -f release/public/api/v1/_market_core_proxy.php
+          test -f release/public/api/v1/symbols/index.php
+          test -f release/public/api/v1/bars/index.php
+          test -f release/public/api/v1/calendar/index.php
+          test -f release/public/api/v1/feed-status/index.php
+          php -l release/public/api/v1/_market_core_proxy.php
+          php -l release/public/api/v1/symbols/index.php
+          php -l release/public/api/v1/bars/index.php
+          php -l release/public/api/v1/calendar/index.php
+          php -l release/public/api/v1/feed-status/index.php
+          test -s release/public/admin/index.html
+          test -f release/public/admin/api/index.php
+          php -l release/public/admin/api/index.php
+          test ! -e release/private/bin/qnext-market-core
+          test -s "release/private/bin/qnext-market-core-${version}"
+          test "$(cat release/private/bin/qnext-market-core.current)" = "qnext-market-core-${version}"
+          test -f release/private/ops-api/public/index.php
+          test -x release/private/deploy/qnext-ops-helper
+          test -x release/private/deploy/qnext-ops-user
+          test -s release/release-manifest.json
+
+      - name: Upload DigiOps release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digiops-release
+          path: release/
+          if-no-files-found: error
+          retention-days: 14
+ release/public/.htaccess
           test -f release/public/api/v1/_market_core_proxy.php
           test -f release/public/api/v1/symbols/index.php
           test -f release/public/api/v1/bars/index.php
