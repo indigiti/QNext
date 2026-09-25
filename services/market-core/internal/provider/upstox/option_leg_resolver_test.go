@@ -70,23 +70,23 @@ func TestOptionLegResolverSkipsIncompleteNearestExpiry(t *testing.T) {
 	for _, strike := range []float64{25050, 25100, 25150} {
 		for _, side := range []string{"CE", "PE"} {
 			contracts = append(contracts, OptionContract{
-				Expiry: "2026-10-06",
-				InstrumentKey: fmt.Sprintf("NSE_FO|%0.f|%s", strike, side),
-				TradingSymbol: fmt.Sprintf("NIFTY %.0f %s", strike, side),
-				InstrumentType: side,
-				UnderlyingKey: "NSE_INDEX|Nifty 50",
+				Expiry:           "2026-10-06",
+				InstrumentKey:    fmt.Sprintf("NSE_FO|%0.f|%s", strike, side),
+				TradingSymbol:    fmt.Sprintf("NIFTY %.0f %s", strike, side),
+				InstrumentType:   side,
+				UnderlyingKey:    "NSE_INDEX|Nifty 50",
 				UnderlyingSymbol: "NIFTY",
-				StrikePrice: strike,
+				StrikePrice:      strike,
 			})
 		}
 	}
 
 	registry := symbol.NewRegistry()
 	resolver := OptionLegResolver{
-		Client: fakeContractSource{contracts: contracts},
-		AccessToken: "token",
+		Client:        fakeContractSource{contracts: contracts},
+		AccessToken:   "token",
 		UnderlyingKey: "NSE_INDEX|Nifty 50",
-		Registry: registry,
+		Registry:      registry,
 	}
 	basket, err := resolver.Resolve(
 		context.Background(),

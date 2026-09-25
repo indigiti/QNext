@@ -120,7 +120,6 @@ func TestWireClientOpensAndNormalizesFrame(t *testing.T) {
 	}
 }
 
-
 type updateConnection struct {
 	writes [][]byte
 	cancel context.CancelFunc

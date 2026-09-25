@@ -30,11 +30,11 @@ type SyntheticConfig struct {
 }
 
 type AutoLegConfig struct {
-	StrikeInterval       float64 `json:"strike_interval"`
-	ActiveStrikes        int     `json:"active_strikes"`
-	WarmStrikes          int     `json:"warm_strikes"`
-	ATMHysteresisPoints  float64 `json:"atm_hysteresis_points"`
-	ATMConfirmationMS    int64   `json:"atm_confirmation_ms"`
+	StrikeInterval      float64 `json:"strike_interval"`
+	ActiveStrikes       int     `json:"active_strikes"`
+	WarmStrikes         int     `json:"warm_strikes"`
+	ATMHysteresisPoints float64 `json:"atm_hysteresis_points"`
+	ATMConfirmationMS   int64   `json:"atm_confirmation_ms"`
 }
 
 type Leg struct {

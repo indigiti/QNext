@@ -131,12 +131,12 @@ func TestManagerAtomicallyRollsToNextATM(t *testing.T) {
 				price = 99.0
 			}
 			_, emittedNow, applyErr := manager.Apply(domain.Tick{
-				InstrumentID: fmt.Sprintf("NIFTY:%.0f:%s", strike, side),
-				Price:        price,
-				EventTime:    at.Add(100 * time.Millisecond),
-				ReceivedTime: at.Add(110 * time.Millisecond),
+				InstrumentID:  fmt.Sprintf("NIFTY:%.0f:%s", strike, side),
+				Price:         price,
+				EventTime:     at.Add(100 * time.Millisecond),
+				ReceivedTime:  at.Add(110 * time.Millisecond),
 				ProcessedTime: at.Add(120 * time.Millisecond),
-				Quality:      domain.QualityGood,
+				Quality:       domain.QualityGood,
 			})
 			if applyErr != nil {
 				t.Fatal(applyErr)
@@ -160,12 +160,12 @@ func TestManagerAtomicallyRollsToNextATM(t *testing.T) {
 	waitForPending(t, manager, 25150)
 
 	_, rolled, applyErr := manager.Apply(domain.Tick{
-		InstrumentID: "NIFTY:25100:CE",
-		Price:        101,
-		EventTime:    at.Add(1100 * time.Millisecond),
-		ReceivedTime: at.Add(1110 * time.Millisecond),
+		InstrumentID:  "NIFTY:25100:CE",
+		Price:         101,
+		EventTime:     at.Add(1100 * time.Millisecond),
+		ReceivedTime:  at.Add(1110 * time.Millisecond),
 		ProcessedTime: at.Add(1120 * time.Millisecond),
-		Quality:      domain.QualityGood,
+		Quality:       domain.QualityGood,
 	})
 	if applyErr != nil {
 		t.Fatal(applyErr)
