@@ -1,0 +1,19 @@
+{
+  "version": "q3.resilience.v1",
+  "max_staleness_ms": 2000,
+  "gap_recovery_ms": 2000,
+  "dhan_poll_interval_ms": 1000,
+  "instruments": [
+    {"instrument_id":"NSE:NIFTY50","dhan_provider_key":"IDX_I|13|INDEX","recoverable":true},
+    {"instrument_id":"NIFTY:25000:CE","dhan_provider_key":"NSE_FNO|REPLACE_CE_25000|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25000:PE","dhan_provider_key":"NSE_FNO|REPLACE_PE_25000|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25050:CE","dhan_provider_key":"NSE_FNO|REPLACE_CE_25050|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25050:PE","dhan_provider_key":"NSE_FNO|REPLACE_PE_25050|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25100:CE","dhan_provider_key":"NSE_FNO|REPLACE_CE_25100|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25100:PE","dhan_provider_key":"NSE_FNO|REPLACE_PE_25100|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25150:CE","dhan_provider_key":"NSE_FNO|REPLACE_CE_25150|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25150:PE","dhan_provider_key":"NSE_FNO|REPLACE_PE_25150|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25200:CE","dhan_provider_key":"NSE_FNO|REPLACE_CE_25200|OPTIDX","recoverable":true},
+    {"instrument_id":"NIFTY:25200:PE","dhan_provider_key":"NSE_FNO|REPLACE_PE_25200|OPTIDX","recoverable":true}
+  ]
+}

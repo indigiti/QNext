@@ -1,0 +1,95 @@
+name: Q1-Q5 Audit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  market-core:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/market-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.mod
+      - name: Resolve modules
+        run: go mod tidy
+      - name: Verify module files are tidy
+        run: git diff --exit-code -- go.mod go.sum
+      - name: Verify Go formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "The following Go files are not gofmt-clean:"
+            echo "$files"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Race tests
+        run: go test -race ./...
+      - name: Build market core
+        run: go build ./cmd/qnext-market-core
+
+  q2-workspace:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run vela:parity
+      - run: npm run build
+
+  q3-q5-intelligence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m compileall -q services/intelligence/qnext_intelligence
+      - name: Intelligence certification
+        env:
+          PYTHONPATH: services/intelligence
+        run: python -m unittest discover -s services/intelligence/tests -v
+      - name: CLI surface
+        env:
+          PYTHONPATH: services/intelligence
+        run: python -m qnext_intelligence.cli --help
+
+  q4-strategy-lab:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/strategy-lab
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: PYTHONPATH=. python -m compileall -q qnext_strategy_lab tests
+      - run: PYTHONPATH=. python -m unittest discover -s tests -v
+
+  q1-q5-gate:
+    runs-on: ubuntu-latest
+    needs:
+      - market-core
+      - q2-workspace
+      - q3-q5-intelligence
+      - q4-strategy-lab
+    steps:
+      - run: echo "Q1_Q5_AUDIT_PASS"

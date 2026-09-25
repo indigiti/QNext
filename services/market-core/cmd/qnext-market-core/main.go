@@ -20,6 +20,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
+	"github.com/indigiti/QNext/services/market-core/internal/resilience"
 	qruntime "github.com/indigiti/QNext/services/market-core/internal/runtime"
 	"github.com/indigiti/QNext/services/market-core/internal/stream"
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
@@ -59,6 +60,29 @@ func main() {
 	}
 	calendars := marketcalendar.DefaultRegistry()
 
+	resilienceMetrics := resilience.NewMetrics()
+	var resilienceConfig *resilience.Config
+	var dhanClientID string
+	var dhanAccessToken string
+	if resiliencePath := strings.TrimSpace(os.Getenv("QNEXT_RESILIENCE_CONFIG")); resiliencePath != "" {
+		if config == nil {
+			log.Fatal("QNEXT_MARKET_CONFIG is required when QNEXT_RESILIENCE_CONFIG is set")
+		}
+		loaded, err := resilience.Load(resiliencePath)
+		if err != nil {
+			log.Fatalf("load QNext resilience config: %v", err)
+		}
+		if err := registerDhanMappings(*config, loaded, registry); err != nil {
+			log.Fatalf("register Dhan resilience mappings: %v", err)
+		}
+		dhanClientID = strings.TrimSpace(os.Getenv("DHAN_CLIENT_ID"))
+		dhanAccessToken = strings.TrimSpace(os.Getenv("DHAN_ACCESS_TOKEN"))
+		if dhanClientID == "" || dhanAccessToken == "" {
+			log.Fatal("DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN are required when QNEXT_RESILIENCE_CONFIG is set")
+		}
+		resilienceConfig = &loaded
+	}
+
 	store := history.New(storageRoot)
 	broker := stream.NewBroker(1024, 128)
 	handler := httpapi.New(store, httpapi.Options{
@@ -68,6 +92,9 @@ func main() {
 		StreamHandler: stream.NewWebSocketHandler(broker),
 		Symbols:       registry,
 		Calendars:     calendars,
+		ResilienceStatus: func() any {
+			return resilienceMetrics.Snapshot()
+		},
 	})
 
 	server := &http.Server{
@@ -86,7 +113,18 @@ func main() {
 
 	if config != nil {
 		go func() {
-			if err := runMarket(ctx, *config, accessToken, registry, store, broker); err != nil && ctx.Err() == nil {
+			if err := runMarket(
+				ctx,
+				*config,
+				accessToken,
+				registry,
+				store,
+				broker,
+				resilienceConfig,
+				dhanClientID,
+				dhanAccessToken,
+				resilienceMetrics,
+			); err != nil && ctx.Err() == nil {
 				errCh <- err
 			}
 		}()
@@ -192,6 +230,10 @@ func runMarket(
 	registry *symbol.Registry,
 	store *history.Store,
 	broker *stream.Broker,
+	resilienceConfig *resilience.Config,
+	dhanClientID string,
+	dhanAccessToken string,
+	resilienceMetrics *resilience.Metrics,
 ) error {
 	legs := make([]synthetic.LegBinding, 0, len(config.Synthetic.Legs))
 	for _, leg := range config.Synthetic.Legs {
@@ -259,19 +301,37 @@ func runMarket(
 		InstrumentIDs: map[string]bool{config.Nifty.InstrumentID: true},
 	}
 
-	supervisor := &upstox.Supervisor{
-		Runner:   wire,
-		Recovery: recovery,
-	}
-
-	return supervisor.Run(ctx, accessToken, upstox.SubscriptionRequest{
+	request := upstox.SubscriptionRequest{
 		GUID:   "qnext-market-core",
 		Method: upstox.MethodSubscribe,
 		Data: upstox.SubscriptionData{
 			Mode:           upstox.ModeLTPC,
 			InstrumentKeys: config.ProviderKeys(),
 		},
-	}, dedupe.Handle)
+	}
+	if resilienceConfig == nil {
+		supervisor := &upstox.Supervisor{
+			Runner:   wire,
+			Recovery: recovery,
+		}
+		return supervisor.Run(ctx, accessToken, request, dedupe.Handle)
+	}
+
+	return runResilientMarket(
+		ctx,
+		config,
+		*resilienceConfig,
+		accessToken,
+		dhanClientID,
+		dhanAccessToken,
+		registry,
+		store,
+		wire,
+		recovery,
+		request,
+		dedupe.Handle,
+		resilienceMetrics,
+	)
 }
 
 func env(key, fallback string) string {
