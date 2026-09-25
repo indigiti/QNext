@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -29,7 +30,9 @@ type Options struct {
 	Symbols          *symbol.Registry
 	Calendars        *marketcalendar.Registry
 	ResilienceStatus func() any
-	FeedStatus       func() any
+	FeedStatus              func() any
+	HistoricalRepair        func(context.Context, int, []string, string) (any, error)
+	HistoricalRepairStatus  func() any
 }
 
 type Server struct {
@@ -105,6 +108,9 @@ func (s *Server) routes() {
 	if s.options.FeedStatus != nil {
 		s.mux.HandleFunc("/api/v1/feed-status", s.feedStatus)
 	}
+	if s.options.HistoricalRepair != nil || s.options.HistoricalRepairStatus != nil {
+		s.mux.HandleFunc("/api/v1/history-repair", s.historyRepair)
+	}
 	if s.options.StreamHandler != nil {
 		s.mux.Handle("/api/v1/stream", s.options.StreamHandler)
 	}
@@ -147,6 +153,53 @@ func (s *Server) resilience(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.options.ResilienceStatus())
+}
+
+func (s *Server) historyRepair(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		if s.options.HistoricalRepairStatus == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "historical_repair_unavailable"})
+			return
+		}
+		writeJSON(w, http.StatusOK, s.options.HistoricalRepairStatus())
+	case http.MethodPost:
+		if s.options.HistoricalRepair == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "historical_repair_unavailable"})
+			return
+		}
+		var request struct {
+			Days    int      `json:"days"`
+			Markets []string `json:"markets,omitempty"`
+			Reason  string   `json:"reason,omitempty"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+		if err := decoder.Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_json"})
+			return
+		}
+		result, err := s.options.HistoricalRepair(
+			r.Context(),
+			request.Days,
+			request.Markets,
+			request.Reason,
+		)
+		if err != nil {
+			status := http.StatusUnprocessableEntity
+			if strings.Contains(err.Error(), "already running") {
+				status = http.StatusConflict
+			}
+			writeJSON(w, status, map[string]any{
+				"error":   "historical_repair_failed",
+				"message": err.Error(),
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+	}
 }
 
 func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
