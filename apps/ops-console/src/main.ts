@@ -892,7 +892,7 @@ function fillCustomIndicatorForm(indicator?: CustomIndicator, preferredKind: Cus
   const idField = form.elements.namedItem('id') as HTMLInputElement;
   const kindField = form.elements.namedItem('kind') as HTMLSelectElement;
   idField.disabled = Boolean(indicator);
-  kindField.disabled = Boolean(indicator);
+  kindField.disabled = false;
   setCustomIndicatorKind(kind);
 }
 
