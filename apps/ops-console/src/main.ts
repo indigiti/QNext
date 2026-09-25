@@ -929,7 +929,7 @@ document.querySelector('#reload-custom-indicators')!.addEventListener('click', (
 document.querySelector('#cancel-custom-indicator')!.addEventListener('click', () => fillCustomIndicatorForm());
 document.querySelector<HTMLFormElement>('#custom-indicator-form')!.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.currentTarget as HTMLFormElement;
   const editingId = (form.elements.namedItem('editingId') as HTMLInputElement).value;
   const indicator = customIndicatorFromForm(form);
   try {
