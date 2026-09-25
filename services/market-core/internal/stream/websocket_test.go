@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -116,5 +117,28 @@ func TestWebSocketResumeReplaysMissedBars(t *testing.T) {
 		if message.Op != "update" || message.Seq != want {
 			t.Fatalf("expected replay seq %d, got %+v", want, message)
 		}
+	}
+}
+
+
+func TestSameOriginAcceptsForwardedPublicHost(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18080/api/v1/stream", nil)
+	request.Host = "127.0.0.1:18080"
+	request.Header.Set("Origin", "https://stage.digiti.in")
+	request.Header.Set("X-Forwarded-Host", "stage.digiti.in")
+
+	if !sameOrigin(request) {
+		t.Fatal("expected forwarded public host to satisfy same-origin check")
+	}
+}
+
+func TestSameOriginRejectsUnrelatedForwardedHost(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18080/api/v1/stream", nil)
+	request.Host = "127.0.0.1:18080"
+	request.Header.Set("Origin", "https://evil.example")
+	request.Header.Set("X-Forwarded-Host", "stage.digiti.in")
+
+	if sameOrigin(request) {
+		t.Fatal("expected unrelated origin to be rejected")
 	}
 }
