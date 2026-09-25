@@ -21,7 +21,7 @@ final class ServiceControl
 
     public function helperAvailable(): bool
     {
-        return is_file($this->helperPath) && is_executable($this->helperPath);
+        return is_file($this->helperPath) && is_readable($this->helperPath);
     }
 
     public function processControlAvailable(): bool
@@ -58,7 +58,7 @@ final class ServiceControl
             return '';
         }
 
-        return '* * * * * ' . $this->helperPath . ' reconcile >/dev/null 2>&1';
+        return '* * * * * /bin/bash ' . escapeshellarg($this->helperPath) . ' reconcile >/dev/null 2>&1';
     }
 
     public function desiredState(): string
@@ -128,7 +128,7 @@ final class ServiceControl
 
     private function runDirect(string $action, ?string $argument): array
     {
-        $command = [$this->helperPath, $action];
+        $command = ['/bin/bash', $this->helperPath, $action];
         if ($argument !== null) {
             $command[] = $argument;
         }

@@ -3,11 +3,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -z "${QNEXT_PRIVATE_ROOT:-}" ]]; then
-  QNEXT_PRIVATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  if [[ -f "$SCRIPT_DIR/../bin/qnext-market-core" ]]; then
+    QNEXT_PRIVATE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+  else
+    QNEXT_PRIVATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  fi
 fi
 
 PRIVATE_ROOT="${QNEXT_PRIVATE_ROOT%/}"
-DIRECT_PRIVATE="$PRIVATE_ROOT/private"
 CURRENT_PRIVATE=""
 
 if [[ -L "$PRIVATE_ROOT/current" ]]; then
@@ -17,7 +20,12 @@ if [[ -L "$PRIVATE_ROOT/current" ]]; then
   fi
 fi
 
-PAYLOAD_PRIVATE="${CURRENT_PRIVATE:-$DIRECT_PRIVATE}"
+PAYLOAD_PRIVATE="$PRIVATE_ROOT"
+if [[ -n "$CURRENT_PRIVATE" ]]; then
+  PAYLOAD_PRIVATE="$CURRENT_PRIVATE"
+elif [[ -f "$PRIVATE_ROOT/private/bin/qnext-market-core" ]]; then
+  PAYLOAD_PRIVATE="$PRIVATE_ROOT/private"
+fi
 BINARY="$PAYLOAD_PRIVATE/bin/qnext-market-core"
 PID_FILE="$PRIVATE_ROOT/run/market-core.pid"
 LOG_FILE="$PRIVATE_ROOT/logs/market-core.log"

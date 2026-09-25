@@ -5,6 +5,7 @@ declare(strict_types=1);
 use QNext\Ops\AtomicFile;
 use QNext\Ops\Auth;
 use QNext\Ops\OpsConfig;
+use QNext\Ops\OpsController;
 use QNext\Ops\ReleaseCatalog;
 use QNext\Ops\ServiceControl;
 
@@ -82,5 +83,34 @@ try {
     expect(false, 'arbitrary helper actions must be rejected');
 } catch (RuntimeException) {
 }
+
+$flatRoot = $root . '/flat';
+mkdir($flatRoot . '/deploy', 0750, true);
+mkdir($flatRoot . '/config', 0750, true);
+file_put_contents($flatRoot . '/deploy/qnext-ops-user', "#!/bin/bash\n");
+chmod($flatRoot . '/deploy/qnext-ops-user', 0640);
+AtomicFile::writeJson($flatRoot . '/config/q1-market.example.json', [
+    'timeframes' => ['1m'],
+    'nifty' => ['instrument_id' => 'NSE:NIFTY50', 'provider_key' => 'NSE_INDEX|Nifty 50'],
+    'synthetic' => ['instrument_id' => 'QNEXT:NIFTY-SYN'],
+]);
+AtomicFile::writeJson($flatRoot . '/config/q1-market.json', []);
+
+$_SERVER['QNEXT_PRIVATE_ROOT'] = $flatRoot;
+$_SERVER['QNEXT_PUBLIC_ROOT'] = $flatRoot . '/public';
+$flatConfig = OpsConfig::fromEnvironment();
+expect(
+    $flatConfig->helperPath === $flatRoot . '/deploy/qnext-ops-user',
+    'flattened private layout helper should be detected'
+);
+expect(
+    (new ServiceControl($flatConfig->helperPath))->helperAvailable(),
+    'readable helper should be available even without execute bit'
+);
+$seeded = (new OpsController($flatConfig))->getConfig();
+expect(
+    isset($seeded['timeframes']) && $seeded['timeframes'] === ['1m'],
+    'empty market config should be replaced with packaged default'
+);
 
 echo "QNext Ops API smoke: PASS\n";
