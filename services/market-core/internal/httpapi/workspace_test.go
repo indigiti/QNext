@@ -57,9 +57,9 @@ func TestWorkspaceSymbolsAndCalendarEndpoints(t *testing.T) {
 	}
 
 	handler := New(nil, Options{
-		Symbols:           registry,
-		Calendars:         marketcalendar.DefaultRegistry(),
-		ChartTimeframes:   []string{"15s", "30s", "1m", "2m", "3m", "5m", "15m", "30m", "1h", "1D"},
+		Symbols:         registry,
+		Calendars:       marketcalendar.DefaultRegistry(),
+		ChartTimeframes: []string{"15s", "30s", "1m", "2m", "3m", "5m", "15m", "30m", "1h", "1D"},
 	})
 
 	symbolRequest := httptest.NewRequest(http.MethodGet, "/api/v1/symbols", nil)
