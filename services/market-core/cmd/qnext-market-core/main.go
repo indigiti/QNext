@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
+	"github.com/indigiti/QNext/services/market-core/internal/capture"
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 	"github.com/indigiti/QNext/services/market-core/internal/httpapi"
 	"github.com/indigiti/QNext/services/market-core/internal/integrity"
@@ -290,6 +291,9 @@ func runMarket(
 		NextSequence: func() uint64 {
 			return providerSequence.Add(1)
 		},
+	}
+	if strings.TrimSpace(os.Getenv("QNEXT_RAW_CAPTURE")) == "1" {
+		wire.CaptureFrame = capture.NewFrameStore(env("QNEXT_STORAGE_ROOT", "./storage"), upstox.ProviderName).Append
 	}
 
 	recovery := &upstox.IntradayRecovery{
