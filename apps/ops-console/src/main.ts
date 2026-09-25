@@ -220,9 +220,10 @@ document.querySelector('#save-config')!.addEventListener('click', async () => {
   }
 });
 
-document.querySelector<HTMLFormElement>('#secret-form')!.addEventListener('submit', async (event) => {
+const secretForm = document.querySelector<HTMLFormElement>('#secret-form')!;
+secretForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const form = new FormData(secretForm);
   const secrets: Record<string, string> = {};
   for (const [key, value] of form.entries()) {
     const stringValue = String(value).trim();
@@ -237,7 +238,7 @@ document.querySelector<HTMLFormElement>('#secret-form')!.addEventListener('submi
   try {
     const result = await api.saveSecrets(secrets);
     toast(`Stored: ${result.stored.join(', ')}`);
-    event.currentTarget.reset();
+    secretForm.reset();
   } catch (error) {
     toast((error as Error).message, true);
   }
