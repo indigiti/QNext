@@ -172,6 +172,19 @@ export interface CandleTimeframes {
 export interface CandleTimeframesSaveResult {
   saved: boolean;
   enabled: string[];
+  chartEnabled?: string[];
+}
+
+export interface ChartTimeframes {
+  available: string[];
+  enabled: string[];
+  candleEnabled: string[];
+  defaults: string[];
+}
+
+export interface ChartTimeframesSaveResult {
+  saved: boolean;
+  enabled: string[];
 }
 
 export interface SecretWriteResult {
@@ -263,6 +276,17 @@ export class OpsAPI {
 
   saveCandleTimeframes(enabled: string[]): Promise<CandleTimeframesSaveResult> {
     return this.request<CandleTimeframesSaveResult>('/candle-timeframes', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  chartTimeframes(): Promise<ChartTimeframes> {
+    return this.request<ChartTimeframes>('/chart-timeframes');
+  }
+
+  saveChartTimeframes(enabled: string[]): Promise<ChartTimeframesSaveResult> {
+    return this.request<ChartTimeframesSaveResult>('/chart-timeframes', {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     });
