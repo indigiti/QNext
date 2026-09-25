@@ -73,6 +73,11 @@ final class OpsConfig
         return $this->privateRoot . '/secrets/qnext.env';
     }
 
+    public function resilienceConfigPath(): string
+    {
+        return $this->privateRoot . '/config/q3-resilience.json';
+    }
+
     public function authPath(): string
     {
         return $this->privateRoot . '/secrets/ops-auth.json';
