@@ -90,14 +90,14 @@ type HistoricalRepairStatus struct {
 }
 
 type HistoricalRepairer struct {
-	Client	HistoricalRangeFetcher
+	Client		HistoricalRangeFetcher
 	AccessToken	string
-	History	HistoricalRepairStore
+	History		HistoricalRepairStore
 	Calendars	*marketcalendar.Registry
-	Markets	[]marketconfig.MarketConfig
+	Markets		[]marketconfig.MarketConfig
 	Timeframes	[]string
-	Resync	HistoricalRepairResync
-	Now	func() time.Time
+	Resync		HistoricalRepairResync
+	Now		func() time.Time
 
 	runMu    sync.Mutex
 	statusMu sync.RWMutex
