@@ -120,10 +120,25 @@ expect(
     $flatControl->controlMode() === 'cron',
     'active cron heartbeat should take precedence over direct process control'
 );
-$seeded = (new OpsController($flatConfig))->getConfig();
+$flatController = new OpsController($flatConfig);
+$seeded = $flatController->getConfig();
 expect(
     isset($seeded['timeframes']) && $seeded['timeframes'] === ['1m'],
     'empty market config should be replaced with packaged default'
 );
+
+mkdir($flatRoot . '/logs', 0750, true);
+mkdir($flatRoot . '/bin', 0750, true);
+file_put_contents($flatRoot . '/bin/qnext-market-core', 'binary');
+file_put_contents(
+    $flatRoot . '/logs/market-core.log',
+    "market-core starting\nAuthorization: Bearer secret-token\naccess_token=secret-value\nmarket-core stopped\n"
+);
+$diagnostics = $flatController->diagnostics();
+expect($diagnostics['binaryFound'] === true, 'diagnostics should find flattened Market Core binary');
+expect(count($diagnostics['logLines']) === 4, 'diagnostics should return bounded log lines');
+$diagnosticText = implode("\n", $diagnostics['logLines']);
+expect(!str_contains($diagnosticText, 'secret-token'), 'diagnostics should redact bearer tokens');
+expect(!str_contains($diagnosticText, 'secret-value'), 'diagnostics should redact access tokens');
 
 echo "QNext Ops API smoke: PASS\n";
