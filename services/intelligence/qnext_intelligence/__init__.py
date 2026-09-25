@@ -6,6 +6,7 @@ from .domain import Bar, FeatureVector, ModelManifest, Outcome, Prediction
 from .features import build_feature_vector
 from .outcomes import evaluate_outcome
 from .prediction import predict
+from .shadow import ShadowComparison, ShadowPair, evaluate_shadow, run_shadow
 from .store import ImmutableJSONLStore
 
 __all__ = [
@@ -22,5 +23,9 @@ __all__ = [
     "build_feature_vector",
     "evaluate_outcome",
     "predict",
+    "ShadowPair",
+    "ShadowComparison",
+    "run_shadow",
+    "evaluate_shadow",
     "ImmutableJSONLStore",
 ]
