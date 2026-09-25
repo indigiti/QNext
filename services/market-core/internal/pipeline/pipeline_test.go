@@ -67,3 +67,48 @@ func TestPipelineRejectsUnsupportedTimeframe(t *testing.T) {
 		t.Fatal("expected unsupported timeframe to fail")
 	}
 }
+
+
+func TestPipelineRollsUpTwoMinuteBarsFromCanonicalOneMinute(t *testing.T) {
+	store := history.New(t.TempDir())
+	pipe, err := New(candle.New("candle-v2"), store, []string{"1m", "2m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inputs := []domain.Tick{
+		pipelineTick("2026-09-24T03:45:00Z", 25100, 1),
+		pipelineTick("2026-09-24T03:45:30Z", 25105, 2),
+		pipelineTick("2026-09-24T03:46:00Z", 25103, 3),
+		pipelineTick("2026-09-24T03:46:30Z", 25108, 4),
+		pipelineTick("2026-09-24T03:47:00Z", 25106, 5),
+	}
+	for _, input := range inputs {
+		if _, err := pipe.ApplyTick(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	bars, err := store.LoadDay("NSE:NIFTY50", "2m", day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bars) != 1 {
+		t.Fatalf("expected one finalized 2m rollup, got %+v", bars)
+	}
+	got := bars[0]
+	if !got.Final || got.Open != 25100 || got.High != 25108 || got.Close != 25108 {
+		t.Fatalf("unexpected 2m rollup: %+v", got)
+	}
+	if got.CandleEngineVersion != "candle-rollup-v1" {
+		t.Fatalf("expected rollup engine version, got %q", got.CandleEngineVersion)
+	}
+}
+
+func TestPipelineRequiresCanonicalMinuteForDerivedIntervals(t *testing.T) {
+	_, err := New(candle.New("candle-v2"), nil, []string{"15s", "2m"})
+	if err == nil {
+		t.Fatal("expected 1m requirement for derived intervals")
+	}
+}
