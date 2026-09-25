@@ -64,7 +64,7 @@ async function bootstrap() {
           streamUrl: runtime.streamUrl,
         }),
     },
-    persist: 'qnext-workspace-v1',
+    persist: 'qnext-workspace-v2',
     topbar: {
       left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
     },
