@@ -121,18 +121,39 @@ function renderStatus(status: OpsStatus) {
     <div><span>/version</span>${badge(status.marketCore.version.ok, status.marketCore.version.ok ? 'PASS' : 'FAIL')}</div>
     <div><span>Storage</span><strong>${status.storageRoot}</strong></div>
     <div><span>Config</span><strong>${status.configPath}</strong></div>
+    <div><span>Host control</span>${badge(status.host.processControl, status.host.processControl ? 'PASS' : 'SETUP')}</div>
+    <div><span>Helper</span>${badge(status.host.helperAvailable, status.host.helperAvailable ? 'PASS' : 'FAIL')}</div>
   `;
 
   const releaseStatus = document.querySelector<HTMLDivElement>('#release-status')!;
   releaseStatus.innerHTML = `
     <div class="line"><span>Current</span><strong>${status.release.current ?? 'none'}</strong></div>
+    <div class="line"><span>Mode</span><strong>${status.release.mode ?? 'staged'}</strong></div>
     <div class="line"><span>Available</span><strong>${status.release.available.length}</strong></div>
   `;
 
   const select = document.querySelector<HTMLSelectElement>('#release-select')!;
+  const activate = document.querySelector<HTMLButtonElement>('#activate')!;
+  const rollback = document.querySelector<HTMLButtonElement>('#rollback')!;
+  const directMode = status.release.mode === 'direct';
+
   select.innerHTML = status.release.available
     .map((version) => `<option value="${version}" ${version === status.release.current ? 'selected' : ''}>${version}</option>`)
     .join('');
+  select.disabled = directMode || status.release.available.length === 0;
+  activate.disabled = directMode || status.release.available.length === 0;
+  rollback.disabled = directMode;
+
+  const serviceReady = status.host.processControl && status.host.helperAvailable;
+  document.querySelectorAll<HTMLButtonElement>('[data-service]').forEach((button) => {
+    button.disabled = !serviceReady;
+  });
+
+  if (!status.host.processControl) {
+    toast('Cloudways setup required: enable PHP functions proc_open and proc_close for this application.', true);
+  } else if (!status.host.helperAvailable) {
+    toast('QNext runtime helper is missing from the private deployment payload.', true);
+  }
 }
 
 async function refresh() {
@@ -235,7 +256,7 @@ document.querySelector('#save-config')!.addEventListener('click', async () => {
     const editor = document.querySelector<HTMLTextAreaElement>('#config-editor')!;
     const parsed = JSON.parse(editor.value) as Record<string, unknown>;
     await api.saveConfig(parsed);
-    toast('Configuration saved');
+    toast('Configuration saved. Restart Market Core to apply.');
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -258,7 +279,7 @@ secretForm.addEventListener('submit', async (event) => {
   }
   try {
     const result = await api.saveSecrets(secrets);
-    toast(`Stored: ${result.stored.join(', ')}`);
+    toast(`Stored: ${result.stored.join(', ')}. Restart Market Core to apply.`);
     secretForm.reset();
   } catch (error) {
     toast((error as Error).message, true);
