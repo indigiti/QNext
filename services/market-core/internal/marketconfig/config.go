@@ -427,6 +427,16 @@ func defaultMarket(
 	}
 }
 
+func ChartTimeframes() []string {
+	return []string{
+		"1s", "5s", "10s", "15s", "30s", "45s",
+		"1m", "2m", "3m", "5m", "10m", "15m", "30m", "45m",
+		"1h", "2h", "3h", "4h",
+		"1D", "1W",
+		"1M", "3M", "6M", "12M",
+	}
+}
+
 func (c Config) AutoLegsEnabled() bool {
 	for _, market := range c.EffectiveMarkets() {
 		if market.Synthetic.Auto != nil {
