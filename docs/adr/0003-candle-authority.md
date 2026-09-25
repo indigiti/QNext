@@ -23,3 +23,8 @@ A canonical bar records:
 - source/candle-engine/synthetic versions where applicable
 
 Independent reconstruction of supposedly identical candles in downstream services is prohibited.
+
+
+## Authority clock
+
+Canonical finality is owned by Market Core, not by arrival of the next provider tick. The candle engine uses the instrument's certified market calendar for live session admission and intraday alignment, and Market Core publishes/persists due final bars from its authority clock.
