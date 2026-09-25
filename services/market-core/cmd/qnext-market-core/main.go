@@ -127,9 +127,9 @@ func main() {
 		StartedAt:         started,
 		StreamHandler:     stream.NewWebSocketHandler(broker),
 		EnabledTimeframes: enabledTimeframes,
-		LiveBars:      broker,
-		Symbols:       registry,
-		Calendars:     calendars,
+		LiveBars:          broker,
+		Symbols:           registry,
+		Calendars:         calendars,
 		ResilienceStatus: func() any {
 			return resilienceMetrics.Snapshot()
 		},
