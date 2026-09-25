@@ -90,14 +90,14 @@ type HistoricalRepairStatus struct {
 }
 
 type HistoricalRepairer struct {
-	Client      HistoricalRangeFetcher
-	AccessToken string
-	History     HistoricalRepairStore
-	Calendars   *marketcalendar.Registry
-	Markets     []marketconfig.MarketConfig
-	Timeframes  []string
-	Resync      HistoricalRepairResync
-	Now         func() time.Time
+	Client       HistoricalRangeFetcher
+	AccessToken  string
+	History      HistoricalRepairStore
+	Calendars    *marketcalendar.Registry
+	Markets      []marketconfig.MarketConfig
+	Timeframes   []string
+	Resync       HistoricalRepairResync
+	Now          func() time.Time
 
 	runMu    sync.Mutex
 	statusMu sync.RWMutex
@@ -370,7 +370,6 @@ func (r *HistoricalRepairer) Repair(
 	r.finish(result, nil)
 	return result, nil
 }
-
 
 func (r *HistoricalRepairer) timeframeEnabled(timeframe string) bool {
 	if len(r.Timeframes) == 0 {
