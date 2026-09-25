@@ -2,6 +2,7 @@ package stream
 
 import (
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -152,25 +153,24 @@ func TestForwardSubscriptionSignalsSlowConsumerResync(t *testing.T) {
 		close(finished)
 	}()
 
-	var got []serverMessage
-	for {
-		select {
-		case message := <-messages:
-			got = append(got, message)
-		case <-finished:
-			if len(got) != 2 {
-				t.Fatalf("expected update then resync, got %+v", got)
-			}
-			if got[0].Op != "update" || got[0].Seq != 1 {
-				t.Fatalf("unexpected retained update: %+v", got[0])
-			}
-			if got[1].Op != "resync_required" || got[1].Reason != "slow_consumer" {
-				t.Fatalf("unexpected slow-consumer control: %+v", got[1])
-			}
-			return
-		case <-time.After(2 * time.Second):
-			t.Fatal("forwarder did not terminate after slow-consumer eviction")
-		}
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("forwarder did not terminate after slow-consumer eviction")
+	}
+	close(messages)
+	got := make([]serverMessage, 0, 2)
+	for message := range messages {
+		got = append(got, message)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected update then resync, got %+v", got)
+	}
+	if got[0].Op != "update" || got[0].Seq != 1 {
+		t.Fatalf("unexpected retained update: %+v", got[0])
+	}
+	if got[1].Op != "resync_required" || got[1].Reason != "slow_consumer" {
+		t.Fatalf("unexpected slow-consumer control: %+v", got[1])
 	}
 }
 
@@ -252,6 +252,45 @@ func TestWebSocketFanoutTo50Clients(t *testing.T) {
 	close(errorsCh)
 	for message := range errorsCh {
 		t.Fatal(message)
+	}
+}
+
+func TestBrokerFanoutLatencyProfile100Subscribers(t *testing.T) {
+	broker := NewBroker(1024, 1024)
+	const subscriberCount = 100
+	const sampleCount = 500
+	subscriptions := make([]*Subscription, 0, subscriberCount)
+	for i := 0; i < subscriberCount; i++ {
+		subscription, err := broker.Subscribe("NSE:NIFTY50", "15s", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		subscriptions = append(subscriptions, subscription)
+	}
+	defer func() {
+		for _, subscription := range subscriptions {
+			subscription.Cancel()
+		}
+	}()
+
+	latencies := make([]time.Duration, 0, sampleCount)
+	at := time.Date(2026, 9, 25, 3, 45, 0, 0, time.UTC)
+	for i := 0; i < sampleCount; i++ {
+		started := time.Now()
+		broker.PublishBar(bar("NSE:NIFTY50", "15s", at, float64(i)))
+		latencies = append(latencies, time.Since(started))
+	}
+	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	percentile := func(p float64) time.Duration {
+		index := int(float64(len(latencies)-1) * p)
+		return latencies[index]
+	}
+	p50 := percentile(0.50)
+	p95 := percentile(0.95)
+	p99 := percentile(0.99)
+	t.Logf("100-subscriber broker publish latency: p50=%s p95=%s p99=%s", p50, p95, p99)
+	if p99 > 50*time.Millisecond {
+		t.Fatalf("broker p99 publish latency is pathologically high: %s", p99)
 	}
 }
 
