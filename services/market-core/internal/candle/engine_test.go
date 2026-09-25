@@ -72,7 +72,6 @@ func TestLateTickRejected(t *testing.T) {
 	}
 }
 
-
 func TestExpandedTimeframesUseIndianSessionAnchors(t *testing.T) {
 	tests := []struct {
 		timeframe string

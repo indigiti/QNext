@@ -65,9 +65,9 @@ type HistoricalRepairCounts struct {
 }
 
 type HistoricalRepairMarketResult struct {
-	Symbol       string                           `json:"symbol"`
-	InstrumentID string                           `json:"instrument_id"`
-	ProviderKey  string                           `json:"provider_key"`
+	Symbol       string                            `json:"symbol"`
+	InstrumentID string                            `json:"instrument_id"`
+	ProviderKey  string                            `json:"provider_key"`
 	Timeframes   map[string]HistoricalRepairCounts `json:"timeframes"`
 }
 
@@ -80,13 +80,13 @@ type HistoricalRepairResult struct {
 }
 
 type HistoricalRepairStatus struct {
-	Running       bool                           `json:"running"`
-	Days          int                            `json:"days,omitempty"`
-	Reason        string                         `json:"reason,omitempty"`
-	StartedAtMS   int64                          `json:"started_at_ms,omitempty"`
-	CompletedAtMS int64                          `json:"completed_at_ms,omitempty"`
-	LastError     string                         `json:"last_error,omitempty"`
-	LastResult    *HistoricalRepairResult        `json:"last_result,omitempty"`
+	Running       bool                    `json:"running"`
+	Days          int                     `json:"days,omitempty"`
+	Reason        string                  `json:"reason,omitempty"`
+	StartedAtMS   int64                   `json:"started_at_ms,omitempty"`
+	CompletedAtMS int64                   `json:"completed_at_ms,omitempty"`
+	LastError     string                  `json:"last_error,omitempty"`
+	LastResult    *HistoricalRepairResult `json:"last_result,omitempty"`
 }
 
 type HistoricalRepairer struct {

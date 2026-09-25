@@ -17,11 +17,11 @@ import (
 const DefaultHistoricalBaseURL = "https://api.upstox.com/v3/historical-candle"
 
 type HistoricalRangeClient struct {
-	HTTP            HTTPDoer
-	BaseURL         string
-	Intraday        IntradayFetcher
-	Now             func() time.Time
-	MarketTimezone  string
+	HTTP           HTTPDoer
+	BaseURL        string
+	Intraday       IntradayFetcher
+	Now            func() time.Time
+	MarketTimezone string
 }
 
 func (c HistoricalRangeClient) FetchRange(

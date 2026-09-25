@@ -73,19 +73,19 @@ func TestHistoricalRepairBuildsExpandedIntervalsAndIsIdempotent(t *testing.T) {
 	store := history.New(t.TempDir())
 	resync := &repairResyncCollector{}
 	repairer := &HistoricalRepairer{
-		Client: fakeHistoricalRangeFetcher{minutes: minutes},
+		Client:      fakeHistoricalRangeFetcher{minutes: minutes},
 		AccessToken: "token",
-		History: store,
-		Calendars: marketcalendar.DefaultRegistry(),
-		Markets: []marketconfig.MarketConfig{marketconfig.DefaultMarkets()[0]},
-		Resync: resync,
+		History:     store,
+		Calendars:   marketcalendar.DefaultRegistry(),
+		Markets:     []marketconfig.MarketConfig{marketconfig.DefaultMarkets()[0]},
+		Resync:      resync,
 		Now: func() time.Time {
 			return time.Date(2026, 9, 25, 16, 0, 0, 0, ist).UTC()
 		},
 	}
 
 	first, err := repairer.Repair(context.Background(), HistoricalRepairRequest{
-		Days: 3,
+		Days:   3,
 		Reason: "test",
 	})
 	if err != nil {

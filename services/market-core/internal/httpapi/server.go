@@ -22,17 +22,17 @@ type LiveBarReader interface {
 }
 
 type Options struct {
-	Version          string
-	Commit           string
-	StartedAt        time.Time
-	StreamHandler    http.Handler
-	LiveBars         LiveBarReader
-	Symbols          *symbol.Registry
-	Calendars        *marketcalendar.Registry
-	ResilienceStatus func() any
-	FeedStatus              func() any
-	HistoricalRepair        func(context.Context, int, []string, string) (any, error)
-	HistoricalRepairStatus  func() any
+	Version                string
+	Commit                 string
+	StartedAt              time.Time
+	StreamHandler          http.Handler
+	LiveBars               LiveBarReader
+	Symbols                *symbol.Registry
+	Calendars              *marketcalendar.Registry
+	ResilienceStatus       func() any
+	FeedStatus             func() any
+	HistoricalRepair       func(context.Context, int, []string, string) (any, error)
+	HistoricalRepairStatus func() any
 }
 
 type Server struct {
