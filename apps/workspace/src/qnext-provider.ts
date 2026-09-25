@@ -291,7 +291,11 @@ export class QNextProvider {
     };
 
     const stopPolling = () => {
-      stopPolling();
+      polling = false;
+      if (pollTimer !== undefined) {
+        clearTimeout(pollTimer);
+        pollTimer = undefined;
+      }
     };
 
     const scheduleReconnect = (instrumentID: string) => {
