@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/indigiti/QNext/services/market-core/internal/autolegs"
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/capture"
 	"github.com/indigiti/QNext/services/market-core/internal/history"
@@ -236,41 +237,86 @@ func runMarket(
 	dhanAccessToken string,
 	resilienceMetrics *resilience.Metrics,
 ) error {
-	legs := make([]synthetic.LegBinding, 0, len(config.Synthetic.Legs))
-	for _, leg := range config.Synthetic.Legs {
-		side := synthetic.LegCall
-		if strings.EqualFold(leg.Side, "PUT") {
-			side = synthetic.LegPut
-		}
-		legs = append(legs, synthetic.LegBinding{
-			InstrumentID: leg.InstrumentID,
-			Strike:       leg.Strike,
-			Side:         side,
-		})
-	}
-
 	canonicalPipeline, err := pipeline.New(candle.New("candle-v1"), store, config.Timeframes)
 	if err != nil {
 		return err
 	}
 
-	var syntheticSequence atomic.Uint64
-	assembler, err := synthetic.NewAssembler(synthetic.Definition{
-		ID:                     config.Synthetic.InstrumentID,
-		Version:                config.Synthetic.Version,
-		MinimumValidCandidates: config.Synthetic.MinimumValidCandidates,
-		MaxLegAge:              time.Duration(config.Synthetic.MaxLegAgeMS) * time.Millisecond,
-		MaxLegTimeSkew:         time.Duration(config.Synthetic.MaxLegTimeSkewMS) * time.Millisecond,
-	}, legs, func() uint64 {
-		return syntheticSequence.Add(1)
-	})
+	subscriptions, err := upstox.NewSubscriptionState(
+		"qnext-market-core",
+		upstox.ModeLTPC,
+		config.ProviderKeys(),
+	)
 	if err != nil {
 		return err
 	}
 
+	var syntheticSequence atomic.Uint64
+	nextSyntheticSequence := func() uint64 {
+		return syntheticSequence.Add(1)
+	}
+
+	var syntheticEngine qruntime.SyntheticAssembler
+	if config.AutoLegsEnabled() {
+		auto := config.Synthetic.Auto
+		manager, managerErr := autolegs.New(autolegs.Config{
+			UnderlyingInstrumentID: config.Nifty.InstrumentID,
+			SyntheticInstrumentID:  config.Synthetic.InstrumentID,
+			Version:                config.Synthetic.Version,
+			StrikeInterval:         auto.StrikeInterval,
+			ActiveStrikes:          auto.ActiveStrikes,
+			WarmStrikes:            auto.WarmStrikes,
+			HysteresisPoints:       auto.ATMHysteresisPoints,
+			Confirmation:           time.Duration(auto.ATMConfirmationMS) * time.Millisecond,
+			MinimumValidCandidates: config.Synthetic.MinimumValidCandidates,
+			MaxLegAge:              time.Duration(config.Synthetic.MaxLegAgeMS) * time.Millisecond,
+			MaxLegTimeSkew:         time.Duration(config.Synthetic.MaxLegTimeSkewMS) * time.Millisecond,
+		}, upstox.OptionLegResolver{
+			Client:        upstox.OptionContractsClient{},
+			AccessToken:   accessToken,
+			UnderlyingKey: config.Nifty.ProviderKey,
+			Registry:      registry,
+		}, subscriptions, nextSyntheticSequence, func(err error) {
+			log.Printf("NIFTY-SYN auto-leg manager: %v", err)
+		})
+		if managerErr != nil {
+			return managerErr
+		}
+		syntheticEngine = manager
+		go func() {
+			if runErr := manager.Run(ctx); runErr != nil && ctx.Err() == nil {
+				log.Printf("NIFTY-SYN auto-leg manager stopped: %v", runErr)
+			}
+		}()
+	} else {
+		legs := make([]synthetic.LegBinding, 0, len(config.Synthetic.Legs))
+		for _, leg := range config.Synthetic.Legs {
+			side := synthetic.LegCall
+			if strings.EqualFold(leg.Side, "PUT") {
+				side = synthetic.LegPut
+			}
+			legs = append(legs, synthetic.LegBinding{
+				InstrumentID: leg.InstrumentID,
+				Strike:       leg.Strike,
+				Side:         side,
+			})
+		}
+		assembler, assemblerErr := synthetic.NewAssembler(synthetic.Definition{
+			ID:                     config.Synthetic.InstrumentID,
+			Version:                config.Synthetic.Version,
+			MinimumValidCandidates: config.Synthetic.MinimumValidCandidates,
+			MaxLegAge:              time.Duration(config.Synthetic.MaxLegAgeMS) * time.Millisecond,
+			MaxLegTimeSkew:         time.Duration(config.Synthetic.MaxLegTimeSkewMS) * time.Millisecond,
+		}, legs, nextSyntheticSequence)
+		if assemblerErr != nil {
+			return assemblerErr
+		}
+		syntheticEngine = assembler
+	}
+
 	marketSink := &qruntime.MarketSink{
 		Pipeline:  canonicalPipeline,
-		Synthetic: assembler,
+		Synthetic: syntheticEngine,
 		Publisher: broker,
 		DirectInstruments: map[string]bool{
 			config.Nifty.InstrumentID: true,
@@ -284,10 +330,11 @@ func runMarket(
 	}
 	var providerSequence atomic.Uint64
 	wire := &upstox.WireClient{
-		Authorizer: upstox.Authorizer{},
-		Dialer:     upstox.GorillaDialer{},
-		Decoder:    upstox.ProtobufDecoder{},
-		Normalizer: normalizer,
+		Authorizer:          upstox.Authorizer{},
+		Dialer:              upstox.GorillaDialer{},
+		Decoder:             upstox.ProtobufDecoder{},
+		Normalizer:          normalizer,
+		SubscriptionUpdates: subscriptions.Updates(),
 		NextSequence: func() uint64 {
 			return providerSequence.Add(1)
 		},
@@ -305,18 +352,12 @@ func runMarket(
 		InstrumentIDs: map[string]bool{config.Nifty.InstrumentID: true},
 	}
 
-	request := upstox.SubscriptionRequest{
-		GUID:   "qnext-market-core",
-		Method: upstox.MethodSubscribe,
-		Data: upstox.SubscriptionData{
-			Mode:           upstox.ModeLTPC,
-			InstrumentKeys: config.ProviderKeys(),
-		},
-	}
+	request := subscriptions.Snapshot()
 	if resilienceConfig == nil {
 		supervisor := &upstox.Supervisor{
-			Runner:   wire,
-			Recovery: recovery,
+			Runner:          wire,
+			Recovery:        recovery,
+			RequestSnapshot: subscriptions.Snapshot,
 		}
 		return supervisor.Run(ctx, accessToken, request, dedupe.Handle)
 	}
@@ -333,6 +374,7 @@ func runMarket(
 		wire,
 		recovery,
 		request,
+		subscriptions.Snapshot,
 		dedupe.Handle,
 		resilienceMetrics,
 	)

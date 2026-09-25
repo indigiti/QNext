@@ -63,6 +63,7 @@ func runResilientMarket(
 	upstoxRunner upstox.StreamRunner,
 	upstoxRecovery upstox.GapRecovery,
 	upstoxRequest upstox.SubscriptionRequest,
+	upstoxRequestSnapshot func() upstox.SubscriptionRequest,
 	downstream resilience.TickSink,
 	metrics *resilience.Metrics,
 ) error {
@@ -142,6 +143,14 @@ func runResilientMarket(
 	}
 	router.SetTransitionSink(resilience.NewTransitionStore(env("QNEXT_STORAGE_ROOT", "./storage")).Append)
 	onTick := func(tick domain.Tick) error {
+		if marketConfig.AutoLegsEnabled() &&
+			tick.Provider == upstox.ProviderName &&
+			tick.InstrumentID != marketConfig.Nifty.InstrumentID {
+			// Dynamic option legs are currently Upstox-only synthetic inputs.
+			// They bypass provider-authority routing while the underlying NIFTY
+			// continues through the certified Upstox/Dhan authority state machine.
+			return downstream(tick)
+		}
 		return router.HandleContext(ctx, tick)
 	}
 
@@ -163,7 +172,10 @@ func runResilientMarket(
 	// In Q3, authority-switch recovery owns reconciliation. The Upstox
 	// supervisor therefore reconnects without independently writing recovery
 	// bars, avoiding duplicate provider recoveries for the same outage window.
-	upstoxSupervisor := &upstox.Supervisor{Runner: upstoxRunner}
+	upstoxSupervisor := &upstox.Supervisor{
+		Runner:          upstoxRunner,
+		RequestSnapshot: upstoxRequestSnapshot,
+	}
 
 	go runProviderLoop(ctx, upstox.ProviderName, metrics, func() error {
 		return upstoxSupervisor.Run(ctx, upstoxAccessToken, upstoxRequest, onTick)

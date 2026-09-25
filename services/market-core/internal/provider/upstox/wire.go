@@ -28,13 +28,14 @@ type FeedDecoder interface {
 }
 
 type WireClient struct {
-	Authorizer   MarketFeedAuthorizer
-	Dialer       BinaryDialer
-	Decoder      FeedDecoder
-	Normalizer   *Normalizer
-	NextSequence func() uint64
-	Now          func() time.Time
-	CaptureFrame func([]byte) error
+	Authorizer          MarketFeedAuthorizer
+	Dialer              BinaryDialer
+	Decoder             FeedDecoder
+	Normalizer          *Normalizer
+	NextSequence        func() uint64
+	Now                 func() time.Time
+	CaptureFrame        func([]byte) error
+	SubscriptionUpdates <-chan SubscriptionRequest
 }
 
 func (c *WireClient) Open(
@@ -86,6 +87,11 @@ func (c *WireClient) HandleFrame(payload []byte) ([]domain.Tick, error) {
 	return c.Normalizer.NormalizeEnvelope(envelope, now().UTC(), c.NextSequence)
 }
 
+type frameResult struct {
+	payload []byte
+	err     error
+}
+
 func (c *WireClient) Run(
 	ctx context.Context,
 	accessToken string,
@@ -101,26 +107,58 @@ func (c *WireClient) Run(
 	}
 	defer connection.Close()
 
+	frames := make(chan frameResult, 1)
+	go func() {
+		for {
+			payload, readErr := connection.ReadBinary(ctx)
+			frames <- frameResult{payload: payload, err: readErr}
+			if readErr != nil {
+				return
+			}
+		}
+	}()
+
 	for {
-		payload, err := connection.ReadBinary(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case update, ok := <-c.SubscriptionUpdates:
+			if !ok {
+				c.SubscriptionUpdates = nil
+				continue
 			}
-			return fmt.Errorf("read Upstox market frame: %w", err)
-		}
-		if c.CaptureFrame != nil {
-			if err := c.CaptureFrame(payload); err != nil {
-				return fmt.Errorf("capture Upstox frame: %w", err)
+			payload, marshalErr := update.MarshalBinary()
+			if marshalErr != nil {
+				return fmt.Errorf("encode Upstox subscription update: %w", marshalErr)
 			}
-		}
-		ticks, err := c.HandleFrame(payload)
-		if err != nil {
-			return err
-		}
-		for _, tick := range ticks {
-			if err := onTick(tick); err != nil {
-				return fmt.Errorf("deliver normalized tick: %w", err)
+			if writeErr := connection.WriteBinary(ctx, payload); writeErr != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return fmt.Errorf("send Upstox subscription update: %w", writeErr)
+			}
+
+		case result := <-frames:
+			if result.err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return fmt.Errorf("read Upstox market frame: %w", result.err)
+			}
+			if c.CaptureFrame != nil {
+				if captureErr := c.CaptureFrame(result.payload); captureErr != nil {
+					return fmt.Errorf("capture Upstox frame: %w", captureErr)
+				}
+			}
+			ticks, handleErr := c.HandleFrame(result.payload)
+			if handleErr != nil {
+				return handleErr
+			}
+			for _, tick := range ticks {
+				if sinkErr := onTick(tick); sinkErr != nil {
+					return fmt.Errorf("deliver normalized tick: %w", sinkErr)
+				}
 			}
 		}
 	}

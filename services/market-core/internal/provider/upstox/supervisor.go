@@ -31,13 +31,14 @@ type GapRecovery interface {
 }
 
 type Supervisor struct {
-	Runner     StreamRunner
-	Recovery   GapRecovery
-	MinBackoff time.Duration
-	MaxBackoff time.Duration
-	ResetAfter time.Duration
-	Now        func() time.Time
-	Sleep      func(context.Context, time.Duration) error
+	Runner          StreamRunner
+	Recovery        GapRecovery
+	RequestSnapshot func() SubscriptionRequest
+	MinBackoff      time.Duration
+	MaxBackoff      time.Duration
+	ResetAfter      time.Duration
+	Now             func() time.Time
+	Sleep           func(context.Context, time.Duration) error
 }
 
 func (s *Supervisor) Run(
@@ -79,8 +80,13 @@ func (s *Supervisor) Run(
 	var lastEventTime time.Time
 
 	for {
+		runRequest := request
+		if s.RequestSnapshot != nil {
+			runRequest = s.RequestSnapshot()
+		}
+
 		sessionStarted := now().UTC()
-		err := s.Runner.Run(ctx, accessToken, request, func(tick domain.Tick) error {
+		err := s.Runner.Run(ctx, accessToken, runRequest, func(tick domain.Tick) error {
 			if tick.EventTime.After(lastEventTime) {
 				lastEventTime = tick.EventTime
 			}
@@ -108,7 +114,7 @@ func (s *Supervisor) Run(
 		if s.Recovery != nil && !lastEventTime.IsZero() && recoveryTo.After(lastEventTime) {
 			recovery := RecoveryRequest{
 				Provider:       ProviderName,
-				InstrumentKeys: append([]string(nil), request.Data.InstrumentKeys...),
+				InstrumentKeys: append([]string(nil), runRequest.Data.InstrumentKeys...),
 				From:           lastEventTime,
 				To:             recoveryTo,
 				Cause:          err.Error(),

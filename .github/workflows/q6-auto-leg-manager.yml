@@ -1,0 +1,57 @@
+name: Q6 Auto Leg Manager
+
+on:
+  pull_request:
+    paths:
+      - "services/market-core/internal/autolegs/**"
+      - "services/market-core/internal/provider/upstox/**"
+      - "services/market-core/internal/marketconfig/**"
+      - "services/market-core/internal/symbol/**"
+      - "services/market-core/cmd/qnext-market-core/**"
+      - "config/q1-market.example.json"
+      - "docs/architecture/q6-nifty-syn-auto-leg-manager.md"
+      - ".github/workflows/q6-auto-leg-manager.yml"
+  push:
+    branches:
+      - q6-auto-leg-manager
+    paths:
+      - "services/market-core/internal/autolegs/**"
+      - "services/market-core/internal/provider/upstox/**"
+      - "services/market-core/internal/marketconfig/**"
+      - "services/market-core/internal/symbol/**"
+      - "services/market-core/cmd/qnext-market-core/**"
+      - "config/q1-market.example.json"
+      - "docs/architecture/q6-nifty-syn-auto-leg-manager.md"
+      - ".github/workflows/q6-auto-leg-manager.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/market-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.sum
+      - name: Resolve modules
+        run: go mod download
+      - name: Verify formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Auto-leg certification
+        run: go test -race ./internal/autolegs ./internal/provider/upstox ./internal/marketconfig ./internal/symbol
+      - name: Full Market Core regression
+        run: go test -race ./...
+      - name: Build Market Core
+        run: go build ./cmd/qnext-market-core
