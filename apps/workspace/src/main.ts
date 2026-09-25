@@ -1,6 +1,7 @@
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
 
 import { QNextProvider } from './qnext-provider';
+import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import './style.css';
 
 declare global {
@@ -47,6 +48,29 @@ async function loadEnabledTimeframes(): Promise<string[]> {
   }
 }
 
+async function loadCustomIndicators() {
+  const apiBase = (runtime.apiBase ?? defaultApiBase).replace(/\/+$/, '');
+  try {
+    const response = await fetch(`${apiBase}/api/v1/indicators/`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json() as {
+      indicators: Array<{
+        name: string;
+        script: string;
+        language: string;
+        enabled: boolean;
+        category: string;
+      }>;
+    };
+  } catch (error) {
+    console.warn('QNext custom indicators unavailable', error);
+    return { indicators: [] };
+  }
+}
+
 async function bootstrap() {
   const timeframes = await loadEnabledTimeframes();
   const workspace = new VelaWorkspace('#app', {
@@ -64,6 +88,10 @@ async function bootstrap() {
           streamUrl: runtime.streamUrl,
         }),
     },
+    engines: {
+      qnext: () => new QNextIndicatorEngine(),
+    },
+    indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',
     topbar: {
       left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
