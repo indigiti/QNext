@@ -44,6 +44,12 @@ root.innerHTML = `
           <button id="refresh">Refresh</button>
         </div>
         <div id="runtime-status" class="status-grid"></div>
+        <div id="cron-setup" class="cron-setup" hidden>
+          <strong>Cloudways Cron Supervisor</strong>
+          <p class="muted">Add this once in Cloudways → Cron Job Management → Advanced. QNext will then manage Start / Stop / Restart without PHP process functions.</p>
+          <code id="cron-command"></code>
+          <button id="copy-cron" class="secondary">Copy cron entry</button>
+        </div>
         <div class="actions">
           <button data-service="start">Start</button>
           <button data-service="restart">Restart</button>
@@ -121,7 +127,8 @@ function renderStatus(status: OpsStatus) {
     <div><span>/version</span>${badge(status.marketCore.version.ok, status.marketCore.version.ok ? 'PASS' : 'FAIL')}</div>
     <div><span>Storage</span><strong>${status.storageRoot}</strong></div>
     <div><span>Config</span><strong>${status.configPath}</strong></div>
-    <div><span>Host control</span>${badge(status.host.processControl, status.host.processControl ? 'PASS' : 'SETUP')}</div>
+    <div><span>Control</span>${badge(status.host.controlMode !== 'setup', status.host.controlMode.toUpperCase())}</div>
+    <div><span>Cron supervisor</span>${badge(status.host.cronControl, status.host.cronControl ? 'PASS' : (status.host.processControl ? 'N/A' : 'SETUP'))}</div>
     <div><span>Helper</span>${badge(status.host.helperAvailable, status.host.helperAvailable ? 'PASS' : 'FAIL')}</div>
   `;
 
@@ -144,15 +151,21 @@ function renderStatus(status: OpsStatus) {
   activate.disabled = directMode || status.release.available.length === 0;
   rollback.disabled = directMode;
 
-  const serviceReady = status.host.processControl && status.host.helperAvailable;
+  const serviceReady =
+    (status.host.processControl || status.host.cronControl) && status.host.helperAvailable;
   document.querySelectorAll<HTMLButtonElement>('[data-service]').forEach((button) => {
     button.disabled = !serviceReady;
   });
 
-  if (!status.host.processControl) {
-    toast('Cloudways setup required: enable PHP functions proc_open and proc_close for this application.', true);
-  } else if (!status.host.helperAvailable) {
+  const cronSetup = document.querySelector<HTMLDivElement>('#cron-setup')!;
+  const cronCommand = document.querySelector<HTMLElement>('#cron-command')!;
+  cronSetup.hidden = status.host.processControl || status.host.cronControl;
+  cronCommand.textContent = status.host.cronCommand;
+
+  if (!status.host.helperAvailable) {
     toast('QNext runtime helper is missing from the private deployment payload.', true);
+  } else if (!status.host.processControl && !status.host.cronControl) {
+    toast('One-time setup: add the Cloudways cron supervisor entry shown under Runtime.', true);
   }
 }
 
@@ -202,13 +215,29 @@ tokenButton.addEventListener('click', async () => {
 
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
 document.querySelector('#load-config')!.addEventListener('click', () => void loadConfig());
+document.querySelector('#copy-cron')!.addEventListener('click', async () => {
+  const command = document.querySelector<HTMLElement>('#cron-command')!.textContent?.trim() ?? '';
+  if (!command) {
+    toast('Cron entry is not available yet.', true);
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(command);
+    toast('Cron entry copied');
+  } catch {
+    toast('Copy failed. Select the cron entry manually.', true);
+  }
+});
 
 document.querySelectorAll<HTMLButtonElement>('[data-service]').forEach((button) => {
   button.addEventListener('click', async () => {
     try {
       const action = button.dataset.service as ServiceAction;
-      await api.service(action);
-      toast(`Service ${action} completed`);
+      const result = await api.service(action);
+      const queued = result.output.toLowerCase().includes('queued');
+      toast(queued
+        ? `Service ${action} queued; the cron supervisor will apply it on its next run.`
+        : `Service ${action} completed`);
       await refresh();
     } catch (error) {
       toast((error as Error).message, true);
