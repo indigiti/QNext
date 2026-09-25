@@ -6,6 +6,7 @@ import {
   type OpsStatus,
   type RuntimeDiagnostics,
   type ServiceAction,
+  type CustomIndicator,
 } from './api';
 import './style.css';
 
@@ -186,6 +187,49 @@ root.innerHTML = `
         <p class="muted">Startup automatically reconciles 3 days. Manual repair scope is the currently active markets. Missing bars are inserted; differing bars are appended as higher revisions.</p>
         <div id="historical-repair-result" class="history-repair-result muted">No manual repair run in this session.</div>
       </section>
+
+
+      <section class="card span-3" id="custom-indicators-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Charts</p>
+            <h2>Custom Indicators</h2>
+            <p class="muted">Manage the QNext indicator catalog. Enabled indicators appear under Indicators → QNext. Changes are file-backed and do not restart Market Core.</p>
+          </div>
+          <button id="reload-custom-indicators" class="secondary">Reload</button>
+        </div>
+        <div id="custom-indicator-list" class="custom-indicator-list"></div>
+        <form id="custom-indicator-form" class="indicator-form">
+          <input type="hidden" name="editingId" />
+          <div class="indicator-form-grid">
+            <label><span>Name</span><input name="name" value="Adaptive EMA [QALG]" required /></label>
+            <label><span>ID</span><input name="id" value="adaptive-ema-qalg" pattern="[a-z0-9][a-z0-9-]{0,63}" required /></label>
+            <label><span>Kind</span><select name="kind"><option value="adaptive-ema-qalg">Adaptive EMA [QALG]</option></select></label>
+            <label class="checkbox-field"><span>Enabled</span><input name="enabled" type="checkbox" checked /></label>
+            <label><span>Price Source</span><select name="priceSource">
+              <option value="close">close</option><option value="open">open</option><option value="high">high</option><option value="low">low</option>
+              <option value="hl2">hl2</option><option value="hlc3">hlc3</option><option value="ohlc4">ohlc4</option>
+            </select></label>
+            <label><span>EMA Length</span><input name="emaLength" type="number" min="1" max="1000" value="20" /></label>
+            <label><span>SD Lookback</span><input name="lookbackPeriod" type="number" min="2" max="1000" value="30" /></label>
+            <label><span>SD Multiplier</span><input name="stddevMultiplier" type="number" min="0.1" max="20" step="0.1" value="2" /></label>
+            <label><span>ATR Length</span><input name="atrLength" type="number" min="1" max="1000" value="14" /></label>
+            <label><span>ATR Multiplier</span><input name="atrMultiplier" type="number" min="0.1" max="20" step="0.1" value="1.5" /></label>
+            <label><span>Up Color</span><input name="upColor" type="color" value="#00ffaa" /></label>
+            <label><span>Down Color</span><input name="downColor" type="color" value="#ff0000" /></label>
+            <label class="checkbox-field"><span>Color Bars</span><input name="colorBars" type="checkbox" checked /></label>
+            <label><span>Attribution</span><input name="attribution" value="QuantAlgo" /></label>
+            <label><span>License</span><input name="license" value="MPL-2.0" /></label>
+          </div>
+          <label><span>Description</span><input name="description" value="Adaptive EMA trend overlay using EMA, standard deviation and ATR filters." /></label>
+          <label><span>License URL</span><input name="licenseUrl" value="https://mozilla.org/MPL/2.0/" /></label>
+          <div class="actions">
+            <button type="submit" id="save-custom-indicator">Add indicator</button>
+            <button type="button" id="cancel-custom-indicator" class="secondary">Reset</button>
+          </div>
+        </form>
+      </section>
+
 
       <section class="card">
         <p class="eyebrow">Secrets</p>
@@ -710,6 +754,135 @@ async function loadHistoricalRepairStatus() {
   }
 }
 
+
+function customIndicatorFromForm(form: HTMLFormElement): CustomIndicator {
+  const data = new FormData(form);
+  const numberValue = (key: string) => Number(data.get(key));
+  return {
+    id: String(data.get('id') ?? '').trim(),
+    name: String(data.get('name') ?? '').trim(),
+    category: 'QNext',
+    kind: 'adaptive-ema-qalg',
+    enabled: data.get('enabled') === 'on',
+    description: String(data.get('description') ?? '').trim(),
+    defaults: {
+      priceSource: String(data.get('priceSource') ?? 'close'),
+      emaLength: numberValue('emaLength'),
+      lookbackPeriod: numberValue('lookbackPeriod'),
+      stddevMultiplier: numberValue('stddevMultiplier'),
+      atrLength: numberValue('atrLength'),
+      atrMultiplier: numberValue('atrMultiplier'),
+      upColor: String(data.get('upColor') ?? '#00ffaa'),
+      downColor: String(data.get('downColor') ?? '#ff0000'),
+      colorBars: data.get('colorBars') === 'on',
+    },
+    attribution: String(data.get('attribution') ?? '').trim(),
+    license: String(data.get('license') ?? '').trim(),
+    licenseUrl: String(data.get('licenseUrl') ?? '').trim(),
+  };
+}
+
+function fillCustomIndicatorForm(indicator?: CustomIndicator) {
+  const form = document.querySelector<HTMLFormElement>('#custom-indicator-form')!;
+  const set = (name: string, value: string | number) => {
+    const input = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
+    if (input) input.value = String(value);
+  };
+  const setChecked = (name: string, checked: boolean) => {
+    const input = form.elements.namedItem(name) as HTMLInputElement | null;
+    if (input) input.checked = checked;
+  };
+  const editing = form.elements.namedItem('editingId') as HTMLInputElement;
+
+  editing.value = indicator?.id ?? '';
+  set('name', indicator?.name ?? 'Adaptive EMA [QALG]');
+  set('id', indicator?.id ?? 'adaptive-ema-qalg');
+  set('kind', 'adaptive-ema-qalg');
+  set('priceSource', indicator?.defaults.priceSource ?? 'close');
+  set('emaLength', indicator?.defaults.emaLength ?? 20);
+  set('lookbackPeriod', indicator?.defaults.lookbackPeriod ?? 30);
+  set('stddevMultiplier', indicator?.defaults.stddevMultiplier ?? 2);
+  set('atrLength', indicator?.defaults.atrLength ?? 14);
+  set('atrMultiplier', indicator?.defaults.atrMultiplier ?? 1.5);
+  set('upColor', indicator?.defaults.upColor ?? '#00ffaa');
+  set('downColor', indicator?.defaults.downColor ?? '#ff0000');
+  set('description', indicator?.description ?? 'Adaptive EMA trend overlay using EMA, standard deviation and ATR filters.');
+  set('attribution', indicator?.attribution ?? 'QuantAlgo');
+  set('license', indicator?.license ?? 'MPL-2.0');
+  set('licenseUrl', indicator?.licenseUrl ?? 'https://mozilla.org/MPL/2.0/');
+  setChecked('enabled', indicator?.enabled ?? true);
+  setChecked('colorBars', indicator?.defaults.colorBars ?? true);
+
+  const idField = form.elements.namedItem('id') as HTMLInputElement;
+  idField.disabled = Boolean(indicator);
+  document.querySelector<HTMLButtonElement>('#save-custom-indicator')!.textContent =
+    indicator ? 'Update indicator' : 'Add indicator';
+}
+
+function renderCustomIndicators(indicators: CustomIndicator[], revision: number) {
+  const list = document.querySelector<HTMLDivElement>('#custom-indicator-list')!;
+  if (indicators.length === 0) {
+    list.innerHTML = '<div class="muted">No custom indicators configured.</div>';
+    return;
+  }
+  list.innerHTML = indicators.map((indicator) => `
+    <div class="custom-indicator-row" data-indicator-id="${indicator.id}">
+      <div>
+        <div class="line custom-indicator-title">
+          <strong>${indicator.name}</strong>
+          ${badge(indicator.enabled, indicator.enabled ? 'ENABLED' : 'DISABLED')}
+        </div>
+        <div class="muted">${indicator.id} · ${indicator.kind} · rev ${revision}</div>
+      </div>
+      <div class="actions">
+        <button type="button" class="secondary" data-indicator-action="edit" data-indicator-id="${indicator.id}">Edit</button>
+        <button type="button" class="secondary" data-indicator-action="toggle" data-indicator-id="${indicator.id}">
+          ${indicator.enabled ? 'Disable' : 'Enable'}
+        </button>
+        <button type="button" class="danger" data-indicator-action="delete" data-indicator-id="${indicator.id}">Delete</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll<HTMLButtonElement>('[data-indicator-action]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = button.dataset.indicatorId!;
+      const indicator = indicators.find((item) => item.id === id);
+      if (!indicator) return;
+      const action = button.dataset.indicatorAction;
+
+      if (action === 'edit') {
+        fillCustomIndicatorForm(indicator);
+        return;
+      }
+
+      try {
+        if (action === 'toggle') {
+          await api.updateCustomIndicator(id, { enabled: !indicator.enabled });
+          toast(`${indicator.name} ${indicator.enabled ? 'disabled' : 'enabled'}`);
+        } else if (action === 'delete') {
+          if (!window.confirm(`Delete ${indicator.name}?`)) return;
+          await api.deleteCustomIndicator(id);
+          toast(`${indicator.name} deleted`);
+          fillCustomIndicatorForm();
+        }
+        await loadCustomIndicators();
+      } catch (error) {
+        toast((error as Error).message, true);
+      }
+    });
+  });
+}
+
+async function loadCustomIndicators() {
+  try {
+    const catalog = await api.customIndicators();
+    renderCustomIndicators(catalog.indicators, catalog.revision);
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
 async function loadConfig() {
   try {
     const config = await api.getConfig();
@@ -745,6 +918,30 @@ tokenButton.addEventListener('click', async () => {
     await loadCandleTimeframes();
     await loadChartTimeframes();
     await loadHistoricalRepairStatus();
+    await loadCustomIndicators();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
+
+
+document.querySelector('#reload-custom-indicators')!.addEventListener('click', () => void loadCustomIndicators());
+document.querySelector('#cancel-custom-indicator')!.addEventListener('click', () => fillCustomIndicatorForm());
+document.querySelector<HTMLFormElement>('#custom-indicator-form')!.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const editingId = (form.elements.namedItem('editingId') as HTMLInputElement).value;
+  const indicator = customIndicatorFromForm(form);
+  try {
+    if (editingId) {
+      await api.updateCustomIndicator(editingId, indicator);
+      toast(`${indicator.name} updated`);
+    } else {
+      await api.createCustomIndicator(indicator);
+      toast(`${indicator.name} added`);
+    }
+    fillCustomIndicatorForm();
+    await loadCustomIndicators();
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -1040,6 +1237,7 @@ async function bootstrapAdmin() {
       await loadConfig();
       await loadActiveMarkets();
       await loadHistoricalRepairStatus();
+      await loadCustomIndicators();
       await probeBrowserStream();
     } else {
       toast('Enter the staging admin token to connect to QNext Ops.');
