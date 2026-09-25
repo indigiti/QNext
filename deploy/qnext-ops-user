@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -z "${QNEXT_PRIVATE_ROOT:-}" ]]; then
-  if [[ -f "$SCRIPT_DIR/../bin/qnext-market-core" ]]; then
+  if [[ -f "$SCRIPT_DIR/../bin/qnext-market-core.current" || -f "$SCRIPT_DIR/../bin/qnext-market-core" ]] || compgen -G "$SCRIPT_DIR/../bin/qnext-market-core-*" >/dev/null; then
     QNEXT_PRIVATE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
   else
     QNEXT_PRIVATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -23,10 +23,36 @@ fi
 PAYLOAD_PRIVATE="$PRIVATE_ROOT"
 if [[ -n "$CURRENT_PRIVATE" ]]; then
   PAYLOAD_PRIVATE="$CURRENT_PRIVATE"
-elif [[ -f "$PRIVATE_ROOT/private/bin/qnext-market-core" ]]; then
+elif [[ -f "$PRIVATE_ROOT/private/bin/qnext-market-core.current" || -f "$PRIVATE_ROOT/private/bin/qnext-market-core" ]] || compgen -G "$PRIVATE_ROOT/private/bin/qnext-market-core-*" >/dev/null; then
   PAYLOAD_PRIVATE="$PRIVATE_ROOT/private"
 fi
-BINARY="$PAYLOAD_PRIVATE/bin/qnext-market-core"
+
+resolve_binary() {
+  local pointer candidate
+  pointer="$PAYLOAD_PRIVATE/bin/qnext-market-core.current"
+  if [[ -s "$pointer" ]]; then
+    candidate="$(tr -d '\r\n' < "$pointer")"
+    if [[ "$candidate" =~ ^qnext-market-core-[A-Za-z0-9._-]+$ && -f "$PAYLOAD_PRIVATE/bin/$candidate" ]]; then
+      printf '%s\n' "$PAYLOAD_PRIVATE/bin/$candidate"
+      return 0
+    fi
+  fi
+
+  if [[ -f "$PAYLOAD_PRIVATE/bin/qnext-market-core" ]]; then
+    printf '%s\n' "$PAYLOAD_PRIVATE/bin/qnext-market-core"
+    return 0
+  fi
+
+  candidate="$(ls -1t "$PAYLOAD_PRIVATE"/bin/qnext-market-core-* 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$candidate" && -f "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  return 1
+}
+
+BINARY="$(resolve_binary || true)"
 PID_FILE="$PRIVATE_ROOT/run/market-core.pid"
 LOG_FILE="$PRIVATE_ROOT/logs/market-core.log"
 CONFIG_FILE="$PRIVATE_ROOT/config/q1-market.json"
@@ -51,14 +77,14 @@ read_pid() {
 }
 
 find_existing_pid() {
-  local proc pid cmdline
+  local proc pid exe
   for proc in /proc/[0-9]*; do
-    [[ -r "$proc/cmdline" ]] || continue
+    [[ -e "$proc/exe" ]] || continue
     pid="${proc##*/}"
     [[ "$pid" != "$" ]] || continue
-    cmdline="$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null || true)"
-    case "$cmdline" in
-      "$BINARY"|"$BINARY "*)
+    exe="$(readlink -f "$proc/exe" 2>/dev/null || true)"
+    case "$exe" in
+      "$PAYLOAD_PRIVATE/bin/qnext-market-core"|"$PAYLOAD_PRIVATE/bin/qnext-market-core-"*)
         printf '%s\n' "$pid"
         return 0
         ;;
@@ -159,6 +185,8 @@ market_healthy() {
 }
 
 start_service() {
+  BINARY="$(resolve_binary || true)"
+
   if is_running; then
     if ! runtime_binary_current; then
       echo "QNext Market Core binary changed after deployment; restarting runtime" >>"$LOG_FILE"
@@ -172,7 +200,7 @@ start_service() {
     fi
   fi
 
-  if [[ ! -f "$BINARY" ]]; then
+  if [[ -z "$BINARY" || ! -f "$BINARY" ]]; then
     echo "QNext Market Core binary is missing: $BINARY" >&2
     return 2
   fi
@@ -199,7 +227,17 @@ start_service() {
     return 4
   fi
 
+  prune_old_binaries
   echo "active"
+}
+
+prune_old_binaries() {
+  local candidate
+  for candidate in "$PAYLOAD_PRIVATE"/bin/qnext-market-core-*; do
+    [[ -e "$candidate" ]] || continue
+    [[ "$candidate" == "$BINARY" ]] && continue
+    rm -f "$candidate" 2>/dev/null || true
+  done
 }
 
 stop_service() {
