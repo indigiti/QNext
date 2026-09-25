@@ -141,7 +141,7 @@ export class QNextProvider {
     const limit = range.limit ?? 500;
     const from =
       range.from ??
-      to - timeframeDurationMs(timeframe) * Math.max(limit, 1) * 8;
+      to - defaultHistoryLookbackMs(timeframe, Math.max(limit, 1));
 
     const query = new URLSearchParams({
       instrument_id: instrument.instrument_id,
@@ -509,6 +509,24 @@ function normalizeBar(bar: QNextBar): QNextBar {
     close: Number(bar.close),
     ...(bar.volume === undefined ? {} : { volume: Number(bar.volume) }),
   };
+}
+
+function defaultHistoryLookbackMs(timeframe: string, limit: number): number {
+  const duration = timeframeDurationMs(timeframe);
+  const requested = duration * limit * 8;
+  const day = 86_400_000;
+  const unit = timeframe.trim().slice(-1);
+
+  const cap =
+    unit === 's'
+      ? 3 * day
+      : unit === 'm'
+        ? 31 * day
+        : unit === 'h'
+          ? 90 * day
+          : 366 * day;
+
+  return Math.min(requested, cap);
 }
 
 function timeframeDurationMs(timeframe: string): number {
