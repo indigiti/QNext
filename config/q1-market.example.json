@@ -6,21 +6,16 @@
   },
   "synthetic": {
     "instrument_id": "QNEXT:NIFTY-SYN",
-    "version": "nifty-syn-v1",
+    "version": "nifty-syn-v2",
     "minimum_valid_candidates": 3,
     "max_leg_age_ms": 2000,
     "max_leg_time_skew_ms": 1000,
-    "legs": [
-      {"instrument_id":"NIFTY:25000:CE","provider_key":"REPLACE_WITH_UPSTOX_CE_25000","strike":25000,"side":"CALL"},
-      {"instrument_id":"NIFTY:25000:PE","provider_key":"REPLACE_WITH_UPSTOX_PE_25000","strike":25000,"side":"PUT"},
-      {"instrument_id":"NIFTY:25050:CE","provider_key":"REPLACE_WITH_UPSTOX_CE_25050","strike":25050,"side":"CALL"},
-      {"instrument_id":"NIFTY:25050:PE","provider_key":"REPLACE_WITH_UPSTOX_PE_25050","strike":25050,"side":"PUT"},
-      {"instrument_id":"NIFTY:25100:CE","provider_key":"REPLACE_WITH_UPSTOX_CE_25100","strike":25100,"side":"CALL"},
-      {"instrument_id":"NIFTY:25100:PE","provider_key":"REPLACE_WITH_UPSTOX_PE_25100","strike":25100,"side":"PUT"},
-      {"instrument_id":"NIFTY:25150:CE","provider_key":"REPLACE_WITH_UPSTOX_CE_25150","strike":25150,"side":"CALL"},
-      {"instrument_id":"NIFTY:25150:PE","provider_key":"REPLACE_WITH_UPSTOX_PE_25150","strike":25150,"side":"PUT"},
-      {"instrument_id":"NIFTY:25200:CE","provider_key":"REPLACE_WITH_UPSTOX_CE_25200","strike":25200,"side":"CALL"},
-      {"instrument_id":"NIFTY:25200:PE","provider_key":"REPLACE_WITH_UPSTOX_PE_25200","strike":25200,"side":"PUT"}
-    ]
+    "auto": {
+      "strike_interval": 50,
+      "active_strikes": 5,
+      "warm_strikes": 7,
+      "atm_hysteresis_points": 5,
+      "atm_confirmation_ms": 750
+    }
   }
 }
