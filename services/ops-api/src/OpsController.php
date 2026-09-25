@@ -475,6 +475,112 @@ final class OpsController
         ];
     }
 
+
+    public function customIndicators(): array
+    {
+        $catalog = $this->loadIndicatorCatalog();
+        $items = is_array($catalog['indicators'] ?? null) ? $catalog['indicators'] : [];
+
+        return [
+            'schema' => 'QNEXT.INDICATORS/1',
+            'revision' => (int) ($catalog['revision'] ?? 0),
+            'kinds' => [[
+                'id' => 'adaptive-ema-qalg',
+                'label' => 'Adaptive EMA [QALG]',
+            ]],
+            'indicators' => array_values($items),
+        ];
+    }
+
+    public function createCustomIndicator(array $payload): array
+    {
+        $catalog = $this->loadIndicatorCatalog();
+        $indicator = $this->validateIndicator($payload);
+        $items = is_array($catalog['indicators'] ?? null) ? $catalog['indicators'] : [];
+
+        foreach ($items as $existing) {
+            if (is_array($existing) && ($existing['id'] ?? null) === $indicator['id']) {
+                throw new RuntimeException('custom indicator id already exists');
+            }
+        }
+
+        $items[] = $indicator;
+        $catalog['indicators'] = array_values($items);
+        $catalog['revision'] = ((int) ($catalog['revision'] ?? 0)) + 1;
+        $this->writeIndicatorCatalog($catalog);
+
+        return [
+            'saved' => true,
+            'revision' => $catalog['revision'],
+            'indicator' => $indicator,
+        ];
+    }
+
+    public function updateCustomIndicator(string $id, array $payload): array
+    {
+        $catalog = $this->loadIndicatorCatalog();
+        $items = is_array($catalog['indicators'] ?? null) ? $catalog['indicators'] : [];
+        $found = false;
+        $updated = null;
+
+        foreach ($items as $index => $existing) {
+            if (!is_array($existing) || ($existing['id'] ?? null) !== $id) {
+                continue;
+            }
+
+            $candidate = array_replace_recursive($existing, $payload);
+            $candidate['id'] = $id;
+            $updated = $this->validateIndicator($candidate);
+            $items[$index] = $updated;
+            $found = true;
+            break;
+        }
+
+        if (!$found || $updated === null) {
+            throw new RuntimeException('custom indicator not found');
+        }
+
+        $catalog['indicators'] = array_values($items);
+        $catalog['revision'] = ((int) ($catalog['revision'] ?? 0)) + 1;
+        $this->writeIndicatorCatalog($catalog);
+
+        return [
+            'saved' => true,
+            'revision' => $catalog['revision'],
+            'indicator' => $updated,
+        ];
+    }
+
+    public function deleteCustomIndicator(string $id): array
+    {
+        $catalog = $this->loadIndicatorCatalog();
+        $items = is_array($catalog['indicators'] ?? null) ? $catalog['indicators'] : [];
+        $remaining = [];
+        $deleted = false;
+
+        foreach ($items as $existing) {
+            if (is_array($existing) && ($existing['id'] ?? null) === $id) {
+                $deleted = true;
+                continue;
+            }
+            $remaining[] = $existing;
+        }
+
+        if (!$deleted) {
+            throw new RuntimeException('custom indicator not found');
+        }
+
+        $catalog['indicators'] = array_values($remaining);
+        $catalog['revision'] = ((int) ($catalog['revision'] ?? 0)) + 1;
+        $this->writeIndicatorCatalog($catalog);
+
+        return [
+            'deleted' => true,
+            'revision' => $catalog['revision'],
+            'id' => $id,
+        ];
+    }
+
     public function saveConfig(array $payload): array
     {
         foreach (['timeframes', 'nifty', 'synthetic'] as $key) {
@@ -610,6 +716,149 @@ final class OpsController
         }
 
         return ['ok' => true, 'output' => $result['output']];
+    }
+
+
+    private function loadIndicatorCatalog(): array
+    {
+        $path = $this->config->indicatorCatalogPath();
+        if (!is_file($path)) {
+            foreach ($this->config->indicatorCatalogCandidates() as $candidate) {
+                if (!is_file($candidate)) {
+                    continue;
+                }
+                $raw = file_get_contents($candidate);
+                if (!is_string($raw) || trim($raw) === '') {
+                    continue;
+                }
+                try {
+                    $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+                } catch (JsonException) {
+                    continue;
+                }
+                if (is_array($decoded)) {
+                    AtomicFile::writeJson($path, $decoded);
+                    break;
+                }
+            }
+        }
+
+        if (!is_file($path)) {
+            return [
+                'schema' => 'QNEXT.INDICATORS/1',
+                'revision' => 0,
+                'indicators' => [],
+            ];
+        }
+
+        $raw = file_get_contents($path);
+        if (!is_string($raw)) {
+            throw new RuntimeException('cannot read custom indicator catalog');
+        }
+        try {
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException $error) {
+            throw new RuntimeException('stored custom indicator catalog is invalid JSON', 0, $error);
+        }
+        if (!is_array($decoded)) {
+            throw new RuntimeException('stored custom indicator catalog must be an object');
+        }
+
+        return $decoded;
+    }
+
+    private function writeIndicatorCatalog(array $catalog): void
+    {
+        $catalog['schema'] = 'QNEXT.INDICATORS/1';
+        $catalog['revision'] = max(0, (int) ($catalog['revision'] ?? 0));
+        $catalog['indicators'] = array_values(
+            is_array($catalog['indicators'] ?? null) ? $catalog['indicators'] : []
+        );
+        AtomicFile::writeJson($this->config->indicatorCatalogPath(), $catalog);
+    }
+
+    private function validateIndicator(array $payload): array
+    {
+        $id = $payload['id'] ?? null;
+        $name = $payload['name'] ?? null;
+        $kind = $payload['kind'] ?? null;
+
+        if (!is_string($id) || !preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/', $id)) {
+            throw new RuntimeException('custom indicator id must use lowercase letters, numbers and hyphens');
+        }
+        if (!is_string($name) || trim($name) === '' || strlen(trim($name)) > 120) {
+            throw new RuntimeException('custom indicator name is required and must be 120 characters or fewer');
+        }
+        if ($kind !== 'adaptive-ema-qalg') {
+            throw new RuntimeException('unsupported custom indicator kind');
+        }
+
+        $defaults = is_array($payload['defaults'] ?? null) ? $payload['defaults'] : [];
+        $source = $defaults['priceSource'] ?? 'close';
+        if (!is_string($source) || !in_array($source, ['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'], true)) {
+            throw new RuntimeException('invalid price source');
+        }
+
+        $intValue = static function (array $values, string $key, int $fallback, int $min, int $max): int {
+            $value = $values[$key] ?? $fallback;
+            if (!is_int($value) && !is_float($value)) {
+                throw new RuntimeException($key . ' must be numeric');
+            }
+            $value = (int) round((float) $value);
+            if ($value < $min || $value > $max) {
+                throw new RuntimeException($key . ' is outside the allowed range');
+            }
+            return $value;
+        };
+        $floatValue = static function (array $values, string $key, float $fallback, float $min, float $max): float {
+            $value = $values[$key] ?? $fallback;
+            if (!is_int($value) && !is_float($value)) {
+                throw new RuntimeException($key . ' must be numeric');
+            }
+            $value = (float) $value;
+            if (!is_finite($value) || $value < $min || $value > $max) {
+                throw new RuntimeException($key . ' is outside the allowed range');
+            }
+            return $value;
+        };
+        $colorValue = static function (array $values, string $key, string $fallback): string {
+            $value = $values[$key] ?? $fallback;
+            if (!is_string($value) || !preg_match('/^#[0-9A-Fa-f]{6}$/', $value)) {
+                throw new RuntimeException($key . ' must be a six-digit hex color');
+            }
+            return strtolower($value);
+        };
+
+        return [
+            'id' => $id,
+            'name' => trim($name),
+            'category' => 'QNext',
+            'kind' => 'adaptive-ema-qalg',
+            'enabled' => isset($payload['enabled']) ? (bool) $payload['enabled'] : true,
+            'description' => is_string($payload['description'] ?? null)
+                ? substr(trim((string) $payload['description']), 0, 500)
+                : '',
+            'defaults' => [
+                'priceSource' => $source,
+                'emaLength' => $intValue($defaults, 'emaLength', 20, 1, 1000),
+                'lookbackPeriod' => $intValue($defaults, 'lookbackPeriod', 30, 2, 1000),
+                'stddevMultiplier' => $floatValue($defaults, 'stddevMultiplier', 2.0, 0.1, 20.0),
+                'atrLength' => $intValue($defaults, 'atrLength', 14, 1, 1000),
+                'atrMultiplier' => $floatValue($defaults, 'atrMultiplier', 1.5, 0.1, 20.0),
+                'upColor' => $colorValue($defaults, 'upColor', '#00ffaa'),
+                'downColor' => $colorValue($defaults, 'downColor', '#ff0000'),
+                'colorBars' => isset($defaults['colorBars']) ? (bool) $defaults['colorBars'] : true,
+            ],
+            'attribution' => is_string($payload['attribution'] ?? null)
+                ? substr(trim((string) $payload['attribution']), 0, 120)
+                : '',
+            'license' => is_string($payload['license'] ?? null)
+                ? substr(trim((string) $payload['license']), 0, 80)
+                : '',
+            'licenseUrl' => is_string($payload['licenseUrl'] ?? null)
+                ? substr(trim((string) $payload['licenseUrl']), 0, 300)
+                : '',
+        ];
     }
 
     private function ensureAutoResilienceConfig(): bool

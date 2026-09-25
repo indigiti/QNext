@@ -78,6 +78,20 @@ final class OpsConfig
         return $this->privateRoot . '/config/q3-resilience.json';
     }
 
+    public function indicatorCatalogPath(): string
+    {
+        return $this->privateRoot . '/config/qnext-indicators.json';
+    }
+
+    public function indicatorCatalogCandidates(): array
+    {
+        return [
+            $this->privateRoot . '/config/qnext-indicators.example.json',
+            $this->privateRoot . '/current/private/config/qnext-indicators.example.json',
+            $this->privateRoot . '/private/config/qnext-indicators.example.json',
+        ];
+    }
+
     public function authPath(): string
     {
         return $this->privateRoot . '/secrets/ops-auth.json';

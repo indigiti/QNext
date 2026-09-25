@@ -189,6 +189,61 @@ describe('OpsAPI', () => {
     ]);
   });
 
+
+  it('manages custom indicators through authenticated CRUD endpoints', async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const method = init?.method ?? 'GET';
+      calls.push(`${method} ${String(input)}`);
+      if (method === 'GET') {
+        return new Response(JSON.stringify({
+          schema: 'QNEXT.INDICATORS/1',
+          revision: 1,
+          kinds: [{ id: 'adaptive-ema-qalg', label: 'Adaptive EMA [QALG]' }],
+          indicators: [],
+        }), { status: 200 });
+      }
+      if (method === 'POST') {
+        return new Response(JSON.stringify({ saved: true, revision: 2, indicator: { id: 'adaptive-ema-qalg' } }), { status: 201 });
+      }
+      if (method === 'PUT') {
+        return new Response(JSON.stringify({ saved: true, revision: 3, indicator: { id: 'adaptive-ema-qalg', enabled: false } }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ deleted: true, revision: 4, id: 'adaptive-ema-qalg' }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ token: 'secret', fetcher });
+    await api.customIndicators();
+    const indicator = {
+      id: 'adaptive-ema-qalg',
+      name: 'Adaptive EMA [QALG]',
+      category: 'QNext' as const,
+      kind: 'adaptive-ema-qalg' as const,
+      enabled: true,
+      defaults: {
+        priceSource: 'close',
+        emaLength: 20,
+        lookbackPeriod: 30,
+        stddevMultiplier: 2,
+        atrLength: 14,
+        atrMultiplier: 1.5,
+        upColor: '#00ffaa',
+        downColor: '#ff0000',
+        colorBars: true,
+      },
+    };
+    await api.createCustomIndicator(indicator);
+    await api.updateCustomIndicator(indicator.id, { enabled: false });
+    await api.deleteCustomIndicator(indicator.id);
+
+    expect(calls).toEqual([
+      'GET /qnext/admin/api/index.php?route=%2Fcustom-indicators',
+      'POST /qnext/admin/api/index.php?route=%2Fcustom-indicators',
+      'PUT /qnext/admin/api/index.php?route=%2Fcustom-indicators%2Fadaptive-ema-qalg',
+      'DELETE /qnext/admin/api/index.php?route=%2Fcustom-indicators%2Fadaptive-ema-qalg',
+    ]);
+  });
+
   it('surfaces API errors', async () => {
     const fetcher: typeof fetch = async () =>
       new Response(JSON.stringify({ error: 'denied' }), { status: 403 });

@@ -272,3 +272,62 @@ button.compact { padding: .45rem .7rem; font-size: .82rem; }
   .status-grid { grid-template-columns: 1fr; }
   .market-toggle-grid { grid-template-columns: 1fr; }
 }
+
+
+.custom-indicator-list {
+  display: grid;
+  gap: .7rem;
+  margin-bottom: 1rem;
+}
+
+.custom-indicator-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+  border: 1px solid #202635;
+  border-radius: 10px;
+  background: #0c1017;
+}
+
+.custom-indicator-title {
+  justify-content: flex-start;
+  margin-bottom: .25rem;
+}
+
+.indicator-form {
+  display: grid;
+  gap: .8rem;
+  padding-top: 1rem;
+  border-top: 1px solid #202635;
+}
+
+.indicator-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.indicator-form label {
+  display: grid;
+  gap: .35rem;
+  color: #8e98aa;
+  font-size: .78rem;
+}
+
+.indicator-form .checkbox-field {
+  align-content: end;
+}
+
+.indicator-form .checkbox-field input {
+  width: auto;
+  justify-self: start;
+  transform: scale(1.15);
+  accent-color: #315dff;
+}
+
+@media (max-width: 900px) {
+  .indicator-form-grid { grid-template-columns: 1fr; }
+  .custom-indicator-row { align-items: flex-start; flex-direction: column; }
+}

@@ -106,6 +106,18 @@ try {
     if ($method === 'GET' && $path === '/history-repair') {
         respond(200, $controller->historicalRepairStatus());
     }
+    if ($method === 'GET' && $path === '/custom-indicators') {
+        respond(200, $controller->customIndicators());
+    }
+    if ($method === 'POST' && $path === '/custom-indicators') {
+        respond(201, $controller->createCustomIndicator(request_body()));
+    }
+    if ($method === 'PUT' && preg_match('#^/custom-indicators/([a-z0-9][a-z0-9-]{0,63})$#', $path, $matches)) {
+        respond(200, $controller->updateCustomIndicator($matches[1], request_body()));
+    }
+    if ($method === 'DELETE' && preg_match('#^/custom-indicators/([a-z0-9][a-z0-9-]{0,63})$#', $path, $matches)) {
+        respond(200, $controller->deleteCustomIndicator($matches[1]));
+    }
     if ($method === 'POST' && $path === '/history-repair') {
         respond(200, $controller->runHistoricalRepair(request_body()));
     }

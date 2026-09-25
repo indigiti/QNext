@@ -192,6 +192,36 @@ export interface SecretWriteResult {
   resilienceConfigured?: boolean;
 }
 
+export interface CustomIndicator {
+  id: string;
+  name: string;
+  category: 'QNext';
+  kind: 'adaptive-ema-qalg';
+  enabled: boolean;
+  description?: string;
+  defaults: {
+    priceSource: string;
+    emaLength: number;
+    lookbackPeriod: number;
+    stddevMultiplier: number;
+    atrLength: number;
+    atrMultiplier: number;
+    upColor: string;
+    downColor: string;
+    colorBars: boolean;
+  };
+  attribution?: string;
+  license?: string;
+  licenseUrl?: string;
+}
+
+export interface CustomIndicatorCatalog {
+  schema: 'QNEXT.INDICATORS/1';
+  revision: number;
+  kinds: Array<{ id: string; label: string }>;
+  indicators: CustomIndicator[];
+}
+
 export interface DhanStandbyCheck {
   ok: boolean;
   fresh?: boolean;
@@ -294,6 +324,30 @@ export class OpsAPI {
 
   verifyDhanStandby(): Promise<DhanStandbyCheck> {
     return this.request<DhanStandbyCheck>('/dhan-standby-check', { method: 'POST' });
+  }
+
+  customIndicators(): Promise<CustomIndicatorCatalog> {
+    return this.request<CustomIndicatorCatalog>('/custom-indicators');
+  }
+
+  createCustomIndicator(indicator: CustomIndicator): Promise<{ saved: boolean; revision: number; indicator: CustomIndicator }> {
+    return this.request('/custom-indicators', {
+      method: 'POST',
+      body: JSON.stringify(indicator),
+    });
+  }
+
+  updateCustomIndicator(id: string, indicator: Partial<CustomIndicator>): Promise<{ saved: boolean; revision: number; indicator: CustomIndicator }> {
+    return this.request(`/custom-indicators/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(indicator),
+    });
+  }
+
+  deleteCustomIndicator(id: string): Promise<{ deleted: boolean; revision: number; id: string }> {
+    return this.request(`/custom-indicators/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
   }
 
   saveConfig(config: Record<string, unknown>): Promise<{ saved: boolean }> {

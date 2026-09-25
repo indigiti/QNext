@@ -189,6 +189,68 @@ expect(
     'active market selection should persist in q1-market.json'
 );
 
+
+AtomicFile::writeJson($flatRoot . '/config/qnext-indicators.example.json', [
+    'schema' => 'QNEXT.INDICATORS/1',
+    'revision' => 1,
+    'indicators' => [[
+        'id' => 'adaptive-ema-qalg',
+        'name' => 'Adaptive EMA [QALG]',
+        'category' => 'QNext',
+        'kind' => 'adaptive-ema-qalg',
+        'enabled' => true,
+        'defaults' => [
+            'priceSource' => 'close',
+            'emaLength' => 20,
+            'lookbackPeriod' => 30,
+            'stddevMultiplier' => 2.0,
+            'atrLength' => 14,
+            'atrMultiplier' => 1.5,
+            'upColor' => '#00ffaa',
+            'downColor' => '#ff0000',
+            'colorBars' => true,
+        ],
+    ]],
+]);
+
+$indicatorCatalog = $flatController->customIndicators();
+expect(
+    count($indicatorCatalog['indicators'] ?? []) === 1
+    && ($indicatorCatalog['indicators'][0]['name'] ?? '') === 'Adaptive EMA [QALG]',
+    'custom indicator catalog should seed from packaged defaults'
+);
+$createdIndicator = $flatController->createCustomIndicator([
+    'id' => 'adaptive-ema-qalg-2',
+    'name' => 'Adaptive EMA Test',
+    'kind' => 'adaptive-ema-qalg',
+    'enabled' => true,
+    'defaults' => [
+        'priceSource' => 'close',
+        'emaLength' => 10,
+        'lookbackPeriod' => 20,
+        'stddevMultiplier' => 2.0,
+        'atrLength' => 14,
+        'atrMultiplier' => 1.5,
+        'upColor' => '#00ffaa',
+        'downColor' => '#ff0000',
+        'colorBars' => true,
+    ],
+]);
+expect(
+    ($createdIndicator['saved'] ?? false) === true,
+    'custom indicator create should persist'
+);
+$updatedIndicator = $flatController->updateCustomIndicator('adaptive-ema-qalg-2', ['enabled' => false]);
+expect(
+    ($updatedIndicator['indicator']['enabled'] ?? true) === false,
+    'custom indicator update should persist'
+);
+$deletedIndicator = $flatController->deleteCustomIndicator('adaptive-ema-qalg-2');
+expect(
+    ($deletedIndicator['deleted'] ?? false) === true,
+    'custom indicator delete should persist'
+);
+
 mkdir($flatRoot . '/logs', 0750, true);
 mkdir($flatRoot . '/bin', 0750, true);
 file_put_contents($flatRoot . '/bin/qnext-market-core', 'legacy-binary');
