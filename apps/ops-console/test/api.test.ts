@@ -131,6 +131,34 @@ describe('OpsAPI', () => {
     expect(calls).toEqual(['POST /qnext/admin/api/index.php?route=%2Fdhan-standby-check']);
   });
 
+  it('loads and saves active markets', async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${String(input)}`);
+      if (init?.method === 'PUT') {
+        return new Response(JSON.stringify({
+          saved: true,
+          active: ['NIFTY'],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        available: ['NIFTY', 'BANKNIFTY'],
+        active: ['NIFTY', 'BANKNIFTY'],
+      }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ token: 'secret', fetcher });
+    const state = await api.activeMarkets();
+    expect(state.active).toEqual(['NIFTY', 'BANKNIFTY']);
+
+    const saved = await api.saveActiveMarkets(['NIFTY']);
+    expect(saved.active).toEqual(['NIFTY']);
+    expect(calls).toEqual([
+      'GET /qnext/admin/api/index.php?route=%2Factive-markets',
+      'PUT /qnext/admin/api/index.php?route=%2Factive-markets',
+    ]);
+  });
+
   it('surfaces API errors', async () => {
     const fetcher: typeof fetch = async () =>
       new Response(JSON.stringify({ error: 'denied' }), { status: 403 });
