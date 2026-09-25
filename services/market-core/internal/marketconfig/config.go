@@ -31,7 +31,7 @@ type Config struct {
 	Timeframes      []string       `json:"timeframes"`
 	ChartTimeframes []string       `json:"chart_timeframes,omitempty"`
 	Markets         []MarketConfig `json:"markets,omitempty"`
-	ActiveMarkets []string       `json:"active_markets,omitempty"`
+	ActiveMarkets   []string       `json:"active_markets,omitempty"`
 
 	// Legacy single-market fields are retained for backwards compatibility
 	// with already-deployed q1-market.json files.
