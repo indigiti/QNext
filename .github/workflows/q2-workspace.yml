@@ -95,16 +95,43 @@ jobs:
       - name: Build static workspace
         run: npm run build
 
-      - name: Validate indicator deployment-root inference
+      - name: Validate indicator deployment-root and Pine manifest
         shell: bash
         run: |
           set -euo pipefail
           root="$(mktemp -d)"
           mkdir -p "$root/public_html/qnext/api/v1/indicators" "$root/private_html/qnext/config"
           cp public/api/v1/indicators/index.php "$root/public_html/qnext/api/v1/indicators/index.php"
-          cp ../../config/qnext-indicators.example.json "$root/private_html/qnext/config/qnext-indicators.example.json"
+          cat > "$root/private_html/qnext/config/qnext-indicators.json" <<'JSON'
+          {
+            "schema": "QNEXT.INDICATORS/1",
+            "revision": 2,
+            "indicators": [
+              {
+                "id": "adaptive-ema-qalg",
+                "name": "Adaptive EMA [QALG]",
+                "kind": "adaptive-ema-qalg",
+                "enabled": true,
+                "defaults": {}
+              },
+              {
+                "id": "pine-ema-cross",
+                "name": "Pine EMA Cross",
+                "kind": "pine-v6",
+                "enabled": true,
+                "script": "//@version=6\nindicator(\"Pine EMA Cross\", overlay=true)\nplot(ta.ema(close, 9))"
+              }
+            ]
+          }
+          JSON
           output="$(env -u QNEXT_PRIVATE_ROOT php "$root/public_html/qnext/api/v1/indicators/index.php")"
-          php -r '$data=json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR); if (($data["indicators"][0]["name"] ?? "") !== "Adaptive EMA [QALG]") { fwrite(STDERR, "indicator deployment-root inference failed\n"); exit(1); }' <<<"$output"
+          php -r '
+            $data=json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
+            if (($data["indicators"][0]["name"] ?? "") !== "Adaptive EMA [QALG]") exit(1);
+            if (($data["indicators"][1]["name"] ?? "") !== "Pine EMA Cross") exit(1);
+            if (($data["indicators"][1]["language"] ?? "") !== "pine") exit(1);
+            if (!str_contains((string) ($data["indicators"][1]["script"] ?? ""), "//@version=6")) exit(1);
+          ' <<<"$output"
           rm -rf "$root"
 
       - name: Upload release payload
