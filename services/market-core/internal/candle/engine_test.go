@@ -113,3 +113,68 @@ func TestSupportedTimeframesValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionResolverOwnsIntradayBucketAlignment(t *testing.T) {
+	resolver := func(_ string, at time.Time) (SessionWindow, bool, error) {
+		open, _ := time.Parse(time.RFC3339, "2026-09-25T04:00:00Z")
+		closeAt, _ := time.Parse(time.RFC3339, "2026-09-25T09:30:00Z")
+		return SessionWindow{Open: open, Close: closeAt}, !at.Before(open) && at.Before(closeAt), nil
+	}
+	engine := NewWithSessionResolver("candle-v3-calendar", resolver)
+
+	at, _ := time.Parse(time.RFC3339, "2026-09-25T04:07:00Z")
+	open, closeAt, err := engine.Bucket("NSE:NIFTY50", at, "10m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOpen, _ := time.Parse(time.RFC3339, "2026-09-25T04:00:00Z")
+	wantClose, _ := time.Parse(time.RFC3339, "2026-09-25T04:10:00Z")
+	if !open.Equal(wantOpen) || !closeAt.Equal(wantClose) {
+		t.Fatalf("calendar-aligned bucket=%s..%s want %s..%s", open, closeAt, wantOpen, wantClose)
+	}
+
+	outside, _ := time.Parse(time.RFC3339, "2026-09-25T03:59:59Z")
+	if _, err := engine.Apply(domain.Tick{
+		InstrumentID: "NSE:NIFTY50",
+		Provider:     "fixture",
+		Price:        25100,
+		EventTime:    outside,
+		Quality:      domain.QualityGood,
+	}, "1m"); !errors.Is(err, ErrOutsideSession) {
+		t.Fatalf("expected ErrOutsideSession, got %v", err)
+	}
+}
+
+func TestFinalizeDueClosesQuietCandleWithoutNextTick(t *testing.T) {
+	engine := New("candle-v3-clock-final")
+	first := tick("2026-09-24T03:45:00Z", 25100, 1)
+	if _, err := engine.Apply(first, "30s"); err != nil {
+		t.Fatal(err)
+	}
+
+	before, _ := time.Parse(time.RFC3339, "2026-09-24T03:45:29.999Z")
+	if got := engine.FinalizeDue(before); len(got) != 0 {
+		t.Fatalf("candle finalized early: %+v", got)
+	}
+
+	atClose, _ := time.Parse(time.RFC3339, "2026-09-24T03:45:30Z")
+	finalized := engine.FinalizeDue(atClose)
+	if len(finalized) != 1 || !finalized[0].Final {
+		t.Fatalf("expected one clock-finalized candle, got %+v", finalized)
+	}
+	if got := engine.FinalizeDue(atClose.Add(time.Second)); len(got) != 0 {
+		t.Fatalf("clock finalization must be idempotent, got %+v", got)
+	}
+
+	if _, err := engine.Apply(tick("2026-09-24T03:45:20Z", 25099, 2), "30s"); !errors.Is(err, ErrLateTick) {
+		t.Fatalf("tick for clock-finalized candle must be late, got %v", err)
+	}
+
+	next, err := engine.Apply(tick("2026-09-24T03:45:30Z", 25105, 3), "30s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(next) != 1 || next[0].Final {
+		t.Fatalf("next bucket should emit only its forming candle, got %+v", next)
+	}
+}

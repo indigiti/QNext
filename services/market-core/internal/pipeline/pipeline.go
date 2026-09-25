@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
@@ -14,6 +16,7 @@ type HistoryWriter interface {
 }
 
 type Pipeline struct {
+	mu      sync.Mutex
 	candles *candle.Engine
 	rollups *rollupEngine
 	history HistoryWriter
@@ -55,7 +58,7 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 
 	return &Pipeline{
 		candles: candles,
-		rollups: newRollupEngine("candle-rollup-v1"),
+		rollups: newRollupEngine("candle-rollup-v1", candles.Bucket),
 		history: history,
 		direct:  append([]string(nil), direct...),
 		derived: append([]string(nil), derived...),
@@ -63,12 +66,21 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 }
 
 func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	var updates []domain.Bar
 	var oneMinuteUpdates []domain.Bar
 
 	for _, timeframe := range p.direct {
 		bars, err := p.candles.Apply(tick, timeframe)
 		if err != nil {
+			if errors.Is(err, candle.ErrOutsideSession) {
+				return nil, nil
+			}
+			if errors.Is(err, candle.ErrLateTick) {
+				continue
+			}
 			return nil, fmt.Errorf("apply %s candle: %w", timeframe, err)
 		}
 		if timeframe == "1m" {
@@ -93,6 +105,37 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 					return nil, err
 				}
 				updates = append(updates, bar)
+			}
+		}
+	}
+	return updates, nil
+}
+
+func (p *Pipeline) FinalizeDue(now time.Time) ([]domain.Bar, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	directFinals := p.candles.FinalizeDue(now)
+	updates := make([]domain.Bar, 0, len(directFinals))
+	for _, bar := range directFinals {
+		if err := p.persistFinal(bar); err != nil {
+			return nil, err
+		}
+		updates = append(updates, bar)
+
+		if bar.Timeframe != "1m" {
+			continue
+		}
+		for _, timeframe := range p.derived {
+			bars, err := p.rollups.Apply(bar, timeframe)
+			if err != nil {
+				return nil, fmt.Errorf("roll up %s candle: %w", timeframe, err)
+			}
+			for _, derived := range bars {
+				if err := p.persistFinal(derived); err != nil {
+					return nil, err
+				}
+				updates = append(updates, derived)
 			}
 		}
 	}

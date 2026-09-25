@@ -47,3 +47,62 @@ func TestNSECalendarFailsClosedOutsideCertifiedYear(t *testing.T) {
 		t.Fatal("expected unsupported calendar range to fail")
 	}
 }
+
+func TestWindowAtUsesCertifiedSessionAndFailsClosed(t *testing.T) {
+	registry := DefaultRegistry()
+	ist, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inside := time.Date(2026, 9, 25, 10, 0, 0, 0, ist)
+	window, definition, active, err := registry.WindowAt("NSE_EQ", inside, SessionRegular)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !active {
+		t.Fatal("expected regular session to be active")
+	}
+	if definition.Version != "nse-equities-2026-v1" {
+		t.Fatalf("unexpected calendar version: %s", definition.Version)
+	}
+	if got := window.Start.In(ist); got.Hour() != 9 || got.Minute() != 15 {
+		t.Fatalf("unexpected session start: %v", got)
+	}
+	if got := window.End.In(ist); got.Hour() != 15 || got.Minute() != 30 {
+		t.Fatalf("unexpected session end: %v", got)
+	}
+
+	_, _, active, err = registry.WindowAt(
+		"NSE_EQ",
+		time.Date(2026, 9, 25, 16, 0, 0, 0, ist),
+		SessionRegular,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active {
+		t.Fatal("after-hours timestamp must not be active")
+	}
+
+	_, _, active, err = registry.WindowAt(
+		"NSE_EQ",
+		time.Date(2026, 10, 2, 10, 0, 0, 0, ist),
+		SessionRegular,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active {
+		t.Fatal("certified holiday must not be active")
+	}
+
+	_, _, _, err = registry.WindowAt(
+		"NSE_EQ",
+		time.Date(2027, 1, 2, 10, 0, 0, 0, ist),
+		SessionRegular,
+	)
+	if err == nil {
+		t.Fatal("calendar lookup outside the certified window must fail closed")
+	}
+}

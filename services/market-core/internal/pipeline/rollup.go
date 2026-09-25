@@ -16,15 +16,24 @@ type rollupState struct {
 	minutes map[int64]domain.Bar
 }
 
+type bucketResolver func(instrumentID string, at time.Time, timeframe string) (time.Time, time.Time, error)
+
 type rollupEngine struct {
 	version string
 	states  map[string]*rollupState
+	bucket  bucketResolver
 }
 
-func newRollupEngine(version string) *rollupEngine {
+func newRollupEngine(version string, resolver bucketResolver) *rollupEngine {
+	if resolver == nil {
+		resolver = func(_ string, at time.Time, timeframe string) (time.Time, time.Time, error) {
+			return candle.Bucket(at, timeframe)
+		}
+	}
 	return &rollupEngine{
 		version: version,
 		states:  make(map[string]*rollupState),
+		bucket:  resolver,
 	}
 }
 
@@ -32,7 +41,7 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 	if oneMinute.Timeframe != "1m" {
 		return nil, errors.New("rollup source must be 1m")
 	}
-	open, closeAt, err := candle.Bucket(oneMinute.OpenTime, timeframe)
+	open, closeAt, err := r.bucket(oneMinute.InstrumentID, oneMinute.OpenTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +68,14 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 	}
 
 	state.minutes[oneMinute.OpenTime.UnixMilli()] = oneMinute
+	if completeRollup(state, timeframe) {
+		final := aggregateRollup(state, timeframe, r.version)
+		final.Final = true
+		updates = append(updates, final)
+		delete(r.states, key)
+		return updates, nil
+	}
+
 	forming := aggregateRollup(state, timeframe, r.version)
 	forming.Final = false
 	updates = append(updates, forming)

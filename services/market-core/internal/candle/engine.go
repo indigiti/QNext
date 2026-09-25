@@ -3,6 +3,7 @@ package candle
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 )
 
 var ErrLateTick = errors.New("tick belongs to an already closed candle")
+var ErrOutsideSession = errors.New("tick is outside the certified market session")
 
 var indiaLocation = time.FixedZone("IST", 5*60*60+30*60)
 
@@ -20,16 +22,29 @@ type timeframeSpec struct {
 	unit  byte
 }
 
+type SessionWindow struct {
+	Open  time.Time
+	Close time.Time
+}
+
+type SessionResolver func(instrumentID string, at time.Time) (SessionWindow, bool, error)
+
 type Engine struct {
-	mu      sync.Mutex
-	version string
-	bars    map[string]domain.Bar
+	mu              sync.Mutex
+	version         string
+	bars            map[string]domain.Bar
+	sessionResolver SessionResolver
 }
 
 func New(version string) *Engine {
+	return NewWithSessionResolver(version, nil)
+}
+
+func NewWithSessionResolver(version string, resolver SessionResolver) *Engine {
 	return &Engine{
-		version: version,
-		bars:    make(map[string]domain.Bar),
+		version:         version,
+		bars:            make(map[string]domain.Bar),
+		sessionResolver: resolver,
 	}
 }
 
@@ -173,6 +188,93 @@ func Bucket(at time.Time, timeframe string) (time.Time, time.Time, error) {
 	return time.Time{}, time.Time{}, fmt.Errorf("unsupported timeframe %q", timeframe)
 }
 
+func (e *Engine) Bucket(instrumentID string, at time.Time, timeframe string) (time.Time, time.Time, error) {
+	spec, err := parseTimeframe(timeframe)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if e.sessionResolver == nil {
+		return Bucket(at, timeframe)
+	}
+
+	window, active, err := e.sessionResolver(instrumentID, at)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("resolve market session: %w", err)
+	}
+	if !active {
+		return time.Time{}, time.Time{}, ErrOutsideSession
+	}
+	if window.Open.IsZero() || window.Close.IsZero() || !window.Open.Before(window.Close) {
+		return time.Time{}, time.Time{}, errors.New("market session resolver returned an invalid window")
+	}
+
+	switch spec.unit {
+	case 's', 'm', 'h':
+		return intradayBucket(at, spec, window.Open, window.Close)
+	default:
+		return Bucket(at, timeframe)
+	}
+}
+
+func intradayBucket(at time.Time, spec timeframeSpec, sessionOpen, sessionClose time.Time) (time.Time, time.Time, error) {
+	if at.Before(sessionOpen) || !at.Before(sessionClose) {
+		return time.Time{}, time.Time{}, ErrOutsideSession
+	}
+
+	var duration time.Duration
+	switch spec.unit {
+	case 's':
+		duration = time.Duration(spec.value) * time.Second
+	case 'm':
+		duration = time.Duration(spec.value) * time.Minute
+	case 'h':
+		duration = time.Duration(spec.value) * time.Hour
+	default:
+		return time.Time{}, time.Time{}, errors.New("intraday bucket requires seconds, minutes or hours")
+	}
+
+	elapsed := at.Sub(sessionOpen)
+	open := sessionOpen.Add((elapsed / duration) * duration)
+	closeAt := open.Add(duration)
+	if closeAt.After(sessionClose) {
+		closeAt = sessionClose
+	}
+	return open.UTC(), closeAt.UTC(), nil
+}
+
+func (e *Engine) FinalizeDue(now time.Time) []domain.Bar {
+	if now.IsZero() {
+		return nil
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	finalized := make([]domain.Bar, 0)
+	for key, current := range e.bars {
+		if current.Final || now.Before(current.CloseTime) {
+			continue
+		}
+		current.Final = true
+		e.bars[key] = current
+		finalized = append(finalized, current)
+	}
+
+	sort.Slice(finalized, func(i, j int) bool {
+		if finalized[i].CloseTime.Equal(finalized[j].CloseTime) {
+			if finalized[i].OpenTime.Equal(finalized[j].OpenTime) {
+				if finalized[i].InstrumentID == finalized[j].InstrumentID {
+					return finalized[i].Timeframe < finalized[j].Timeframe
+				}
+				return finalized[i].InstrumentID < finalized[j].InstrumentID
+			}
+			return finalized[i].OpenTime.Before(finalized[j].OpenTime)
+		}
+		return finalized[i].CloseTime.Before(finalized[j].CloseTime)
+	})
+	return finalized
+}
+
 // Apply returns one forming-bar update for a tick in the current bucket.
 // When a tick starts a new bucket, Apply returns the finalized previous bar
 // followed by the new forming bar.
@@ -181,7 +283,7 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 		return nil, errors.New("tick requires instrument and event time")
 	}
 
-	openTime, closeTime, err := Bucket(tick.EventTime, timeframe)
+	openTime, closeTime, err := e.Bucket(tick.InstrumentID, tick.EventTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +304,9 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 	}
 
 	if openTime.Equal(current.OpenTime) {
+		if current.Final {
+			return nil, ErrLateTick
+		}
 		current.High = max(current.High, tick.Price)
 		current.Low = min(current.Low, tick.Price)
 		current.Close = tick.Price
@@ -214,8 +319,13 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 		return []domain.Bar{current}, nil
 	}
 
-	current.Final = true
 	next := newBar(tick, timeframe, openTime, closeTime, e.version)
+	if current.Final {
+		e.bars[key] = next
+		return []domain.Bar{next}, nil
+	}
+
+	current.Final = true
 	e.bars[key] = next
 	return []domain.Bar{current, next}, nil
 }
