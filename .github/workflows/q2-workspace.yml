@@ -76,6 +76,10 @@ jobs:
         with:
           node-version: "24"
 
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+
       - name: Install workspace dependencies
         run: npm install --no-audit --no-fund
 
@@ -90,6 +94,18 @@ jobs:
 
       - name: Build static workspace
         run: npm run build
+
+      - name: Validate indicator deployment-root inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          mkdir -p "$root/public_html/qnext/api/v1/indicators" "$root/private_html/qnext/config"
+          cp public/api/v1/indicators/index.php "$root/public_html/qnext/api/v1/indicators/index.php"
+          cp ../../config/qnext-indicators.example.json "$root/private_html/qnext/config/qnext-indicators.example.json"
+          output="$(env -u QNEXT_PRIVATE_ROOT php "$root/public_html/qnext/api/v1/indicators/index.php")"
+          php -r '$data=json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR); if (($data["indicators"][0]["name"] ?? "") !== "Adaptive EMA [QALG]") { fwrite(STDERR, "indicator deployment-root inference failed\n"); exit(1); }' <<<"$output"
+          rm -rf "$root"
 
       - name: Upload release payload
         uses: actions/upload-artifact@v4

@@ -28,7 +28,7 @@ function indicator_private_root(): string
         return $configured;
     }
 
-    $publicQnextRoot = dirname(__DIR__, 4);
+    $publicQnextRoot = dirname(__DIR__, 3);
     $publicHtmlRoot = dirname($publicQnextRoot);
     $accountRoot = dirname($publicHtmlRoot);
     $inferred = $accountRoot . '/private_html/qnext';
