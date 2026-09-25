@@ -16,31 +16,61 @@ declare global {
 const runtime = window.__QNEXT_CONFIG__ ?? {};
 const defaultApiBase = window.location.pathname.replace(/\/+$/, '');
 
-const workspace = new VelaWorkspace('#app', {
-  layout: false,
-  symbol: 'NSE:NIFTY',
-  timeframe: '1m',
-  timeframes: [
-    '1s', '5s', '10s', '15s', '30s', '45s',
-    '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
-    '1h', '2h', '3h', '4h',
-    '1D', '1W',
-    '1M', '3M', '6M', '12M',
-  ],
-  live: true,
-  theme: 'dark',
-  timezone: 'exchange',
-  providers: {
-    qnext: () =>
-      new QNextProvider({
-        apiBase: runtime.apiBase ?? defaultApiBase,
-        streamUrl: runtime.streamUrl,
-      }),
-  },
-  persist: 'qnext-workspace-v1',
-  topbar: {
-    left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
-  },
-});
+const fallbackTimeframes = [
+  '15s', '30s', '1m', '2m', '3m', '5m', '15m', '30m', '1h', '1D',
+];
 
-window.__QNEXT_WORKSPACE__ = workspace;
+async function loadEnabledTimeframes(): Promise<string[]> {
+  const apiBase = (runtime.apiBase ?? defaultApiBase).replace(/\/+$/, '');
+  try {
+    const response = await fetch(`${apiBase}/api/v1/timeframes/`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = (await response.json()) as { timeframes?: unknown };
+    if (!Array.isArray(payload.timeframes)) {
+      throw new Error('invalid timeframe payload');
+    }
+    const enabled = payload.timeframes.filter(
+      (value): value is string => typeof value === 'string' && value.trim() !== '',
+    );
+    if (enabled.length === 0 || !enabled.includes('1m')) {
+      throw new Error('enabled timeframe list is empty or missing canonical 1m');
+    }
+    return enabled;
+  } catch (error) {
+    console.warn('QNext enabled timeframes unavailable; using defaults', error);
+    return [...fallbackTimeframes];
+  }
+}
+
+async function bootstrap() {
+  const timeframes = await loadEnabledTimeframes();
+  const workspace = new VelaWorkspace('#app', {
+    layout: false,
+    symbol: 'NSE:NIFTY',
+    timeframe: timeframes.includes('1m') ? '1m' : timeframes[0],
+    timeframes,
+    live: true,
+    theme: 'dark',
+    timezone: 'exchange',
+    providers: {
+      qnext: () =>
+        new QNextProvider({
+          apiBase: runtime.apiBase ?? defaultApiBase,
+          streamUrl: runtime.streamUrl,
+        }),
+    },
+    persist: 'qnext-workspace-v1',
+    topbar: {
+      left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
+    },
+  });
+
+  window.__QNEXT_WORKSPACE__ = workspace;
+}
+
+void bootstrap();
