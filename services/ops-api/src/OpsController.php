@@ -219,8 +219,66 @@ final class OpsController
 
     public function saveSecrets(array $payload): array
     {
+        $stored = AtomicFile::writeSecrets($this->config->secretsPath(), $payload);
+        $resilienceConfigured = false;
+
+        if (in_array('DHAN_CLIENT_ID', $stored, true) || in_array('DHAN_ACCESS_TOKEN', $stored, true)) {
+            $resilienceConfigured = $this->ensureAutoResilienceConfig();
+        }
+
         return [
-            'stored' => AtomicFile::writeSecrets($this->config->secretsPath(), $payload),
+            'stored' => $stored,
+            'resilienceConfigured' => $resilienceConfigured,
+        ];
+    }
+
+    public function verifyDhanStandby(): array
+    {
+        $feed = $this->feedStatus();
+        if (!($feed['ok'] ?? false) || !isset($feed['body']) || !is_array($feed['body'])) {
+            return [
+                'ok' => false,
+                'reason' => $feed['error'] ?? 'market feed status unavailable',
+            ];
+        }
+
+        $body = $feed['body'];
+        if (!(bool) ($body['resilience_configured'] ?? false)) {
+            return [
+                'ok' => false,
+                'reason' => 'Dhan resilience is not configured in the running Market Core',
+            ];
+        }
+
+        $niftyID = is_string($body['nifty_instrument_id'] ?? null)
+            ? $body['nifty_instrument_id']
+            : 'NSE:NIFTY50';
+        $resilience = is_array($body['resilience'] ?? null) ? $body['resilience'] : [];
+        $providers = is_array($resilience['providers'] ?? null) ? $resilience['providers'] : [];
+        $dhan = is_array($providers['dhan'] ?? null) ? $providers['dhan'] : [];
+        $authorities = is_array($resilience['active_authorities'] ?? null)
+            ? $resilience['active_authorities']
+            : [];
+
+        $lastEventMS = (int) ($dhan['last_event_time_ms'] ?? 0);
+        $ageMS = $lastEventMS > 0 ? max(0, (int) floor(microtime(true) * 1000) - $lastEventMS) : null;
+        $received = (int) ($dhan['received'] ?? 0);
+        $errors = (int) ($dhan['errors'] ?? 0);
+        $authority = is_string($authorities[$niftyID] ?? null) ? $authorities[$niftyID] : null;
+        $fresh = $ageMS !== null && $ageMS <= 5000 && $received > 0;
+
+        return [
+            'ok' => $fresh,
+            'fresh' => $fresh,
+            'ageMs' => $ageMS,
+            'received' => $received,
+            'errors' => $errors,
+            'authority' => $authority,
+            'niftyInstrumentId' => $niftyID,
+            'safeForFailoverDrill' => $fresh && $authority === 'upstox',
+            'reason' => $fresh
+                ? 'Dhan standby is receiving fresh NIFTY quotes'
+                : 'Dhan standby has not produced a fresh NIFTY quote yet',
         ];
     }
 
@@ -275,6 +333,41 @@ final class OpsController
         }
 
         return ['ok' => true, 'output' => $result['output']];
+    }
+
+    private function ensureAutoResilienceConfig(): bool
+    {
+        $market = $this->getConfig();
+        $nifty = is_array($market['nifty'] ?? null) ? $market['nifty'] : [];
+        $synthetic = is_array($market['synthetic'] ?? null) ? $market['synthetic'] : [];
+        $auto = $synthetic['auto'] ?? null;
+
+        if (!is_array($auto)) {
+            return false;
+        }
+
+        $instrumentID = $nifty['instrument_id'] ?? null;
+        if (!is_string($instrumentID) || trim($instrumentID) === '') {
+            throw new RuntimeException('cannot configure Dhan resilience without NIFTY instrument_id');
+        }
+
+        AtomicFile::writeJson($this->config->resilienceConfigPath(), [
+            'version' => 'q3.resilience.v1',
+            'max_staleness_ms' => 2000,
+            'gap_recovery_ms' => 2000,
+            'dhan_poll_interval_ms' => 1000,
+            'instruments' => [[
+                'instrument_id' => $instrumentID,
+                'dhan_provider_key' => 'IDX_I|13|INDEX',
+                'recoverable' => true,
+            ]],
+            'failover_pending_ms' => 1000,
+            'failback_pending_ms' => 5000,
+            'authority_cooldown_ms' => 10000,
+            'authority_policy_version' => 'q3-authority-v1',
+        ]);
+
+        return true;
     }
 
     private function seedDefaultConfig(string $path): void
