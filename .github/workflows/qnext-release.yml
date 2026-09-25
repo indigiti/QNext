@@ -60,11 +60,20 @@ jobs:
 
           cron_root="$(mktemp -d)"
           mkdir -p "$cron_root/private/deploy"
-          install -m 0750 deploy/qnext-ops-user "$cron_root/private/deploy/qnext-ops-user"
-          "$cron_root/private/deploy/qnext-ops-user" reconcile
+          install -m 0640 deploy/qnext-ops-user "$cron_root/private/deploy/qnext-ops-user"
+          /bin/bash "$cron_root/private/deploy/qnext-ops-user" reconcile
           test -s "$cron_root/run/cron-heartbeat"
           test "$(tr -d '\r\n' < "$cron_root/run/desired-state")" = "stopped"
           rm -rf "$cron_root"
+
+          flat_root="$(mktemp -d)"
+          mkdir -p "$flat_root/deploy" "$flat_root/bin"
+          install -m 0640 deploy/qnext-ops-user "$flat_root/deploy/qnext-ops-user"
+          touch "$flat_root/bin/qnext-market-core"
+          /bin/bash "$flat_root/deploy/qnext-ops-user" reconcile
+          test -s "$flat_root/run/cron-heartbeat"
+          test "$(tr -d '\r\n' < "$flat_root/run/desired-state")" = "stopped"
+          rm -rf "$flat_root"
 
       - name: Set up Go
         uses: actions/setup-go@v5
