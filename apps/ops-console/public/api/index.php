@@ -13,8 +13,26 @@ function bridge_fail(int $status, string $message): never
     exit;
 }
 
+function bridge_value(string $key): string
+{
+    $environment = getenv($key);
+    if (is_string($environment) && trim($environment) !== '') {
+        return trim($environment);
+    }
+
+    if (isset($_SERVER[$key]) && trim((string) $_SERVER[$key]) !== '') {
+        return trim((string) $_SERVER[$key]);
+    }
+
+    if (isset($_ENV[$key]) && trim((string) $_ENV[$key]) !== '') {
+        return trim((string) $_ENV[$key]);
+    }
+
+    return '';
+}
+
 $publicQnextRoot = dirname(__DIR__, 2);
-$privateRoot = rtrim((string) getenv('QNEXT_PRIVATE_ROOT'), '/');
+$privateRoot = rtrim(bridge_value('QNEXT_PRIVATE_ROOT'), '/');
 
 if ($privateRoot === '') {
     $publicHtmlRoot = dirname($publicQnextRoot);
@@ -22,16 +40,20 @@ if ($privateRoot === '') {
     $inferred = $accountRoot . '/private_html/qnext';
     if (is_dir($inferred)) {
         $privateRoot = $inferred;
-        putenv('QNEXT_PRIVATE_ROOT=' . $privateRoot);
     }
-}
-
-if (getenv('QNEXT_PUBLIC_ROOT') === false || trim((string) getenv('QNEXT_PUBLIC_ROOT')) === '') {
-    putenv('QNEXT_PUBLIC_ROOT=' . $publicQnextRoot);
 }
 
 if ($privateRoot === '') {
     bridge_fail(503, 'QNext private runtime root is not configured');
+}
+
+/*
+ * Cloudways may disable putenv(). Pass inferred deployment values to the
+ * included private API through the request server array instead.
+ */
+$_SERVER['QNEXT_PRIVATE_ROOT'] = $privateRoot;
+if (bridge_value('QNEXT_PUBLIC_ROOT') === '') {
+    $_SERVER['QNEXT_PUBLIC_ROOT'] = $publicQnextRoot;
 }
 
 $candidates = [
