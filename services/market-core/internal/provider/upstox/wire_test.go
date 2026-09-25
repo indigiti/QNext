@@ -119,3 +119,68 @@ func TestWireClientOpensAndNormalizesFrame(t *testing.T) {
 		t.Fatalf("unexpected normalized ticks: %+v", received)
 	}
 }
+
+
+type updateConnection struct {
+	writes [][]byte
+	cancel context.CancelFunc
+}
+
+func (c *updateConnection) WriteBinary(_ context.Context, payload []byte) error {
+	c.writes = append(c.writes, append([]byte(nil), payload...))
+	if len(c.writes) == 2 && c.cancel != nil {
+		c.cancel()
+	}
+	return nil
+}
+
+func (c *updateConnection) ReadBinary(ctx context.Context) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (c *updateConnection) Close() error { return nil }
+
+type updateDialer struct {
+	connection *updateConnection
+}
+
+func (d updateDialer) Dial(context.Context, string) (BinaryConnection, error) {
+	return d.connection, nil
+}
+
+func TestWireClientAppliesLiveSubscriptionUpdates(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	connection := &updateConnection{cancel: cancel}
+
+	updates := make(chan SubscriptionRequest, 1)
+	updates <- SubscriptionRequest{
+		GUID:   "qnext-test",
+		Method: MethodSubscribe,
+		Data: SubscriptionData{
+			Mode:           ModeLTPC,
+			InstrumentKeys: []string{"NSE_FO|25150|CE", "NSE_FO|25150|PE"},
+		},
+	}
+
+	client := &WireClient{
+		Authorizer:          fakeAuthorizer{uri: "wss://feed.example.test/one-time"},
+		Dialer:              updateDialer{connection: connection},
+		SubscriptionUpdates: updates,
+	}
+
+	err := client.Run(ctx, "token", SubscriptionRequest{
+		GUID:   "qnext-test",
+		Method: MethodSubscribe,
+		Data: SubscriptionData{
+			Mode:           ModeLTPC,
+			InstrumentKeys: []string{"NSE_INDEX|Nifty 50"},
+		},
+	}, func(domain.Tick) error { return nil })
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation after subscription update, got %v", err)
+	}
+	if len(connection.writes) != 2 {
+		t.Fatalf("expected initial and live subscription writes, got %d", len(connection.writes))
+	}
+}
