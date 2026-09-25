@@ -168,6 +168,12 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; }
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: .8rem;
 }
+.feed-actions {
+  align-items: center;
+  margin-top: 1rem;
+}
+.feed-actions .muted { flex: 1; }
+
 .feed-provider-card {
   padding: 1rem;
   border: 1px solid #202635;

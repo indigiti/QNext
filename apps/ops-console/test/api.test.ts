@@ -107,6 +107,30 @@ describe('OpsAPI', () => {
     expect(calls).toEqual(['/qnext/admin/api/index.php?route=%2Ffeed-status']);
   });
 
+  it('verifies Dhan standby readiness', async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${String(input)}`);
+      return new Response(JSON.stringify({
+        ok: true,
+        fresh: true,
+        ageMs: 250,
+        received: 12,
+        errors: 0,
+        authority: 'upstox',
+        safeForFailoverDrill: true,
+        reason: 'Dhan standby is receiving fresh NIFTY quotes',
+      }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ token: 'secret', fetcher });
+    const result = await api.verifyDhanStandby();
+
+    expect(result.ok).toBe(true);
+    expect(result.safeForFailoverDrill).toBe(true);
+    expect(calls).toEqual(['POST /qnext/admin/api/index.php?route=%2Fdhan-standby-check']);
+  });
+
   it('surfaces API errors', async () => {
     const fetcher: typeof fetch = async () =>
       new Response(JSON.stringify({ error: 'denied' }), { status: 403 });

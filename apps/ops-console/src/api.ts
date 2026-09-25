@@ -103,6 +103,19 @@ export interface FeedStatusResponse {
 
 export interface SecretWriteResult {
   stored: string[];
+  resilienceConfigured?: boolean;
+}
+
+export interface DhanStandbyCheck {
+  ok: boolean;
+  fresh?: boolean;
+  ageMs?: number | null;
+  received?: number;
+  errors?: number;
+  authority?: string | null;
+  niftyInstrumentId?: string;
+  safeForFailoverDrill?: boolean;
+  reason?: string;
 }
 
 export interface APIOptions {
@@ -147,6 +160,10 @@ export class OpsAPI {
 
   feedStatus(): Promise<FeedStatusResponse> {
     return this.request<FeedStatusResponse>('/feed-status');
+  }
+
+  verifyDhanStandby(): Promise<DhanStandbyCheck> {
+    return this.request<DhanStandbyCheck>('/dhan-standby-check', { method: 'POST' });
   }
 
   saveConfig(config: Record<string, unknown>): Promise<{ saved: boolean }> {

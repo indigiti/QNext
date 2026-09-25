@@ -92,7 +92,20 @@ chmod($flatRoot . '/deploy/qnext-ops-user', 0640);
 AtomicFile::writeJson($flatRoot . '/config/q1-market.example.json', [
     'timeframes' => ['1m'],
     'nifty' => ['instrument_id' => 'NSE:NIFTY50', 'provider_key' => 'NSE_INDEX|Nifty 50'],
-    'synthetic' => ['instrument_id' => 'QNEXT:NIFTY-SYN'],
+    'synthetic' => [
+        'instrument_id' => 'QNEXT:NIFTY-SYN',
+        'version' => 'nifty-syn-v2',
+        'minimum_valid_candidates' => 3,
+        'max_leg_age_ms' => 2000,
+        'max_leg_time_skew_ms' => 1000,
+        'auto' => [
+            'strike_interval' => 50,
+            'active_strikes' => 5,
+            'warm_strikes' => 7,
+            'atm_hysteresis_points' => 5,
+            'atm_confirmation_ms' => 750,
+        ],
+    ],
 ]);
 AtomicFile::writeJson($flatRoot . '/config/q1-market.json', []);
 
@@ -134,6 +147,26 @@ file_put_contents(
     $flatRoot . '/logs/market-core.log',
     "market-core starting\nAuthorization: Bearer secret-token\naccess_token=secret-value\nmarket-core stopped\n"
 );
+$secretResult = $flatController->saveSecrets([
+    'DHAN_CLIENT_ID' => 'test-client',
+    'DHAN_ACCESS_TOKEN' => 'test-token',
+]);
+expect(
+    ($secretResult['resilienceConfigured'] ?? false) === true,
+    'saving Dhan secrets should create auto-leg-compatible resilience config'
+);
+$resilienceConfig = json_decode(
+    file_get_contents($flatConfig->resilienceConfigPath()) ?: '{}',
+    true,
+);
+expect(
+    is_array($resilienceConfig)
+    && count($resilienceConfig['instruments'] ?? []) === 1
+    && ($resilienceConfig['instruments'][0]['instrument_id'] ?? '') === 'NSE:NIFTY50'
+    && ($resilienceConfig['instruments'][0]['dhan_provider_key'] ?? '') === 'IDX_I|13|INDEX',
+    'web-managed Dhan resilience config should contain only the canonical NIFTY mapping in auto-leg mode'
+);
+
 $diagnostics = $flatController->diagnostics();
 expect($diagnostics['binaryFound'] === true, 'diagnostics should find flattened Market Core binary');
 expect(count($diagnostics['logLines']) === 4, 'diagnostics should return bounded log lines');
