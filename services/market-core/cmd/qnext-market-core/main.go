@@ -94,6 +94,7 @@ func main() {
 		Commit:        commit,
 		StartedAt:     started,
 		StreamHandler: stream.NewWebSocketHandler(broker),
+		LiveBars:      broker,
 		Symbols:       registry,
 		Calendars:     calendars,
 		ResilienceStatus: func() any {
