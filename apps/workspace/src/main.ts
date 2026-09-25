@@ -1,4 +1,5 @@
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
+import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 
 import { QNextProvider } from './qnext-provider';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
@@ -90,6 +91,7 @@ async function bootstrap() {
     },
     engines: {
       qnext: () => new QNextIndicatorEngine(),
+      pine: () => new PineWorkerEngine(),
     },
     indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',
