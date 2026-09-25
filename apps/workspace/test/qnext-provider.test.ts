@@ -186,6 +186,79 @@ describe('QNextProvider', () => {
       stream_id: 'bars:NSE:NIFTY50:1m',
     });
   });
+
+  it('heals RESYNC_REQUIRED with a REST snapshot before fresh live subscribe', async () => {
+    const sockets: FakeSocket[] = [];
+    let barsRequests = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      if (target.startsWith('/api/v1/symbols')) {
+        return jsonResponse(symbolsPayload);
+      }
+      if (target.startsWith('/api/v1/bars?')) {
+        barsRequests += 1;
+        return jsonResponse({
+          bars: [
+            { time: 100, open: 10, high: 12, low: 9, close: 11, volume: 20 },
+            { time: 200, open: 11, high: 13, low: 10, close: 12, volume: 25 },
+          ],
+        });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const provider = new QNextProvider({
+      fetchImpl,
+      webSocketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      reconnectDelayMs: 60_000,
+    });
+    const onBar = vi.fn();
+    const unsubscribe = provider.subscribe('NIFTY', '1m', onBar);
+
+    await waitFor(() => sockets.length === 1);
+    const socket = sockets[0];
+    socket.open();
+    socket.message({
+      op: 'subscribed',
+      stream_id: 'bars:NSE:NIFTY50:1m',
+      seq: 7,
+    });
+    socket.message({
+      op: 'resync_required',
+      stream_id: 'bars:NSE:NIFTY50:1m',
+    });
+
+    await waitFor(() => barsRequests === 1 && socket.sent.length >= 2);
+    expect(onBar).toHaveBeenNthCalledWith(1, {
+      time: 100,
+      open: 10,
+      high: 12,
+      low: 9,
+      close: 11,
+      volume: 20,
+    });
+    expect(onBar).toHaveBeenNthCalledWith(2, {
+      time: 200,
+      open: 11,
+      high: 13,
+      low: 10,
+      close: 12,
+      volume: 25,
+    });
+    expect(socket.sent.at(-1)).toEqual({
+      op: 'subscribe',
+      channel: 'bars',
+      symbol: 'NSE:NIFTY50',
+      timeframe: '1m',
+    });
+
+    unsubscribe();
+  });
+
 });
 
 function jsonFetch(routes: Record<string, unknown>): typeof fetch {
