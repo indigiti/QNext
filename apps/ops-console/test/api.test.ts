@@ -8,16 +8,41 @@ describe('OpsAPI', () => {
     const fetcher: typeof fetch = async (input, init) => {
       const headers = new Headers(init?.headers);
       calls.push({ url: String(input), token: headers.get('X-QNext-Ops-Token') });
-      return new Response(JSON.stringify({ initialized: false }), { status: 200 });
+      return new Response(JSON.stringify({ initialized: false, bootstrapConfigured: true }), { status: 200 });
     };
 
     const api = new OpsAPI({ token: 'secret', fetcher });
     const status = await api.setupStatus();
 
     expect(status.initialized).toBe(false);
+    expect(status.bootstrapConfigured).toBe(true);
     expect(calls).toEqual([
       { url: '/qnext/admin/api/index.php?route=%2Fsetup-status', token: null },
     ]);
+  });
+
+  it('requires a separate one-time bootstrap token for first-time admin initialization', async () => {
+    const calls: Array<{ url: string; adminToken: string | null; setupToken: string | null; body: string }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({
+        url: String(input),
+        adminToken: headers.get('X-QNext-Ops-Token'),
+        setupToken: headers.get('X-QNext-Setup-Token'),
+        body: String(init?.body ?? ''),
+      });
+      return new Response(JSON.stringify({ initialized: true }), { status: 201 });
+    };
+
+    const api = new OpsAPI({ token: 'must-not-be-used-for-setup', fetcher });
+    await api.initializeAdminToken('new-admin-token-0123456789', 'bootstrap-0123456789abcdef');
+
+    expect(calls).toEqual([{
+      url: '/qnext/admin/api/index.php?route=%2Fsetup',
+      adminToken: null,
+      setupToken: 'bootstrap-0123456789abcdef',
+      body: JSON.stringify({ token: 'new-admin-token-0123456789' }),
+    }]);
   });
 
   it('sends the staging token and parses status', async () => {
