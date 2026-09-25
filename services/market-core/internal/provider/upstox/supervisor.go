@@ -3,7 +3,6 @@ package upstox
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
@@ -40,6 +39,7 @@ type Supervisor struct {
 	ResetAfter      time.Duration
 	Now             func() time.Time
 	Sleep           func(context.Context, time.Duration) error
+	OnRecoveryError func(error)
 }
 
 func (s *Supervisor) Run(
@@ -132,7 +132,13 @@ func (s *Supervisor) Run(
 				Cause:              err.Error(),
 			}
 			if recoverErr := s.Recovery.Recover(ctx, recovery); recoverErr != nil {
-				return fmt.Errorf("recover Upstox market gap: %w", recoverErr)
+				// Recovery failure must not terminate the supervisor. The live stream can
+				// reconnect independently and a later recovery attempt can heal the gap.
+				// Returning here used to bubble up to main and shut down the entire HTTP
+				// service, turning otherwise readable history endpoints into 502s.
+				if s.OnRecoveryError != nil {
+					s.OnRecoveryError(recoverErr)
+				}
 			}
 		}
 
