@@ -47,6 +47,17 @@ export class OpsAPI {
     this.fetcher = options.fetcher ?? fetch;
   }
 
+  setupStatus(): Promise<{ initialized: boolean }> {
+    return this.request<{ initialized: boolean }>('/setup-status', {}, false);
+  }
+
+  initializeAdminToken(token: string): Promise<{ initialized: boolean }> {
+    return this.request<{ initialized: boolean }>('/setup', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }, false);
+  }
+
   status(): Promise<OpsStatus> {
     return this.request<OpsStatus>('/status');
   }
@@ -85,13 +96,17 @@ export class OpsAPI {
     return this.request('/rollback', { method: 'POST' });
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(
+    path: string,
+    init: RequestInit = {},
+    includeToken = true,
+  ): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
     if (init.body) {
       headers.set('Content-Type', 'application/json');
     }
-    if (this.token) {
+    if (includeToken && this.token) {
       headers.set('X-QNext-Ops-Token', this.token);
     }
 
