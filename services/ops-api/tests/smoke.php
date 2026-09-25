@@ -103,9 +103,22 @@ expect(
     $flatConfig->helperPath === $flatRoot . '/deploy/qnext-ops-user',
     'flattened private layout helper should be detected'
 );
+$flatControl = new ServiceControl(
+    $flatConfig->helperPath,
+    [],
+    $flatRoot . '/run/control-request',
+    $flatRoot . '/run/desired-state',
+    $flatRoot . '/run/cron-heartbeat',
+);
 expect(
-    (new ServiceControl($flatConfig->helperPath))->helperAvailable(),
+    $flatControl->helperAvailable(),
     'readable helper should be available even without execute bit'
+);
+mkdir($flatRoot . '/run', 0750, true);
+file_put_contents($flatRoot . '/run/cron-heartbeat', (string) time());
+expect(
+    $flatControl->controlMode() === 'cron',
+    'active cron heartbeat should take precedence over direct process control'
 );
 $seeded = (new OpsController($flatConfig))->getConfig();
 expect(
