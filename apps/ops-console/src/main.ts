@@ -780,16 +780,58 @@ async function loadHistoricalRepairStatus() {
 }
 
 
+const DEFAULT_PINE_V6_SCRIPT = [
+  '//@version=6',
+  'indicator("My QNext Indicator", overlay=true)',
+  '',
+  'fast = ta.ema(close, 9)',
+  'slow = ta.ema(close, 21)',
+  '',
+  'plot(fast, "Fast EMA", color=color.aqua, linewidth=2)',
+  'plot(slow, "Slow EMA", color=color.orange, linewidth=2)',
+].join('\n');
+
+function setCustomIndicatorKind(kind: CustomIndicator['kind']) {
+  const pinePanel = document.querySelector<HTMLDivElement>('#pine-script-settings')!;
+  const nativePanel = document.querySelector<HTMLDivElement>('#native-indicator-settings')!;
+  pinePanel.hidden = kind !== 'pine-v6';
+  nativePanel.hidden = kind !== 'adaptive-ema-qalg';
+
+  const saveButton = document.querySelector<HTMLButtonElement>('#save-custom-indicator')!;
+  const form = document.querySelector<HTMLFormElement>('#custom-indicator-form')!;
+  const editing = (form.elements.namedItem('editingId') as HTMLInputElement).value !== '';
+  saveButton.textContent = editing
+    ? (kind === 'pine-v6' ? 'Update Pine script' : 'Update indicator')
+    : (kind === 'pine-v6' ? 'Add Pine indicator' : 'Add indicator');
+}
+
 function customIndicatorFromForm(form: HTMLFormElement): CustomIndicator {
   const data = new FormData(form);
   const numberValue = (key: string) => Number(data.get(key));
-  return {
+  const kind = String(data.get('kind') ?? 'pine-v6') as CustomIndicator['kind'];
+  const common = {
     id: String(data.get('id') ?? '').trim(),
     name: String(data.get('name') ?? '').trim(),
-    category: 'QNext',
-    kind: 'adaptive-ema-qalg',
+    category: 'QNext' as const,
+    kind,
     enabled: data.get('enabled') === 'on',
     description: String(data.get('description') ?? '').trim(),
+    attribution: String(data.get('attribution') ?? '').trim(),
+    license: String(data.get('license') ?? '').trim(),
+    licenseUrl: String(data.get('licenseUrl') ?? '').trim(),
+  };
+
+  if (kind === 'pine-v6') {
+    return {
+      ...common,
+      language: 'pine',
+      script: String(data.get('script') ?? '').replace(/\r\n/g, '\n'),
+    };
+  }
+
+  return {
+    ...common,
+    language: 'qnext',
     defaults: {
       priceSource: String(data.get('priceSource') ?? 'close'),
       emaLength: numberValue('emaLength'),
@@ -801,16 +843,13 @@ function customIndicatorFromForm(form: HTMLFormElement): CustomIndicator {
       downColor: String(data.get('downColor') ?? '#ff0000'),
       colorBars: data.get('colorBars') === 'on',
     },
-    attribution: String(data.get('attribution') ?? '').trim(),
-    license: String(data.get('license') ?? '').trim(),
-    licenseUrl: String(data.get('licenseUrl') ?? '').trim(),
   };
 }
 
-function fillCustomIndicatorForm(indicator?: CustomIndicator) {
+function fillCustomIndicatorForm(indicator?: CustomIndicator, preferredKind: CustomIndicator['kind'] = 'pine-v6') {
   const form = document.querySelector<HTMLFormElement>('#custom-indicator-form')!;
   const set = (name: string, value: string | number) => {
-    const input = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
+    const input = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
     if (input) input.value = String(value);
   };
   const setChecked = (name: string, checked: boolean) => {
@@ -818,30 +857,52 @@ function fillCustomIndicatorForm(indicator?: CustomIndicator) {
     if (input) input.checked = checked;
   };
   const editing = form.elements.namedItem('editingId') as HTMLInputElement;
+  const kind = indicator?.kind ?? preferredKind;
+  const defaults = indicator?.defaults;
 
   editing.value = indicator?.id ?? '';
-  set('name', indicator?.name ?? 'Adaptive EMA [QALG]');
-  set('id', indicator?.id ?? 'adaptive-ema-qalg');
-  set('kind', 'adaptive-ema-qalg');
-  set('priceSource', indicator?.defaults.priceSource ?? 'close');
-  set('emaLength', indicator?.defaults.emaLength ?? 20);
-  set('lookbackPeriod', indicator?.defaults.lookbackPeriod ?? 30);
-  set('stddevMultiplier', indicator?.defaults.stddevMultiplier ?? 2);
-  set('atrLength', indicator?.defaults.atrLength ?? 14);
-  set('atrMultiplier', indicator?.defaults.atrMultiplier ?? 1.5);
-  set('upColor', indicator?.defaults.upColor ?? '#00ffaa');
-  set('downColor', indicator?.defaults.downColor ?? '#ff0000');
-  set('description', indicator?.description ?? 'Adaptive EMA trend overlay using EMA, standard deviation and ATR filters.');
-  set('attribution', indicator?.attribution ?? 'QuantAlgo');
-  set('license', indicator?.license ?? 'MPL-2.0');
-  set('licenseUrl', indicator?.licenseUrl ?? 'https://mozilla.org/MPL/2.0/');
+  set('name', indicator?.name ?? '');
+  set('id', indicator?.id ?? '');
+  set('kind', kind);
+  set('priceSource', defaults?.priceSource ?? 'close');
+  set('emaLength', defaults?.emaLength ?? 20);
+  set('lookbackPeriod', defaults?.lookbackPeriod ?? 30);
+  set('stddevMultiplier', defaults?.stddevMultiplier ?? 2);
+  set('atrLength', defaults?.atrLength ?? 14);
+  set('atrMultiplier', defaults?.atrMultiplier ?? 1.5);
+  set('upColor', defaults?.upColor ?? '#00ffaa');
+  set('downColor', defaults?.downColor ?? '#ff0000');
+  set('script', indicator?.script ?? DEFAULT_PINE_V6_SCRIPT);
+  set('description', indicator?.description ?? '');
+  set('attribution', indicator?.attribution ?? '');
+  set('license', indicator?.license ?? '');
+  set('licenseUrl', indicator?.licenseUrl ?? '');
   setChecked('enabled', indicator?.enabled ?? true);
-  setChecked('colorBars', indicator?.defaults.colorBars ?? true);
+  setChecked('colorBars', defaults?.colorBars ?? true);
+
+  if (!indicator && preferredKind === 'adaptive-ema-qalg') {
+    set('name', 'Adaptive EMA [QALG]');
+    set('id', 'adaptive-ema-qalg');
+    set('description', 'Adaptive EMA trend overlay using EMA, standard deviation and ATR filters.');
+    set('attribution', 'QuantAlgo');
+    set('license', 'MPL-2.0');
+    set('licenseUrl', 'https://mozilla.org/MPL/2.0/');
+  }
 
   const idField = form.elements.namedItem('id') as HTMLInputElement;
+  const kindField = form.elements.namedItem('kind') as HTMLSelectElement;
   idField.disabled = Boolean(indicator);
-  document.querySelector<HTMLButtonElement>('#save-custom-indicator')!.textContent =
-    indicator ? 'Update indicator' : 'Add indicator';
+  kindField.disabled = Boolean(indicator);
+  setCustomIndicatorKind(kind);
+}
+
+function escapeIndicatorText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function renderCustomIndicators(indicators: CustomIndicator[], revision: number) {
@@ -850,24 +911,28 @@ function renderCustomIndicators(indicators: CustomIndicator[], revision: number)
     list.innerHTML = '<div class="muted">No custom indicators configured.</div>';
     return;
   }
-  list.innerHTML = indicators.map((indicator) => `
-    <div class="custom-indicator-row" data-indicator-id="${indicator.id}">
-      <div>
-        <div class="line custom-indicator-title">
-          <strong>${indicator.name}</strong>
-          ${badge(indicator.enabled, indicator.enabled ? 'ENABLED' : 'DISABLED')}
+  list.innerHTML = indicators.map((indicator) => {
+    const runtime = indicator.kind === 'pine-v6' ? 'Pine v6 · worker' : 'QNext native';
+    const editLabel = indicator.kind === 'pine-v6' ? 'Edit code' : 'Edit';
+    return `
+      <div class="custom-indicator-row" data-indicator-id="${escapeIndicatorText(indicator.id)}">
+        <div>
+          <div class="line custom-indicator-title">
+            <strong>${escapeIndicatorText(indicator.name)}</strong>
+            ${badge(indicator.enabled, indicator.enabled ? 'ENABLED' : 'DISABLED')}
+          </div>
+          <div class="muted">${escapeIndicatorText(indicator.id)} · ${runtime} · rev ${revision}</div>
         </div>
-        <div class="muted">${indicator.id} · ${indicator.kind} · rev ${revision}</div>
+        <div class="actions">
+          <button type="button" class="secondary" data-indicator-action="edit" data-indicator-id="${escapeIndicatorText(indicator.id)}">${editLabel}</button>
+          <button type="button" class="secondary" data-indicator-action="toggle" data-indicator-id="${escapeIndicatorText(indicator.id)}">
+            ${indicator.enabled ? 'Disable' : 'Enable'}
+          </button>
+          <button type="button" class="danger" data-indicator-action="delete" data-indicator-id="${escapeIndicatorText(indicator.id)}">Delete</button>
+        </div>
       </div>
-      <div class="actions">
-        <button type="button" class="secondary" data-indicator-action="edit" data-indicator-id="${indicator.id}">Edit</button>
-        <button type="button" class="secondary" data-indicator-action="toggle" data-indicator-id="${indicator.id}">
-          ${indicator.enabled ? 'Disable' : 'Enable'}
-        </button>
-        <button type="button" class="danger" data-indicator-action="delete" data-indicator-id="${indicator.id}">Delete</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   list.querySelectorAll<HTMLButtonElement>('[data-indicator-action]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -878,6 +943,7 @@ function renderCustomIndicators(indicators: CustomIndicator[], revision: number)
 
       if (action === 'edit') {
         fillCustomIndicatorForm(indicator);
+        document.querySelector('#custom-indicator-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
 
@@ -951,7 +1017,14 @@ tokenButton.addEventListener('click', async () => {
 
 
 document.querySelector('#reload-custom-indicators')!.addEventListener('click', () => void loadCustomIndicators());
+document.querySelector('#add-pine-indicator')!.addEventListener('click', () => {
+  fillCustomIndicatorForm(undefined, 'pine-v6');
+  document.querySelector('#custom-indicator-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 document.querySelector('#cancel-custom-indicator')!.addEventListener('click', () => fillCustomIndicatorForm());
+document.querySelector<HTMLSelectElement>('#custom-indicator-kind')!.addEventListener('change', (event) => {
+  setCustomIndicatorKind((event.currentTarget as HTMLSelectElement).value as CustomIndicator['kind']);
+});
 document.querySelector<HTMLFormElement>('#custom-indicator-form')!.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget as HTMLFormElement;
