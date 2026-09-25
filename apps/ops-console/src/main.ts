@@ -150,6 +150,23 @@ root.innerHTML = `
         </div>
       </section>
 
+      <section class="card span-3" id="chart-timeframes-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Chart Display</p>
+            <h2>Enabled timeframes</h2>
+            <p class="muted">Controls only the chart timeframe menu. A chart timeframe can be shown only when its Candle Formation timeframe is enabled.</p>
+          </div>
+          <button id="reload-chart-timeframes" class="secondary">Reload</button>
+        </div>
+        <div id="chart-timeframes-grid" class="market-toggle-grid"></div>
+        <div class="actions">
+          <button id="chart-defaults" class="secondary">Use defaults</button>
+          <button id="save-chart-timeframes">Save & restart</button>
+          <span class="muted">Hidden chart intervals remain available for later display if Candle Formation is enabled.</span>
+        </div>
+      </section>
+
       <section class="card span-3" id="historical-repair-card">
         <div class="card-head">
           <div>
@@ -574,6 +591,67 @@ function selectedCandleTimeframes() {
   return selected;
 }
 
+function renderChartTimeframes(
+  available: string[],
+  enabled: string[],
+  candleEnabled: string[],
+  defaults: string[],
+) {
+  const grid = document.querySelector<HTMLDivElement>('#chart-timeframes-grid')!;
+  const enabledSet = new Set(enabled);
+  const candleSet = new Set(candleEnabled);
+  const defaultSet = new Set(defaults);
+
+  grid.dataset.defaults = JSON.stringify(defaults);
+  grid.dataset.candleEnabled = JSON.stringify(candleEnabled);
+  grid.innerHTML = available.map((timeframe) => {
+    const availableForChart = candleSet.has(timeframe);
+    const checked = availableForChart && enabledSet.has(timeframe);
+    const detail = !availableForChart
+      ? 'CANDLE OFF'
+      : checked
+        ? (defaultSet.has(timeframe) ? 'VISIBLE / DEFAULT' : 'VISIBLE')
+        : 'HIDDEN';
+    return `
+      <label class="market-toggle">
+        <input
+          type="checkbox"
+          name="chart-timeframe"
+          value="${timeframe}"
+          ${checked ? 'checked' : ''}
+          ${availableForChart ? '' : 'disabled data-candle-off="true"'}
+        />
+        <span>
+          <strong>${timeframe}</strong>
+          <small>${detail}</small>
+        </span>
+      </label>
+    `;
+  }).join('');
+
+  grid.querySelectorAll<HTMLInputElement>('input[name="chart-timeframe"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const small = input.closest<HTMLLabelElement>('.market-toggle')?.querySelector('small');
+      if (small) small.textContent = input.checked ? 'VISIBLE' : 'HIDDEN';
+    });
+  });
+}
+
+async function loadChartTimeframes() {
+  try {
+    const state = await api.chartTimeframes();
+    renderChartTimeframes(state.available, state.enabled, state.candleEnabled, state.defaults);
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
+function selectedChartTimeframes() {
+  return Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[name="chart-timeframe"]:checked'),
+  ).map((input) => input.value);
+}
+
 function renderHistoricalRepairStatus(response: HistoricalRepairStatusResponse) {
   const status = document.querySelector<HTMLDivElement>('#historical-repair-status')!;
   if (!response.ok || !response.body) {
@@ -665,6 +743,7 @@ tokenButton.addEventListener('click', async () => {
     await loadConfig();
     await loadActiveMarkets();
     await loadCandleTimeframes();
+    await loadChartTimeframes();
     await loadHistoricalRepairStatus();
   } catch (error) {
     toast((error as Error).message, true);
@@ -714,6 +793,7 @@ document.querySelector('#copy-diagnostics')!.addEventListener('click', async () 
 document.querySelector('#load-config')!.addEventListener('click', () => void loadConfig());
 document.querySelector('#reload-active-markets')!.addEventListener('click', () => void loadActiveMarkets());
 document.querySelector('#reload-candle-timeframes')!.addEventListener('click', () => void loadCandleTimeframes());
+document.querySelector('#reload-chart-timeframes')!.addEventListener('click', () => void loadChartTimeframes());
 document.querySelector('#candle-defaults')!.addEventListener('click', () => {
   const grid = document.querySelector<HTMLDivElement>('#candle-timeframes-grid')!;
   const defaults = new Set<string>(JSON.parse(grid.dataset.defaults ?? '[]'));
@@ -739,6 +819,42 @@ document.querySelector('#save-candle-timeframes')!.addEventListener('click', asy
       `Candle timeframes saved: ${saved.enabled.join(', ')}. Restart ${queued ? 'queued' : 'completed'}.`,
     );
     await loadCandleTimeframes();
+    await loadChartTimeframes();
+    await refresh();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
+document.querySelector('#chart-defaults')!.addEventListener('click', () => {
+  const grid = document.querySelector<HTMLDivElement>('#chart-timeframes-grid')!;
+  const defaults = new Set<string>(JSON.parse(grid.dataset.defaults ?? '[]'));
+  const candleEnabled = new Set<string>(JSON.parse(grid.dataset.candleEnabled ?? '[]'));
+  grid.querySelectorAll<HTMLInputElement>('input[name="chart-timeframe"]').forEach((input) => {
+    input.checked = candleEnabled.has(input.value) && defaults.has(input.value);
+    const small = input.closest<HTMLLabelElement>('.market-toggle')?.querySelector('small');
+    if (small) {
+      small.textContent = input.dataset.candleOff === 'true'
+        ? 'CANDLE OFF'
+        : input.checked
+          ? 'VISIBLE / DEFAULT'
+          : 'HIDDEN';
+    }
+  });
+});
+document.querySelector('#save-chart-timeframes')!.addEventListener('click', async () => {
+  const enabled = selectedChartTimeframes();
+  if (enabled.length === 0) {
+    toast('At least one chart display timeframe must remain enabled.', true);
+    return;
+  }
+  try {
+    const saved = await api.saveChartTimeframes(enabled);
+    const result = await api.service('restart');
+    const queued = result.output.toLowerCase().includes('queued');
+    toast(
+      `Chart display timeframes saved: ${saved.enabled.join(', ')}. Restart ${queued ? 'queued' : 'completed'}.`,
+    );
+    await loadChartTimeframes();
     await refresh();
   } catch (error) {
     toast((error as Error).message, true);
