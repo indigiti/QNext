@@ -161,6 +161,27 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; }
   white-space: nowrap;
 }
 
+.feed-summary { margin-bottom: 1rem; }
+.feed-price { margin-top: .35rem; font-size: 1.05rem; }
+.feed-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem;
+}
+.feed-provider-card {
+  padding: 1rem;
+  border: 1px solid #202635;
+  border-radius: 10px;
+  background: #0c1017;
+}
+.feed-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: .65rem;
+}
+.feed-kv span { color: #7e899c; }
+
 .diagnostics-meta { margin-bottom: 1rem; }
 .diagnostics-log-wrap {
   padding: 1rem;
@@ -206,6 +227,7 @@ button.compact { padding: .45rem .7rem; font-size: .82rem; }
   .grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: span 1; }
   .status-grid { grid-template-columns: 1fr 1fr; }
+  .feed-provider-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 560px) {
