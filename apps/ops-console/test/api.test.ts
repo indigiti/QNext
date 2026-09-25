@@ -25,7 +25,6 @@ describe('OpsAPI', () => {
     };
 
     const api = new OpsAPI({
-      base: '/qnext/admin/api/',
       token: 'secret',
       fetcher,
     });
