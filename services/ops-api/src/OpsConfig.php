@@ -48,7 +48,7 @@ final class OpsConfig
         return new self(
             $privateRoot,
             $publicRoot,
-            rtrim(self::value('QNEXT_MARKET_CORE_URL', 'http://127.0.0.1:8080'), '/'),
+            rtrim(self::value('QNEXT_MARKET_CORE_URL', 'http://127.0.0.1:18080'), '/'),
             self::value('QNEXT_OPS_ADMIN_TOKEN'),
             $helper,
         );
