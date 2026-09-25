@@ -201,7 +201,7 @@ describe('OpsAPI', () => {
           revision: 1,
           kinds: [
             { id: 'pine-v6', label: 'Pine Script v6' },
-            { id: 'pine-ema-cross', label: 'Adaptive EMA [QALG]' },
+            { id: 'adaptive-ema-qalg', label: 'Adaptive EMA [QALG]' },
           ],
           indicators: [],
         }), { status: 200 });
