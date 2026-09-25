@@ -255,13 +255,16 @@ export class OpsAPI {
     this.fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
   }
 
-  setupStatus(): Promise<{ initialized: boolean }> {
-    return this.request<{ initialized: boolean }>('/setup-status', {}, false);
+  setupStatus(): Promise<{ initialized: boolean; bootstrapConfigured: boolean }> {
+    return this.request<{ initialized: boolean; bootstrapConfigured: boolean }>('/setup-status', {}, false);
   }
 
-  initializeAdminToken(token: string): Promise<{ initialized: boolean }> {
+  initializeAdminToken(token: string, bootstrapToken: string): Promise<{ initialized: boolean }> {
     return this.request<{ initialized: boolean }>('/setup', {
       method: 'POST',
+      headers: {
+        'X-QNext-Setup-Token': bootstrapToken,
+      },
       body: JSON.stringify({ token }),
     }, false);
   }
