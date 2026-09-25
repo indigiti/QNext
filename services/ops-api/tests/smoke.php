@@ -251,6 +251,31 @@ expect(
     'custom indicator delete should persist'
 );
 
+$pineIndicator = $flatController->createCustomIndicator([
+    'id' => 'pine-ema-cross',
+    'name' => 'Pine EMA Cross',
+    'kind' => 'pine-v6',
+    'enabled' => true,
+    'script' => "//@version=6\nindicator(\"Pine EMA Cross\", overlay=true)\nplot(ta.ema(close, 9))\n",
+    'description' => 'Pine v6 smoke test',
+]);
+expect(
+    ($pineIndicator['indicator']['language'] ?? '') === 'pine'
+    && str_contains((string) ($pineIndicator['indicator']['script'] ?? ''), '//@version=6'),
+    'Pine v6 custom indicator source should persist'
+);
+try {
+    $flatController->createCustomIndicator([
+        'id' => 'pine-v5-rejected',
+        'name' => 'Old Pine',
+        'kind' => 'pine-v6',
+        'enabled' => true,
+        'script' => "//@version=5\nindicator(\"Old Pine\")\n",
+    ]);
+    expect(false, 'Pine v5 source must be rejected by the Pine v6 catalog');
+} catch (RuntimeException) {
+}
+
 mkdir($flatRoot . '/logs', 0750, true);
 mkdir($flatRoot . '/bin', 0750, true);
 file_put_contents($flatRoot . '/bin/qnext-market-core', 'legacy-binary');

@@ -484,10 +484,16 @@ final class OpsController
         return [
             'schema' => 'QNEXT.INDICATORS/1',
             'revision' => (int) ($catalog['revision'] ?? 0),
-            'kinds' => [[
-                'id' => 'adaptive-ema-qalg',
-                'label' => 'Adaptive EMA [QALG]',
-            ]],
+            'kinds' => [
+                [
+                    'id' => 'pine-v6',
+                    'label' => 'Pine Script v6',
+                ],
+                [
+                    'id' => 'adaptive-ema-qalg',
+                    'label' => 'Adaptive EMA [QALG]',
+                ],
+            ],
             'indicators' => array_values($items),
         ];
     }
@@ -789,8 +795,49 @@ final class OpsController
         if (!is_string($name) || trim($name) === '' || strlen(trim($name)) > 120) {
             throw new RuntimeException('custom indicator name is required and must be 120 characters or fewer');
         }
-        if ($kind !== 'adaptive-ema-qalg') {
+        if (!in_array($kind, ['adaptive-ema-qalg', 'pine-v6'], true)) {
             throw new RuntimeException('unsupported custom indicator kind');
+        }
+
+        $common = [
+            'id' => $id,
+            'name' => trim($name),
+            'category' => 'QNext',
+            'kind' => $kind,
+            'enabled' => isset($payload['enabled']) ? (bool) $payload['enabled'] : true,
+            'description' => is_string($payload['description'] ?? null)
+                ? substr(trim((string) $payload['description']), 0, 500)
+                : '',
+            'attribution' => is_string($payload['attribution'] ?? null)
+                ? substr(trim((string) $payload['attribution']), 0, 120)
+                : '',
+            'license' => is_string($payload['license'] ?? null)
+                ? substr(trim((string) $payload['license']), 0, 80)
+                : '',
+            'licenseUrl' => is_string($payload['licenseUrl'] ?? null)
+                ? substr(trim((string) $payload['licenseUrl']), 0, 300)
+                : '',
+        ];
+
+        if ($kind === 'pine-v6') {
+            $script = $payload['script'] ?? null;
+            if (!is_string($script) || trim($script) === '') {
+                throw new RuntimeException('Pine Script source is required');
+            }
+            if (strlen($script) > 262144) {
+                throw new RuntimeException('Pine Script source must be 256 KiB or smaller');
+            }
+            if (!preg_match('/^\\s*\\/\\/@version=6\\b/m', $script)) {
+                throw new RuntimeException('Pine Script must declare //@version=6');
+            }
+            if (!preg_match('/\\b(indicator|strategy)\\s*\\(/', $script)) {
+                throw new RuntimeException('Pine Script must declare indicator() or strategy()');
+            }
+
+            return $common + [
+                'language' => 'pine',
+                'script' => str_replace("\r\n", "\n", $script),
+            ];
         }
 
         $defaults = is_array($payload['defaults'] ?? null) ? $payload['defaults'] : [];
@@ -829,15 +876,8 @@ final class OpsController
             return strtolower($value);
         };
 
-        return [
-            'id' => $id,
-            'name' => trim($name),
-            'category' => 'QNext',
-            'kind' => 'adaptive-ema-qalg',
-            'enabled' => isset($payload['enabled']) ? (bool) $payload['enabled'] : true,
-            'description' => is_string($payload['description'] ?? null)
-                ? substr(trim((string) $payload['description']), 0, 500)
-                : '',
+        return $common + [
+            'language' => 'qnext',
             'defaults' => [
                 'priceSource' => $source,
                 'emaLength' => $intValue($defaults, 'emaLength', 20, 1, 1000),
@@ -849,15 +889,6 @@ final class OpsController
                 'downColor' => $colorValue($defaults, 'downColor', '#ff0000'),
                 'colorBars' => isset($defaults['colorBars']) ? (bool) $defaults['colorBars'] : true,
             ],
-            'attribution' => is_string($payload['attribution'] ?? null)
-                ? substr(trim((string) $payload['attribution']), 0, 120)
-                : '',
-            'license' => is_string($payload['license'] ?? null)
-                ? substr(trim((string) $payload['license']), 0, 80)
-                : '',
-            'licenseUrl' => is_string($payload['licenseUrl'] ?? null)
-                ? substr(trim((string) $payload['licenseUrl']), 0, 300)
-                : '',
         ];
     }
 

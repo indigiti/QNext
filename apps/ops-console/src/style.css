@@ -331,3 +331,36 @@ button.compact { padding: .45rem .7rem; font-size: .82rem; }
   .indicator-form-grid { grid-template-columns: 1fr; }
   .custom-indicator-row { align-items: flex-start; flex-direction: column; }
 }
+
+
+.indicator-head-actions {
+  margin-top: 0;
+  justify-content: flex-end;
+}
+
+.indicator-kind-panel {
+  display: grid;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px solid #202635;
+  border-radius: 12px;
+  background: #0c1017;
+}
+
+.indicator-kind-panel[hidden] {
+  display: none;
+}
+
+.pine-code-editor {
+  min-height: 30rem;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  background: #070a10;
+  color: #dce4ff;
+}
+
+.pine-license-note {
+  margin: 0;
+  font-size: .78rem;
+}
