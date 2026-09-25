@@ -27,4 +27,4 @@ The first Q4 slice is considered established when deterministic replay produces 
 
 Follow-on slices include order types beyond deterministic market execution, multi-instrument portfolios, exchange-session calendar integration, shadow/live-paper event adapters, richer trade excursion attribution, parameter sweep orchestration, walk-forward validation, and benchmark-relative attribution.
 
-These must be added without weakening the anti-look-ahead and immutability contracts.
+The plan-closure slice now includes a stateful paper engine and deterministic SIGNAL/FILL chart-marker contract using the same next-bar execution model as backtesting. Follow-on work still includes multi-instrument portfolios, exchange-session calendar integration, richer trade excursion attribution, parameter sweeps and walk-forward validation. These must be added without weakening the anti-look-ahead and immutability contracts.

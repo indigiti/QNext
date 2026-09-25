@@ -14,6 +14,8 @@ Strategy Lab
 ├── deterministic replay
 ├── strategy signal evaluation
 ├── next-bar execution model
+├── stateful paper engine with next-bar parity
+├── deterministic signal/fill chart markers
 ├── slippage + fee accounting
 ├── equity / drawdown attribution
 └── immutable file-backed run artifacts
@@ -65,3 +67,7 @@ PYTHONPATH=. python -m unittest discover -s tests -v
 ```
 
 The package uses only the Python standard library.
+
+## Paper parity and chart markers
+
+`PaperEngine` consumes the same canonical final/quality-eligible bars and the same deterministic execution model as backtesting. Orders produced after bar T closes remain pending until bar T+1. The engine exposes deterministic SIGNAL and FILL markers carrying stable IDs, timestamps, side, price and order/fill lineage for the Vela integration layer.
