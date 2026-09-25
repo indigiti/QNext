@@ -59,7 +59,6 @@ func TestBarsEndpointRejectsInvalidQuery(t *testing.T) {
 	}
 }
 
-
 func TestFeedStatusEndpoint(t *testing.T) {
 	handler := New(fakeHistory{}, Options{
 		FeedStatus: func() any {
