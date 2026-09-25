@@ -20,6 +20,7 @@ type Tick struct {
 	InstrumentID     string
 	Provider         string
 	Price            float64
+	Quantity         float64
 	EventTime        time.Time
 	ReceivedTime     time.Time
 	ProcessedTime    time.Time

@@ -137,6 +137,7 @@ func (a *Assembler) Apply(tick domain.Tick) (domain.Tick, bool, error) {
 		InstrumentID:     a.def.ID,
 		Provider:         SyntheticProvider,
 		Price:            observation.Value,
+		Quantity:         tick.Quantity,
 		EventTime:        observation.EventTime,
 		ReceivedTime:     received,
 		ProcessedTime:    processed,

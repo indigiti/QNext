@@ -37,4 +37,12 @@ func TestDedupeSinkDropsRepeatedLTPCSnapshot(t *testing.T) {
 	if len(delivered) != 2 {
 		t.Fatalf("price change must remain observable, got %d ticks", len(delivered))
 	}
+
+	tick.Quantity = 25
+	if err := sink.Handle(tick); err != nil {
+		t.Fatal(err)
+	}
+	if len(delivered) != 3 {
+		t.Fatalf("quantity change at same price/time must remain observable, got %d ticks", len(delivered))
+	}
 }

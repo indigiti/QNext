@@ -47,6 +47,7 @@ func TestAssemblerProducesFiveStrikeNiftySynthetic(t *testing.T) {
 			InstrumentID:  leg.InstrumentID,
 			Provider:      "upstox",
 			Price:         values[leg.InstrumentID],
+			Quantity:      25,
 			EventTime:     at,
 			ReceivedTime:  at,
 			ProcessedTime: at,
@@ -65,6 +66,9 @@ func TestAssemblerProducesFiveStrikeNiftySynthetic(t *testing.T) {
 	}
 	if got.Provider != SyntheticProvider || got.SyntheticVersion != "nifty-syn-v1" {
 		t.Fatalf("missing synthetic lineage: %+v", got)
+	}
+	if got.Quantity != 25 {
+		t.Fatalf("expected triggering option-leg quantity as synthetic basket activity, got %+v", got)
 	}
 }
 

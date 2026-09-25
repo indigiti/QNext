@@ -17,6 +17,7 @@ func tick(at string, price float64, sequence uint64) domain.Tick {
 		InstrumentID: "NSE:NIFTY50",
 		Provider:     "fixture",
 		Price:        price,
+		Quantity:     float64(sequence * 10),
 		EventTime:    ts,
 		Sequence:     sequence,
 		Quality:      domain.QualityGood,
@@ -50,6 +51,9 @@ func TestThirtySecondCandleFinality(t *testing.T) {
 	}
 	if final.Open != 25100 || final.High != 25102 || final.Low != 25099 || final.Close != 25099 {
 		t.Fatalf("unexpected OHLC: %+v", final)
+	}
+	if final.Volume != 60 {
+		t.Fatalf("unexpected volume: got %.0f want 60", final.Volume)
 	}
 
 	forming := out[1]

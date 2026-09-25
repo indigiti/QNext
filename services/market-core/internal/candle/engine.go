@@ -75,6 +75,7 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 		current.High = max(current.High, tick.Price)
 		current.Low = min(current.Low, tick.Price)
 		current.Close = tick.Price
+		current.Volume += tick.Quantity
 		current.Quality = worstQuality(current.Quality, tick.Quality)
 		current.AuthorityProvider = tick.Provider
 		current.SourceSequence = tick.Sequence
@@ -99,6 +100,7 @@ func newBar(tick domain.Tick, timeframe string, openTime, closeTime time.Time, v
 		High:                tick.Price,
 		Low:                 tick.Price,
 		Close:               tick.Price,
+		Volume:              tick.Quantity,
 		Final:               false,
 		Revision:            0,
 		AuthorityProvider:   tick.Provider,
