@@ -1,3 +1,8 @@
+// This Source Code Form includes an implementation based on
+// "Adaptive EMA with ATR and Standard Deviation [QuantAlgo]".
+// Original work © QuantAlgo, licensed under the Mozilla Public License 2.0.
+// https://mozilla.org/MPL/2.0/
+
 import {
   stableSeriesId,
   type ContextSelect,
