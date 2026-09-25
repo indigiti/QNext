@@ -116,9 +116,9 @@ func main() {
 		}
 	}
 
-	enabledTimeframes := marketconfig.DefaultEnabledTimeframes()
+	enabledTimeframes := marketconfig.DefaultChartTimeframes()
 	if config != nil {
-		enabledTimeframes = append([]string(nil), config.Timeframes...)
+		enabledTimeframes = config.EffectiveChartTimeframes()
 	}
 
 	handler := httpapi.New(store, httpapi.Options{
