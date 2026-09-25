@@ -405,7 +405,7 @@ func (r *HistoricalRepairer) repairBars(
 	candidates []domain.Bar,
 ) (HistoricalRepairCounts, bool, error) {
 	filtered := make([]domain.Bar, 0, len(candidates))
-	for _, candidate := range filtered {
+	for _, candidate := range candidates {
 		if candidate.CloseTime.After(from) && !candidate.CloseTime.After(to) {
 			filtered = append(filtered, candidate)
 		}
@@ -433,7 +433,7 @@ func (r *HistoricalRepairer) repairBars(
 	}
 
 	changed := false
-	for _, candidate := range candidates {
+	for _, candidate := range filtered {
 		previous, ok := byOpen[candidate.OpenTime.UnixMilli()]
 		if !ok {
 			candidate.Revision = 0
