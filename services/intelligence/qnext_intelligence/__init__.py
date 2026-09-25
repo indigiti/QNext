@@ -4,6 +4,7 @@ from .baseline import baseline_manifest, baseline_probabilities, classify_regime
 from .client import MarketCoreHistoryClient, timeframe_to_milliseconds
 from .domain import Bar, FeatureVector, ModelManifest, Outcome, Prediction
 from .features import build_feature_vector
+from .learning import HybridTrainingSet, HybridTrainingSetBuilder, TrainingObservation
 from .outcomes import evaluate_outcome
 from .prediction import predict
 from .shadow import ShadowComparison, ShadowPair, evaluate_shadow, run_shadow
@@ -15,6 +16,9 @@ __all__ = [
     "ModelManifest",
     "Outcome",
     "Prediction",
+    "TrainingObservation",
+    "HybridTrainingSet",
+    "HybridTrainingSetBuilder",
     "MarketCoreHistoryClient",
     "timeframe_to_milliseconds",
     "baseline_manifest",
