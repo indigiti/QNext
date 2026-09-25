@@ -54,17 +54,27 @@ function request_path(): string
 
 try {
     $config = OpsConfig::fromEnvironment();
-    $auth = new Auth($config->authPath(), $config->adminToken);
+    $auth = new Auth($config->authPath(), $config->adminToken, $config->bootstrapToken);
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
     $path = request_path();
 
     if ($method === 'GET' && $path === '/setup-status') {
-        respond(200, ['initialized' => $auth->initialized()]);
+        respond(200, [
+            'initialized' => $auth->initialized(),
+            'bootstrapConfigured' => $auth->bootstrapConfigured(),
+        ]);
     }
 
     if ($method === 'POST' && $path === '/setup') {
         if ($auth->initialized()) {
             respond(409, ['error' => 'admin token is already initialized']);
+        }
+        if (!$auth->bootstrapConfigured()) {
+            respond(503, ['error' => 'first-time setup is locked until QNEXT_OPS_BOOTSTRAP_TOKEN is configured']);
+        }
+        $providedBootstrap = $_SERVER['HTTP_X_QNEXT_SETUP_TOKEN'] ?? null;
+        if (!$auth->bootstrapAuthorized(is_string($providedBootstrap) ? $providedBootstrap : null)) {
+            respond(403, ['error' => 'invalid setup bootstrap token']);
         }
         $body = request_body();
         $token = $body['token'] ?? null;
