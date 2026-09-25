@@ -53,6 +53,26 @@ describe('QNextProvider', () => {
     ]);
   });
 
+  it('prefixes public API requests with the configured QNext base path', async () => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      calls.push(target);
+      if (target.startsWith('/qnext/api/v1/symbols')) {
+        return jsonResponse(symbolsPayload);
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const provider = new QNextProvider({
+      apiBase: '/qnext/',
+      fetchImpl,
+    });
+
+    await provider.listSymbols();
+    expect(calls).toEqual(['/qnext/api/v1/symbols']);
+  });
+
   it('normalizes, de-duplicates and orders history bars', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);
@@ -185,6 +205,64 @@ describe('QNextProvider', () => {
       op: 'unsubscribe',
       stream_id: 'bars:NSE:NIFTY50:1m',
     });
+  });
+
+  it('falls back to REST polling when the public WebSocket cannot open', async () => {
+    const sockets: FakeSocket[] = [];
+    let barsRequests = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      if (target.startsWith('/qnext/api/v1/symbols')) {
+        return jsonResponse(symbolsPayload);
+      }
+      if (target.startsWith('/qnext/api/v1/bars?')) {
+        barsRequests += 1;
+        return jsonResponse({
+          bars: [
+            {
+              time: 1_000,
+              open: 23000,
+              high: 23010,
+              low: 22995,
+              close: 23005 + barsRequests,
+              volume: 0,
+            },
+          ],
+        });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const provider = new QNextProvider({
+      apiBase: '/qnext',
+      fetchImpl,
+      webSocketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      pollIntervalMs: 5,
+      reconnectDelayMs: 60_000,
+    });
+
+    const onBar = vi.fn();
+    const unsubscribe = provider.subscribe('NIFTY', '15s', onBar);
+
+    await waitFor(() => sockets.length === 1);
+    sockets[0].close();
+
+    await waitFor(() => barsRequests >= 1 && onBar.mock.calls.length >= 1);
+    expect(onBar.mock.calls[0][0]).toMatchObject({
+      time: 1_000,
+      open: 23000,
+      high: 23010,
+      low: 22995,
+    });
+
+    unsubscribe();
+    const requestsAfterUnsubscribe = barsRequests;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(barsRequests).toBe(requestsAfterUnsubscribe);
   });
 
   it('heals RESYNC_REQUIRED with a REST snapshot before fresh live subscribe', async () => {
