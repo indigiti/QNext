@@ -89,6 +89,52 @@ final class OpsController
         ];
     }
 
+    public function diagnostics(): array
+    {
+        $pid = null;
+        $pidPath = $this->config->marketCorePidPath();
+        if (is_file($pidPath)) {
+            $rawPid = trim((string) file_get_contents($pidPath));
+            if (preg_match('/^[1-9][0-9]*$/', $rawPid)) {
+                $pid = (int) $rawPid;
+            }
+        }
+
+        $heartbeatAt = null;
+        $heartbeatAgeSeconds = null;
+        $heartbeatPath = $this->config->cronHeartbeatPath();
+        if (is_file($heartbeatPath)) {
+            $modified = filemtime($heartbeatPath);
+            if (is_int($modified)) {
+                $heartbeatAt = gmdate(DATE_ATOM, $modified);
+                $heartbeatAgeSeconds = max(0, time() - $modified);
+            }
+        }
+
+        $binary = null;
+        foreach ($this->config->marketCoreBinaryCandidates() as $candidate) {
+            if (is_file($candidate)) {
+                $binary = $candidate;
+                break;
+            }
+        }
+
+        return [
+            'desiredState' => $this->service->desiredState(),
+            'pid' => $pid,
+            'pidAlive' => $pid !== null && is_dir('/proc/' . $pid),
+            'pidPath' => $pidPath,
+            'binaryPath' => $binary,
+            'binaryFound' => $binary !== null,
+            'logPath' => $this->config->marketCoreLogPath(),
+            'logLines' => $this->tailLog($this->config->marketCoreLogPath(), 80, 65536),
+            'cronHeartbeatAt' => $heartbeatAt,
+            'cronHeartbeatAgeSeconds' => $heartbeatAgeSeconds,
+            'controlMode' => $this->service->controlMode(),
+            'helperPath' => $this->config->helperPath,
+        ];
+    }
+
     public function getConfig(): array
     {
         $path = $this->config->configPath();
@@ -234,6 +280,48 @@ final class OpsController
                 AtomicFile::writeJson($path, $decoded);
                 return;
             }
+        }
+    }
+
+    private function tailLog(string $path, int $maxLines, int $maxBytes): array
+    {
+        if (!is_file($path) || !is_readable($path)) {
+            return [];
+        }
+
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return [];
+        }
+
+        try {
+            $size = filesize($path);
+            if (is_int($size) && $size > $maxBytes) {
+                fseek($handle, -$maxBytes, SEEK_END);
+                fgets($handle);
+            }
+
+            $contents = stream_get_contents($handle);
+            if (!is_string($contents) || $contents === '') {
+                return [];
+            }
+
+            $lines = preg_split('/\R/', trim($contents)) ?: [];
+            $lines = array_slice($lines, -$maxLines);
+
+            return array_values(array_map(
+                static function (string $line): string {
+                    $line = preg_replace(
+                        '/((?:access[_ -]?token|authorization|bearer|api[_ -]?key|client[_ -]?secret)\s*[:=]\s*)\S+/i',
+                        '$1[REDACTED]',
+                        $line,
+                    ) ?? $line;
+                    return mb_substr($line, 0, 2000);
+                },
+                $lines,
+            ));
+        } finally {
+            fclose($handle);
         }
     }
 
