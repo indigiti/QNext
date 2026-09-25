@@ -111,6 +111,7 @@ func main() {
 			History:     store,
 			Calendars:   calendars,
 			Markets:     config.EffectiveMarkets(),
+			Timeframes:  append([]string(nil), config.Timeframes...),
 			Resync:      broker,
 		}
 	}
@@ -344,7 +345,7 @@ func runMarket(
 	canonicalPipeline, err := pipeline.New(
 		candle.New("candle-v2-session-aligned"),
 		store,
-		marketconfig.ChartTimeframes(),
+		config.Timeframes,
 	)
 	if err != nil {
 		return err
@@ -516,7 +517,7 @@ func runMarket(
 }
 
 func nonExactRecoveryTimeframes(timeframes []string) []string {
-	recoverable := map[string]bool{"1m": true, "3m": true, "5m": true}
+	recoverable := map[string]bool{"1m": true}
 	result := make([]string, 0, len(timeframes))
 	for _, timeframe := range timeframes {
 		if !recoverable[timeframe] {
