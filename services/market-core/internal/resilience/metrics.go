@@ -26,14 +26,14 @@ type SwitchEvent struct {
 
 type Snapshot struct {
 	ActiveAuthorities map[string]string           `json:"active_authorities"`
-	AuthorityStates    map[string]string           `json:"authority_states"`
-	Provider           map[string]ProviderSnapshot `json:"providers"`
-	AuthoritySwitches  uint64                      `json:"authority_switches"`
-	GapDetections      uint64                      `json:"gap_detections"`
-	RecoveryAttempts   uint64                      `json:"recovery_attempts"`
-	RecoverySuccesses  uint64                      `json:"recovery_successes"`
-	RecoveryFailures   uint64                      `json:"recovery_failures"`
-	RecentSwitches     []SwitchEvent               `json:"recent_switches"`
+	AuthorityStates   map[string]string           `json:"authority_states"`
+	Provider          map[string]ProviderSnapshot `json:"providers"`
+	AuthoritySwitches uint64                      `json:"authority_switches"`
+	GapDetections     uint64                      `json:"gap_detections"`
+	RecoveryAttempts  uint64                      `json:"recovery_attempts"`
+	RecoverySuccesses uint64                      `json:"recovery_successes"`
+	RecoveryFailures  uint64                      `json:"recovery_failures"`
+	RecentSwitches    []SwitchEvent               `json:"recent_switches"`
 }
 
 type Metrics struct {
@@ -44,8 +44,8 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	return &Metrics{snapshot: Snapshot{
 		ActiveAuthorities: map[string]string{},
-		AuthorityStates:    map[string]string{},
-		Provider:           map[string]ProviderSnapshot{},
+		AuthorityStates:   map[string]string{},
+		Provider:          map[string]ProviderSnapshot{},
 	}}
 }
 

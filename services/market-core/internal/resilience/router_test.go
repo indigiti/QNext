@@ -97,7 +97,6 @@ func TestRouterLoadHotStandbyNoLoss(t *testing.T) {
 	}
 }
 
-
 func TestRouterAuthorityStateMachineHysteresis(t *testing.T) {
 	base := time.Date(2026, 9, 25, 9, 15, 0, 0, time.UTC)
 

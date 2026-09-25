@@ -11,15 +11,15 @@ import (
 const ConfigVersion = "q3.resilience.v1"
 
 type Config struct {
-	Version            string              `json:"version"`
-	MaxStalenessMS     int64               `json:"max_staleness_ms"`
-	GapRecoveryMS      int64               `json:"gap_recovery_ms"`
-	DhanPollIntervalMS    int64               `json:"dhan_poll_interval_ms"`
-	FailoverPendingMS     int64               `json:"failover_pending_ms"`
-	FailbackPendingMS     int64               `json:"failback_pending_ms"`
-	AuthorityCooldownMS   int64               `json:"authority_cooldown_ms"`
+	Version                string              `json:"version"`
+	MaxStalenessMS         int64               `json:"max_staleness_ms"`
+	GapRecoveryMS          int64               `json:"gap_recovery_ms"`
+	DhanPollIntervalMS     int64               `json:"dhan_poll_interval_ms"`
+	FailoverPendingMS      int64               `json:"failover_pending_ms"`
+	FailbackPendingMS      int64               `json:"failback_pending_ms"`
+	AuthorityCooldownMS    int64               `json:"authority_cooldown_ms"`
 	AuthorityPolicyVersion string              `json:"authority_policy_version"`
-	Instruments           []InstrumentMapping `json:"instruments"`
+	Instruments            []InstrumentMapping `json:"instruments"`
 }
 
 type InstrumentMapping struct {
@@ -91,11 +91,11 @@ func (c Config) TransitionPolicy(primaryProvider string) TransitionPolicy {
 		version = "q3-authority-v1"
 	}
 	return TransitionPolicy{
-		PrimaryProvider:  primaryProvider,
-		FailoverPending:  time.Duration(c.FailoverPendingMS) * time.Millisecond,
-		FailbackPending:  time.Duration(c.FailbackPendingMS) * time.Millisecond,
-		Cooldown:         time.Duration(c.AuthorityCooldownMS) * time.Millisecond,
-		PolicyVersion:    version,
+		PrimaryProvider: primaryProvider,
+		FailoverPending: time.Duration(c.FailoverPendingMS) * time.Millisecond,
+		FailbackPending: time.Duration(c.FailbackPendingMS) * time.Millisecond,
+		Cooldown:        time.Duration(c.AuthorityCooldownMS) * time.Millisecond,
+		PolicyVersion:   version,
 	}
 }
 func (c Config) Mapping(instrumentID string) (InstrumentMapping, bool) {
