@@ -6,18 +6,18 @@ import (
 )
 
 type GapRecoverySnapshot struct {
-	Attempts                uint64   `json:"attempts"`
-	Successes               uint64   `json:"successes"`
-	Failures                uint64   `json:"failures"`
-	RecoveredBars           uint64   `json:"recovered_bars"`
-	LastRecoveredBars       uint64   `json:"last_recovered_bars"`
-	LastFromMS              int64    `json:"last_from_ms,omitempty"`
-	LastToMS                int64    `json:"last_to_ms,omitempty"`
-	LastCause               string   `json:"last_cause,omitempty"`
-	LastError               string   `json:"last_error,omitempty"`
-	ExactTickReplay         bool     `json:"exact_tick_replay"`
-	RecoveredTimeframes     []string `json:"recovered_timeframes"`
-	NonExactTimeframes      []string `json:"non_exact_timeframes"`
+	Attempts            uint64   `json:"attempts"`
+	Successes           uint64   `json:"successes"`
+	Failures            uint64   `json:"failures"`
+	RecoveredBars       uint64   `json:"recovered_bars"`
+	LastRecoveredBars   uint64   `json:"last_recovered_bars"`
+	LastFromMS          int64    `json:"last_from_ms,omitempty"`
+	LastToMS            int64    `json:"last_to_ms,omitempty"`
+	LastCause           string   `json:"last_cause,omitempty"`
+	LastError           string   `json:"last_error,omitempty"`
+	ExactTickReplay     bool     `json:"exact_tick_replay"`
+	RecoveredTimeframes []string `json:"recovered_timeframes"`
+	NonExactTimeframes  []string `json:"non_exact_timeframes"`
 }
 
 type GapRecoveryTracker struct {

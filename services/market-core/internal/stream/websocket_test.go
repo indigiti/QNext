@@ -142,7 +142,6 @@ func TestSameOriginRejectsUnrelatedForwardedHost(t *testing.T) {
 	}
 }
 
-
 func TestWebSocketForwardsProviderGapResync(t *testing.T) {
 	broker := NewBroker(8, 8)
 	server := httptest.NewServer(NewWebSocketHandler(broker))

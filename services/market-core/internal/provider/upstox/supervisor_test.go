@@ -138,7 +138,6 @@ func TestSupervisorFailsClosedWhenRecoveryFails(t *testing.T) {
 	}
 }
 
-
 type multiInstrumentRunner struct {
 	calls  int
 	cancel context.CancelFunc

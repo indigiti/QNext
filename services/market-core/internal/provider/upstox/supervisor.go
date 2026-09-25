@@ -157,7 +157,6 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-
 func earliestRecoveryCursor(fallback time.Time, cursors map[string]time.Time) time.Time {
 	earliest := fallback
 	for _, at := range cursors {

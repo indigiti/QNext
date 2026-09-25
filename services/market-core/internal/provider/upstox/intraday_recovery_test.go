@@ -71,7 +71,6 @@ func TestIntradayRecoveryPersistsOnlyClosedGapBars(t *testing.T) {
 	}
 }
 
-
 type resyncCall struct {
 	instrumentID string
 	timeframe    string

@@ -95,7 +95,6 @@ func TestLatestBarReturnsMostRecentPublishedUpdate(t *testing.T) {
 	}
 }
 
-
 func TestBrokerPublishesResyncControlWithoutReplacingLatestBar(t *testing.T) {
 	broker := NewBroker(8, 8)
 	at := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
