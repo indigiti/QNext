@@ -135,7 +135,15 @@ func Bucket(at time.Time, timeframe string) (time.Time, time.Time, error) {
 		}
 		elapsed := local.Sub(sessionOpen)
 		open := sessionOpen.Add((elapsed / duration) * duration)
-		return open.UTC(), open.Add(duration).UTC(), nil
+		closeAt := open.Add(duration)
+		sessionClose := time.Date(
+			local.Year(), local.Month(), local.Day(),
+			15, 30, 0, 0, indiaLocation,
+		)
+		if closeAt.After(sessionClose) {
+			closeAt = sessionClose
+		}
+		return open.UTC(), closeAt.UTC(), nil
 
 	case 'D':
 		open := time.Date(
