@@ -27,8 +27,11 @@ export interface OpsStatus {
   configPath: string;
   host: {
     processControl: boolean;
+    cronControl: boolean;
+    controlMode: 'direct' | 'cron' | 'setup';
     helperAvailable: boolean;
     helperPath: string;
+    cronCommand: string;
   };
 }
 

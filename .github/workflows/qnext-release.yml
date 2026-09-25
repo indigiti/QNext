@@ -58,6 +58,14 @@ jobs:
           bash -n deploy/qnext-ops-user
           php services/ops-api/tests/smoke.php
 
+          cron_root="$(mktemp -d)"
+          mkdir -p "$cron_root/private/deploy"
+          install -m 0750 deploy/qnext-ops-user "$cron_root/private/deploy/qnext-ops-user"
+          "$cron_root/private/deploy/qnext-ops-user" reconcile
+          test -s "$cron_root/run/cron-heartbeat"
+          test "$(tr -d '\r\n' < "$cron_root/run/desired-state")" = "stopped"
+          rm -rf "$cron_root"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

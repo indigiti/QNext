@@ -19,21 +19,49 @@ final class OpsController
             $config->currentLink(),
             $config->publicManifestPath(),
         );
-        $this->service = new ServiceControl($config->helperPath, [
-            'QNEXT_PRIVATE_ROOT' => $config->privateRoot,
-            'QNEXT_PUBLIC_ROOT' => $config->publicRoot,
-            'QNEXT_MARKET_CORE_URL' => $config->marketCoreUrl,
-        ]);
+        $this->service = new ServiceControl(
+            $config->helperPath,
+            [
+                'QNEXT_PRIVATE_ROOT' => $config->privateRoot,
+                'QNEXT_PUBLIC_ROOT' => $config->publicRoot,
+                'QNEXT_MARKET_CORE_URL' => $config->marketCoreUrl,
+            ],
+            $config->controlRequestPath(),
+            $config->desiredStatePath(),
+            $config->cronHeartbeatPath(),
+        );
     }
 
     public function status(): array
     {
-        try {
-            $service = $this->service->run('status');
-            $state = $service['ok'] ? ($service['output'] ?: 'active') : 'unavailable';
-        } catch (RuntimeException $error) {
-            $service = ['ok' => false, 'output' => $error->getMessage()];
-            $state = 'unavailable';
+        $health = $this->probe('/health');
+        $ready = $this->probe('/ready');
+        $version = $this->probe('/version');
+        $controlMode = $this->service->controlMode();
+
+        $service = ['ok' => false, 'output' => ''];
+        $state = 'unavailable';
+
+        if ($health['ok']) {
+            $service = ['ok' => true, 'output' => $controlMode];
+            $state = 'active';
+        } elseif ($controlMode === 'direct') {
+            try {
+                $service = $this->service->run('status');
+                $state = $service['ok'] ? ($service['output'] ?: 'active') : 'unavailable';
+            } catch (RuntimeException $error) {
+                $service = ['ok' => false, 'output' => $error->getMessage()];
+            }
+        } elseif ($controlMode === 'cron') {
+            $desired = $this->service->desiredState();
+            $service = ['ok' => true, 'output' => 'Cloudways cron supervisor'];
+            $state = $desired === 'running' ? 'starting' : 'stopped';
+        } else {
+            $service = [
+                'ok' => false,
+                'output' => 'Cloudways cron supervisor setup is required',
+            ];
+            $state = 'setup required';
         }
 
         return [
@@ -44,16 +72,19 @@ final class OpsController
                 'output' => $service['output'] ?? '',
             ],
             'marketCore' => [
-                'health' => $this->probe('/health'),
-                'ready' => $this->probe('/ready'),
-                'version' => $this->probe('/version'),
+                'health' => $health,
+                'ready' => $ready,
+                'version' => $version,
             ],
             'storageRoot' => $this->config->privateRoot . '/storage',
             'configPath' => $this->config->configPath(),
             'host' => [
-                'processControl' => function_exists('proc_open') && function_exists('proc_close'),
-                'helperAvailable' => is_file($this->config->helperPath) && is_executable($this->config->helperPath),
+                'processControl' => $this->service->processControlAvailable(),
+                'cronControl' => $this->service->cronControlAvailable(),
+                'controlMode' => $controlMode,
+                'helperAvailable' => $this->service->helperAvailable(),
                 'helperPath' => $this->config->helperPath,
+                'cronCommand' => $this->service->cronCommand(),
             ],
         ];
     }

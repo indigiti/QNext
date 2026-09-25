@@ -31,6 +31,10 @@ button {
 
 button.secondary { background: #202633; }
 button.danger { background: #7f2730; }
+button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
 
 input, textarea, select {
   width: 100%;
@@ -135,6 +139,26 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; }
 .badge.bad { background: #462027; color: #ff9aa5; }
 
 .stack { display: grid; gap: .65rem; }
+
+.cron-setup {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #33405a;
+  border-radius: 12px;
+  background: #0c1017;
+}
+.cron-setup[hidden] { display: none; }
+.cron-setup p { margin: .55rem 0 .75rem; }
+.cron-setup code {
+  display: block;
+  overflow-x: auto;
+  margin-bottom: .75rem;
+  padding: .75rem;
+  border-radius: 8px;
+  background: #070a10;
+  color: #b9c8ff;
+  white-space: nowrap;
+}
 
 #toast {
   position: fixed;
