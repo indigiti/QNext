@@ -501,11 +501,10 @@ func (c Config) ProviderKeys() []string {
 }
 
 func (c Config) RecoverableTimeframes() []string {
-	var result []string
 	for _, timeframe := range c.Timeframes {
-		if strings.HasSuffix(timeframe, "m") || strings.HasSuffix(timeframe, "h") {
-			result = append(result, timeframe)
+		if timeframe == "1m" {
+			return []string{"1m"}
 		}
 	}
-	return result
+	return nil
 }
