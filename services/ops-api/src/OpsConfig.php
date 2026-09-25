@@ -40,6 +40,10 @@ final class OpsConfig
             }
         }
 
+        if (is_file($helper) && !is_executable($helper)) {
+            @chmod($helper, 0750);
+        }
+
         return new self(
             $privateRoot,
             $publicRoot,
