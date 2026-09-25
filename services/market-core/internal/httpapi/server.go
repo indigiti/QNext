@@ -33,6 +33,7 @@ type Options struct {
 	FeedStatus             func() any
 	HistoricalRepair       func(context.Context, int, []string, string) (any, error)
 	HistoricalRepairStatus func() any
+	EnabledTimeframes       []string
 }
 
 type Server struct {
@@ -82,6 +83,10 @@ type calendarResponse struct {
 	Windows    [][2]int64 `json:"windows"`
 }
 
+type timeframesResponse struct {
+	Timeframes []string `json:"timeframes"`
+}
+
 func New(history HistoryReader, options Options) http.Handler {
 	if options.StartedAt.IsZero() {
 		options.StartedAt = time.Now().UTC()
@@ -102,6 +107,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/bars", s.bars)
 	s.mux.HandleFunc("/api/v1/symbols", s.symbols)
 	s.mux.HandleFunc("/api/v1/calendar", s.calendar)
+	s.mux.HandleFunc("/api/v1/timeframes", s.timeframes)
 	if s.options.ResilienceStatus != nil {
 		s.mux.HandleFunc("/api/v1/resilience", s.resilience)
 	}
@@ -130,6 +136,15 @@ func (s *Server) version(w http.ResponseWriter, _ *http.Request) {
 		"version":    s.options.Version,
 		"commit":     s.options.Commit,
 		"started_at": s.options.StartedAt.UTC().Format(time.RFC3339),
+	})
+}
+
+func (s *Server) timeframes(w http.ResponseWriter, r *http.Request) {
+	if !requireGET(w, r) {
+		return
+	}
+	writeJSON(w, http.StatusOK, timeframesResponse{
+		Timeframes: append([]string(nil), s.options.EnabledTimeframes...),
 	})
 }
 
