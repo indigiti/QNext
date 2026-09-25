@@ -10,9 +10,11 @@ import (
 )
 
 type BarEvent struct {
-	StreamID string
-	Seq      uint64
-	Bar      domain.Bar
+	StreamID       string
+	Seq            uint64
+	Bar            domain.Bar
+	ResyncRequired bool
+	Reason         string
 }
 
 type Broker struct {
@@ -78,6 +80,34 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		state.replay = append([]BarEvent(nil), state.replay[len(state.replay)-b.retention:]...)
 	}
 
+	for id, ch := range state.subs {
+		select {
+		case ch <- event:
+		default:
+			close(ch)
+			delete(state.subs, id)
+		}
+	}
+}
+
+func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
+	if instrumentID == "" || timeframe == "" {
+		return
+	}
+	key := streamKey(instrumentID, timeframe)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	state := b.streams[key]
+	if state == nil {
+		return
+	}
+	event := BarEvent{
+		StreamID:       streamID(instrumentID, timeframe),
+		ResyncRequired: true,
+		Reason:         reason,
+	}
 	for id, ch := range state.subs {
 		select {
 		case ch <- event:
