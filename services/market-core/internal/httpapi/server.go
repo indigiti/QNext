@@ -22,7 +22,8 @@ type Options struct {
 	StartedAt     time.Time
 	StreamHandler http.Handler
 	Symbols       *symbol.Registry
-	Calendars     *marketcalendar.Registry
+	Calendars        *marketcalendar.Registry
+	ResilienceStatus func() any
 }
 
 type Server struct {
@@ -92,6 +93,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/bars", s.bars)
 	s.mux.HandleFunc("/api/v1/symbols", s.symbols)
 	s.mux.HandleFunc("/api/v1/calendar", s.calendar)
+	if s.options.ResilienceStatus != nil {
+		s.mux.HandleFunc("/api/v1/resilience", s.resilience)
+	}
 	if s.options.StreamHandler != nil {
 		s.mux.Handle("/api/v1/stream", s.options.StreamHandler)
 	}
@@ -112,6 +116,17 @@ func (s *Server) version(w http.ResponseWriter, _ *http.Request) {
 		"commit":     s.options.Commit,
 		"started_at": s.options.StartedAt.UTC().Format(time.RFC3339),
 	})
+}
+
+func (s *Server) resilience(w http.ResponseWriter, r *http.Request) {
+	if !requireGET(w, r) {
+		return
+	}
+	if s.options.ResilienceStatus == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "resilience_unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.options.ResilienceStatus())
 }
 
 func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
