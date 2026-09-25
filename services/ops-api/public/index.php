@@ -100,6 +100,9 @@ try {
     if ($method === 'GET' && $path === '/candle-timeframes') {
         respond(200, $controller->candleTimeframes());
     }
+    if ($method === 'GET' && $path === '/chart-timeframes') {
+        respond(200, $controller->chartTimeframes());
+    }
     if ($method === 'GET' && $path === '/history-repair') {
         respond(200, $controller->historicalRepairStatus());
     }
@@ -117,6 +120,9 @@ try {
     }
     if ($method === 'PUT' && $path === '/candle-timeframes') {
         respond(200, $controller->saveCandleTimeframes(request_body()));
+    }
+    if ($method === 'PUT' && $path === '/chart-timeframes') {
+        respond(200, $controller->saveChartTimeframes(request_body()));
     }
     if ($method === 'POST' && $path === '/secrets') {
         respond(200, $controller->saveSecrets(request_body()));

@@ -286,24 +286,14 @@ final class OpsController
 
     public function candleTimeframes(): array
     {
-        $available = [
-            '15s', '30s',
-            '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
-            '1h', '2h', '3h', '4h',
-            '1D', '1W', '1M',
-        ];
-        $defaults = ['15s', '30s', '1m', '2m', '3m', '5m', '15m', '30m', '1h', '1D'];
+        $available = $this->availableTimeframes();
+        $defaults = $this->defaultTimeframes();
         $config = $this->getConfig();
         $configured = $config['timeframes'] ?? null;
 
         $enabled = $defaults;
         if (is_array($configured) && $configured !== []) {
-            $enabled = [];
-            foreach ($available as $timeframe) {
-                if (in_array($timeframe, $configured, true)) {
-                    $enabled[] = $timeframe;
-                }
-            }
+            $enabled = $this->orderedSubset($available, $configured);
         }
         if (!in_array('1m', $enabled, true)) {
             $enabled[] = '1m';
@@ -319,12 +309,7 @@ final class OpsController
 
     public function saveCandleTimeframes(array $payload): array
     {
-        $available = [
-            '15s', '30s',
-            '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
-            '1h', '2h', '3h', '4h',
-            '1D', '1W', '1M',
-        ];
+        $available = $this->availableTimeframes();
         $requested = $payload['enabled'] ?? null;
         if (!is_array($requested)) {
             throw new RuntimeException('enabled candle timeframes must be an array');
@@ -339,21 +324,120 @@ final class OpsController
             throw new RuntimeException('1m is protected and must remain enabled');
         }
 
-        $enabled = [];
-        foreach ($available as $timeframe) {
-            if (in_array($timeframe, $requested, true)) {
-                $enabled[] = $timeframe;
+        $enabled = $this->orderedSubset($available, $requested);
+        $config = $this->getConfig();
+        $config['timeframes'] = $enabled;
+
+        $chartConfigured = $config['chart_timeframes'] ?? $this->defaultTimeframes();
+        $chartRequested = is_array($chartConfigured) ? $chartConfigured : $this->defaultTimeframes();
+        $chartEnabled = $this->orderedSubset($enabled, $chartRequested);
+        if ($chartEnabled === []) {
+            $chartEnabled = ['1m'];
+        }
+        $config['chart_timeframes'] = $chartEnabled;
+
+        AtomicFile::writeJson($this->config->configPath(), $config);
+
+        return [
+            'saved' => true,
+            'enabled' => $enabled,
+            'chartEnabled' => $chartEnabled,
+        ];
+    }
+
+    public function chartTimeframes(): array
+    {
+        $available = $this->availableTimeframes();
+        $defaults = $this->defaultTimeframes();
+        $config = $this->getConfig();
+
+        $candleConfigured = $config['timeframes'] ?? $defaults;
+        $candleEnabled = is_array($candleConfigured) && $candleConfigured !== []
+            ? $this->orderedSubset($available, $candleConfigured)
+            : $defaults;
+
+        $chartConfigured = $config['chart_timeframes'] ?? $defaults;
+        $chartEnabled = is_array($chartConfigured) && $chartConfigured !== []
+            ? $this->orderedSubset($candleEnabled, $chartConfigured)
+            : $this->orderedSubset($candleEnabled, $defaults);
+        if ($chartEnabled === [] && in_array('1m', $candleEnabled, true)) {
+            $chartEnabled = ['1m'];
+        }
+
+        return [
+            'available' => $available,
+            'enabled' => $chartEnabled,
+            'candleEnabled' => $candleEnabled,
+            'defaults' => $defaults,
+        ];
+    }
+
+    public function saveChartTimeframes(array $payload): array
+    {
+        $available = $this->availableTimeframes();
+        $requested = $payload['enabled'] ?? null;
+        if (!is_array($requested) || $requested === []) {
+            throw new RuntimeException('at least one chart display timeframe must remain enabled');
+        }
+
+        foreach ($requested as $timeframe) {
+            if (!is_string($timeframe) || !in_array($timeframe, $available, true)) {
+                throw new RuntimeException('unknown chart display timeframe');
             }
         }
 
         $config = $this->getConfig();
-        $config['timeframes'] = $enabled;
+        $candleConfigured = $config['timeframes'] ?? $this->defaultTimeframes();
+        $candleEnabled = is_array($candleConfigured)
+            ? $this->orderedSubset($available, $candleConfigured)
+            : $this->defaultTimeframes();
+
+        foreach ($requested as $timeframe) {
+            if (!in_array($timeframe, $candleEnabled, true)) {
+                throw new RuntimeException(
+                    'chart timeframe ' . $timeframe . ' requires Candle Formation to be enabled first'
+                );
+            }
+        }
+
+        $enabled = $this->orderedSubset($candleEnabled, $requested);
+        if ($enabled === []) {
+            throw new RuntimeException('at least one chart display timeframe must remain enabled');
+        }
+
+        $config['chart_timeframes'] = $enabled;
         AtomicFile::writeJson($this->config->configPath(), $config);
 
         return [
             'saved' => true,
             'enabled' => $enabled,
         ];
+    }
+
+    private function availableTimeframes(): array
+    {
+        return [
+            '15s', '30s',
+            '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
+            '1h', '2h', '3h', '4h',
+            '1D', '1W', '1M',
+        ];
+    }
+
+    private function defaultTimeframes(): array
+    {
+        return ['15s', '30s', '1m', '2m', '3m', '5m', '15m', '30m', '1h', '1D'];
+    }
+
+    private function orderedSubset(array $order, array $requested): array
+    {
+        $enabled = [];
+        foreach ($order as $timeframe) {
+            if (in_array($timeframe, $requested, true)) {
+                $enabled[] = $timeframe;
+            }
+        }
+        return $enabled;
     }
 
     public function saveActiveMarkets(array $payload): array

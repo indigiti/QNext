@@ -14,6 +14,12 @@ var defaultEnabledTimeframes = []string{
 	"1h", "1D",
 }
 
+var defaultChartTimeframes = []string{
+	"15s", "30s",
+	"1m", "2m", "3m", "5m", "15m", "30m",
+	"1h", "1D",
+}
+
 var adminTimeframes = []string{
 	"15s", "30s",
 	"1m", "2m", "3m", "5m", "10m", "15m", "30m", "45m",
@@ -22,9 +28,10 @@ var adminTimeframes = []string{
 }
 
 type Config struct {
-	Timeframes    []string       `json:"timeframes"`
-	Markets       []MarketConfig `json:"markets,omitempty"`
-	ActiveMarkets []string       `json:"active_markets,omitempty"`
+	Timeframes      []string       `json:"timeframes"`
+	ChartTimeframes []string       `json:"chart_timeframes,omitempty"`
+	Markets         []MarketConfig `json:"markets,omitempty"`
+	ActiveMarkets   []string       `json:"active_markets,omitempty"`
 
 	// Legacy single-market fields are retained for backwards compatibility
 	// with already-deployed q1-market.json files.
@@ -128,6 +135,27 @@ func (c Config) Validate() error {
 	}
 	if !hasCanonicalMinute {
 		return errors.New("1m is required as the canonical recovery timeframe")
+	}
+
+	formation := make(map[string]bool, len(c.Timeframes))
+	for _, timeframe := range c.Timeframes {
+		formation[strings.TrimSpace(timeframe)] = true
+	}
+	if len(c.ChartTimeframes) > 0 {
+		seenChart := make(map[string]bool, len(c.ChartTimeframes))
+		for _, timeframe := range c.ChartTimeframes {
+			timeframe = strings.TrimSpace(timeframe)
+			if !allowed[timeframe] {
+				return errors.New("chart_timeframes contains an unsupported timeframe")
+			}
+			if seenChart[timeframe] {
+				return errors.New("chart_timeframes must not contain duplicates")
+			}
+			if !formation[timeframe] {
+				return errors.New("chart_timeframes must be a subset of candle timeframes")
+			}
+			seenChart[timeframe] = true
+		}
 	}
 
 	configuredMarkets := c.configuredMarkets()
@@ -471,6 +499,34 @@ func ChartTimeframes() []string {
 
 func DefaultEnabledTimeframes() []string {
 	return append([]string(nil), defaultEnabledTimeframes...)
+}
+
+func DefaultChartTimeframes() []string {
+	return append([]string(nil), defaultChartTimeframes...)
+}
+
+func (c Config) EffectiveChartTimeframes() []string {
+	formation := make(map[string]bool, len(c.Timeframes))
+	for _, timeframe := range c.Timeframes {
+		formation[strings.TrimSpace(timeframe)] = true
+	}
+
+	source := c.ChartTimeframes
+	if len(source) == 0 {
+		source = defaultChartTimeframes
+	}
+
+	result := make([]string, 0, len(source))
+	for _, timeframe := range source {
+		timeframe = strings.TrimSpace(timeframe)
+		if formation[timeframe] {
+			result = append(result, timeframe)
+		}
+	}
+	if len(result) == 0 && formation["1m"] {
+		return []string{"1m"}
+	}
+	return result
 }
 
 func AdminTimeframes() []string {

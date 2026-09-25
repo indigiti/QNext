@@ -105,3 +105,36 @@ func TestDefaultEnabledTimeframesMatchOpsDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultChartTimeframesMatchDisplayDefaults(t *testing.T) {
+	got := DefaultChartTimeframes()
+	want := []string{"15s", "30s", "1m", "2m", "3m", "5m", "15m", "30m", "1h", "1D"}
+	if len(got) != len(want) {
+		t.Fatalf("chart defaults=%+v want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("chart defaults=%+v want %+v", got, want)
+		}
+	}
+}
+
+func TestChartTimeframesMustBeSubsetOfFormation(t *testing.T) {
+	config := validConfig()
+	config.ChartTimeframes = []string{"1m", "15m"}
+	if err := config.Validate(); err == nil {
+		t.Fatal("expected chart timeframe without candle formation to fail")
+	}
+}
+
+func TestEffectiveChartTimeframesUsesIndependentSubset(t *testing.T) {
+	config := validConfig()
+	config.ChartTimeframes = []string{"30s", "1m"}
+	if err := config.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	got := config.EffectiveChartTimeframes()
+	if len(got) != 2 || got[0] != "30s" || got[1] != "1m" {
+		t.Fatalf("effective chart timeframes=%+v", got)
+	}
+}

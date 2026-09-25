@@ -140,6 +140,39 @@ expect(
     'empty market config should be replaced with packaged default'
 );
 
+$candleState = $flatController->candleTimeframes();
+expect(
+    ($candleState['enabled'] ?? []) === ['1m'],
+    'candle formation should reflect configured timeframes'
+);
+$chartState = $flatController->chartTimeframes();
+expect(
+    ($chartState['enabled'] ?? []) === ['1m']
+    && ($chartState['candleEnabled'] ?? []) === ['1m'],
+    'chart display should default to the candle-enabled subset'
+);
+try {
+    $flatController->saveChartTimeframes(['enabled' => ['15s']]);
+    expect(false, 'chart display must reject a timeframe whose candle formation is disabled');
+} catch (RuntimeException) {
+}
+$savedCandles = $flatController->saveCandleTimeframes(['enabled' => ['15s', '1m']]);
+expect(
+    ($savedCandles['enabled'] ?? []) === ['15s', '1m'],
+    'candle formation selection should save independently'
+);
+$savedChart = $flatController->saveChartTimeframes(['enabled' => ['15s']]);
+expect(
+    ($savedChart['enabled'] ?? []) === ['15s'],
+    'chart display selection should save independently'
+);
+$timeframeConfig = json_decode(file_get_contents($flatConfig->configPath()) ?: '{}', true);
+expect(
+    ($timeframeConfig['timeframes'] ?? []) === ['15s', '1m']
+    && ($timeframeConfig['chart_timeframes'] ?? []) === ['15s'],
+    'formation and chart display selections should persist separately'
+);
+
 $activation = $flatController->marketActivation();
 expect(
     ($activation['active'] ?? []) === ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX'],
