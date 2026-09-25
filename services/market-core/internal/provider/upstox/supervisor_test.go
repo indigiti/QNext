@@ -104,7 +104,7 @@ func TestSupervisorRecoversGapBeforeReconnect(t *testing.T) {
 	}
 }
 
-func TestSupervisorFailsClosedWhenRecoveryFails(t *testing.T) {
+func TestSupervisorKeepsReconnectLoopAliveWhenRecoveryFails(t *testing.T) {
 	base := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
 	clock := base
 	ctx, cancel := context.WithCancel(context.Background())
@@ -125,6 +125,14 @@ func TestSupervisorFailsClosedWhenRecoveryFails(t *testing.T) {
 		},
 	}
 
+	var recoveryErrors int
+	supervisor.OnRecoveryError = func(err error) {
+		if err == nil || err.Error() != "history unavailable" {
+			t.Fatalf("unexpected recovery error callback: %v", err)
+		}
+		recoveryErrors++
+	}
+
 	err := supervisor.Run(ctx, "token", SubscriptionRequest{
 		GUID:   "qnext-test",
 		Method: MethodSubscribe,
@@ -133,8 +141,14 @@ func TestSupervisorFailsClosedWhenRecoveryFails(t *testing.T) {
 			InstrumentKeys: []string{"NSE_INDEX|Nifty 50"},
 		},
 	}, func(domain.Tick) error { return nil })
-	if err == nil || err.Error() != "recover Upstox market gap: history unavailable" {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected reconnect loop to stay alive until context cancellation, got %v", err)
+	}
+	if runner.calls != 2 {
+		t.Fatalf("expected supervisor to reconnect after recovery failure, calls=%d", runner.calls)
+	}
+	if recoveryErrors != 1 || len(recovery.requests) != 1 {
+		t.Fatalf("expected one reported recovery failure, callbacks=%d requests=%d", recoveryErrors, len(recovery.requests))
 	}
 }
 
