@@ -32,7 +32,7 @@ describe('OpsAPI', () => {
     const status = await api.status();
 
     expect(status.release.current).toBe('r1');
-    expect(calls).toEqual([{ url: '/qnext/admin/api/status', token: 'secret' }]);
+    expect(calls).toEqual([{ url: '/qnext/admin/api/index.php?route=%2Fstatus', token: 'secret' }]);
   });
 
   it('surfaces API errors', async () => {
@@ -43,3 +43,15 @@ describe('OpsAPI', () => {
     await expect(api.status()).rejects.toThrow('denied');
   });
 });
+
+
+  it('reports non-JSON routing failures clearly', async () => {
+    const fetcher: typeof fetch = async () =>
+      new Response('<!DOCTYPE html><title>Not Found</title>', {
+        status: 404,
+        headers: { 'Content-Type': 'text/html; charset=UTF-8' },
+      });
+    const api = new OpsAPI({ fetcher });
+
+    await expect(api.status()).rejects.toThrow('Ops API returned non-JSON HTTP 404');
+  });
