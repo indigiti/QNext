@@ -1,4 +1,12 @@
-import { OpsAPI, type FeedStatusResponse, type OpsStatus, type RuntimeDiagnostics, type ServiceAction } from './api';
+import {
+  OpsAPI,
+  type FeedStatusResponse,
+  type HistoricalRepairResult,
+  type HistoricalRepairStatusResponse,
+  type OpsStatus,
+  type RuntimeDiagnostics,
+  type ServiceAction,
+} from './api';
 import './style.css';
 
 declare global {
@@ -123,6 +131,26 @@ root.innerHTML = `
           <button id="save-active-markets">Save & restart</button>
           <span id="active-markets-note" class="muted">At least one market must remain active.</span>
         </div>
+      </section>
+
+      <section class="card span-3" id="historical-repair-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">History</p>
+            <h2>Historical recovery</h2>
+            <p class="muted">Repairs active cash-index history. 1m is canonical for minute/hour/day rollups; weekly/monthly data uses Upstox historical V3. Seconds remain live-only because the provider does not expose historical second candles.</p>
+          </div>
+          <button id="refresh-history-repair" class="secondary">Refresh status</button>
+        </div>
+        <div id="historical-repair-status" class="status-grid"></div>
+        <div class="actions history-repair-actions">
+          <button data-history-days="3" class="secondary">Repair 3 days</button>
+          <button data-history-days="7" class="secondary">Repair 7 days</button>
+          <button data-history-days="15" class="secondary">Repair 15 days</button>
+          <button data-history-days="30">Repair 30 days</button>
+        </div>
+        <p class="muted">Startup automatically reconciles 3 days. Manual repair scope is the currently active markets. Missing bars are inserted; differing bars are appended as higher revisions.</p>
+        <div id="historical-repair-result" class="history-repair-result muted">No manual repair run in this session.</div>
       </section>
 
       <section class="card">
@@ -413,6 +441,7 @@ async function refresh() {
       api.status(),
       loadDiagnostics(),
       loadFeedStatus(),
+      loadHistoricalRepairStatus(),
     ]);
     renderStatus(status);
   } catch (error) {
@@ -466,6 +495,64 @@ function selectedActiveMarkets() {
   ).map((input) => input.value);
 }
 
+function renderHistoricalRepairStatus(response: HistoricalRepairStatusResponse) {
+  const status = document.querySelector<HTMLDivElement>('#historical-repair-status')!;
+  if (!response.ok || !response.body) {
+    status.innerHTML = `
+      <div><span>Status</span>${badge(false, 'UNAVAILABLE')}</div>
+      <div><span>Reason</span><strong>${response.error ?? 'History repair status unavailable'}</strong></div>
+    `;
+    return;
+  }
+
+  const body = response.body;
+  const last = body.last_result;
+  const totals = { scanned: 0, missing: 0, corrected: 0, unchanged: 0 };
+  for (const market of last?.markets ?? []) {
+    for (const counts of Object.values(market.timeframes ?? {})) {
+      totals.scanned += counts.scanned ?? 0;
+      totals.missing += counts.missing ?? 0;
+      totals.corrected += counts.corrected ?? 0;
+      totals.unchanged += counts.unchanged ?? 0;
+    }
+  }
+
+  status.innerHTML = `
+    <div><span>State</span>${badge(!body.last_error, body.running ? 'RUNNING' : 'READY')}</div>
+    <div><span>Last window</span><strong>${last?.days ? `${last.days} days` : '—'}</strong></div>
+    <div><span>Markets</span><strong>${last?.markets?.length ?? 0}</strong></div>
+    <div><span>Scanned</span><strong>${totals.scanned}</strong></div>
+    <div><span>Inserted</span><strong>${totals.missing}</strong></div>
+    <div><span>Corrected</span><strong>${totals.corrected}</strong></div>
+    <div><span>Unchanged</span><strong>${totals.unchanged}</strong></div>
+    <div><span>Last error</span><strong>${body.last_error || 'none'}</strong></div>
+  `;
+}
+
+function renderHistoricalRepairResult(result: HistoricalRepairResult) {
+  const target = document.querySelector<HTMLDivElement>('#historical-repair-result')!;
+  const order = ['1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m', '1h', '2h', '3h', '4h', '1D', '1W', '1M', '3M', '6M', '12M'];
+  const rows = result.markets.map((market) => {
+    const summary = order
+      .filter((timeframe) => market.timeframes?.[timeframe])
+      .map((timeframe) => {
+        const counts = market.timeframes[timeframe];
+        return `${timeframe}: +${counts.missing}, corrected ${counts.corrected}`;
+      })
+      .join(' · ');
+    return `<div><strong>${market.symbol}</strong> — ${summary || 'no completed bars in window'}</div>`;
+  }).join('');
+  target.innerHTML = `<div><strong>${result.days}-day repair complete</strong></div>${rows}`;
+}
+
+async function loadHistoricalRepairStatus() {
+  try {
+    renderHistoricalRepairStatus(await api.historicalRepairStatus());
+  } catch (error) {
+    renderHistoricalRepairStatus({ ok: false, error: (error as Error).message });
+  }
+}
+
 async function loadConfig() {
   try {
     const config = await api.getConfig();
@@ -498,6 +585,7 @@ tokenButton.addEventListener('click', async () => {
     await refresh();
     await loadConfig();
     await loadActiveMarkets();
+    await loadHistoricalRepairStatus();
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -545,6 +633,29 @@ document.querySelector('#copy-diagnostics')!.addEventListener('click', async () 
 });
 document.querySelector('#load-config')!.addEventListener('click', () => void loadConfig());
 document.querySelector('#reload-active-markets')!.addEventListener('click', () => void loadActiveMarkets());
+document.querySelector('#refresh-history-repair')!.addEventListener('click', () => void loadHistoricalRepairStatus());
+document.querySelectorAll<HTMLButtonElement>('[data-history-days]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const days = Number(button.dataset.historyDays) as 3 | 7 | 15 | 30;
+    document.querySelectorAll<HTMLButtonElement>('[data-history-days]').forEach((item) => {
+      item.disabled = true;
+    });
+    try {
+      toast(`Running ${days}-day historical repair...`);
+      const result = await api.runHistoricalRepair(days);
+      renderHistoricalRepairResult(result);
+      await loadHistoricalRepairStatus();
+      toast(`${days}-day historical repair completed.`);
+    } catch (error) {
+      toast((error as Error).message, true);
+      await loadHistoricalRepairStatus();
+    } finally {
+      document.querySelectorAll<HTMLButtonElement>('[data-history-days]').forEach((item) => {
+        item.disabled = false;
+      });
+    }
+  });
+});
 document.querySelector('#nifty-only')!.addEventListener('click', () => {
   document.querySelectorAll<HTMLInputElement>('input[name="active-market"]').forEach((input) => {
     input.checked = input.value === 'NIFTY';
@@ -701,6 +812,7 @@ async function bootstrapAdmin() {
       await refresh();
       await loadConfig();
       await loadActiveMarkets();
+      await loadHistoricalRepairStatus();
       await probeBrowserStream();
     } else {
       toast('Enter the staging admin token to connect to QNext Ops.');
