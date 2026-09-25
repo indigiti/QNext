@@ -108,6 +108,25 @@ final class OpsConfig
         return $this->privateRoot . '/run/cron-heartbeat';
     }
 
+    public function marketCorePidPath(): string
+    {
+        return $this->privateRoot . '/run/market-core.pid';
+    }
+
+    public function marketCoreLogPath(): string
+    {
+        return $this->privateRoot . '/logs/market-core.log';
+    }
+
+    public function marketCoreBinaryCandidates(): array
+    {
+        return [
+            $this->privateRoot . '/bin/qnext-market-core',
+            $this->privateRoot . '/private/bin/qnext-market-core',
+            $this->privateRoot . '/current/private/bin/qnext-market-core',
+        ];
+    }
+
     private static function value(string $key, string $default = ''): string
     {
         $environment = getenv($key);
