@@ -19,11 +19,12 @@ type StreamRunner interface {
 }
 
 type RecoveryRequest struct {
-	Provider       string
-	InstrumentKeys []string
-	From           time.Time
-	To             time.Time
-	Cause          string
+	Provider           string
+	InstrumentKeys     []string
+	From               time.Time
+	FromByInstrumentID map[string]time.Time
+	To                 time.Time
+	Cause              string
 }
 
 type GapRecovery interface {
@@ -78,6 +79,7 @@ func (s *Supervisor) Run(
 
 	backoff := minBackoff
 	var lastEventTime time.Time
+	lastEventByInstrument := make(map[string]time.Time)
 
 	for {
 		runRequest := request
@@ -89,6 +91,11 @@ func (s *Supervisor) Run(
 		err := s.Runner.Run(ctx, accessToken, runRequest, func(tick domain.Tick) error {
 			if tick.EventTime.After(lastEventTime) {
 				lastEventTime = tick.EventTime
+			}
+			if tick.InstrumentID != "" {
+				if previous := lastEventByInstrument[tick.InstrumentID]; tick.EventTime.After(previous) {
+					lastEventByInstrument[tick.InstrumentID] = tick.EventTime
+				}
 			}
 			return onTick(tick)
 		})
@@ -112,12 +119,17 @@ func (s *Supervisor) Run(
 
 		recoveryTo := now().UTC()
 		if s.Recovery != nil && !lastEventTime.IsZero() && recoveryTo.After(lastEventTime) {
+			cursors := make(map[string]time.Time, len(lastEventByInstrument))
+			for instrumentID, at := range lastEventByInstrument {
+				cursors[instrumentID] = at
+			}
 			recovery := RecoveryRequest{
-				Provider:       ProviderName,
-				InstrumentKeys: append([]string(nil), runRequest.Data.InstrumentKeys...),
-				From:           lastEventTime,
-				To:             recoveryTo,
-				Cause:          err.Error(),
+				Provider:           ProviderName,
+				InstrumentKeys:     append([]string(nil), runRequest.Data.InstrumentKeys...),
+				From:               earliestRecoveryCursor(lastEventTime, cursors),
+				FromByInstrumentID: cursors,
+				To:                 recoveryTo,
+				Cause:              err.Error(),
 			}
 			if recoverErr := s.Recovery.Recover(ctx, recovery); recoverErr != nil {
 				return fmt.Errorf("recover Upstox market gap: %w", recoverErr)
@@ -143,4 +155,18 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+
+func earliestRecoveryCursor(fallback time.Time, cursors map[string]time.Time) time.Time {
+	earliest := fallback
+	for _, at := range cursors {
+		if at.IsZero() {
+			continue
+		}
+		if earliest.IsZero() || at.Before(earliest) {
+			earliest = at
+		}
+	}
+	return earliest
 }
