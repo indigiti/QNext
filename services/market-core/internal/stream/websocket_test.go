@@ -120,7 +120,6 @@ func TestWebSocketResumeReplaysMissedBars(t *testing.T) {
 	}
 }
 
-
 func TestSameOriginAcceptsForwardedPublicHost(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:18080/api/v1/stream", nil)
 	request.Host = "127.0.0.1:18080"
