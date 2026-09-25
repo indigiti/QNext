@@ -85,7 +85,6 @@ func TestDefaultMarketsUseExpectedIndexProviderKeys(t *testing.T) {
 	}
 }
 
-
 func TestConfigRequiresCanonicalOneMinute(t *testing.T) {
 	config := validConfig()
 	config.Timeframes = []string{"15s", "30s", "3m", "5m"}
