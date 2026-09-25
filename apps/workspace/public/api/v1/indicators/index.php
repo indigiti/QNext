@@ -75,15 +75,34 @@ foreach (($catalog['indicators'] ?? []) as $indicator) {
     if (!is_array($indicator) || !($indicator['enabled'] ?? false)) {
         continue;
     }
-    if (($indicator['kind'] ?? '') !== 'adaptive-ema-qalg') {
-        continue;
-    }
+
     $id = $indicator['id'] ?? null;
     $name = $indicator['name'] ?? null;
+    $kind = $indicator['kind'] ?? null;
     if (!is_string($id) || !preg_match('/^[a-z0-9][a-z0-9-]{0,63}$/', $id)) {
         continue;
     }
     if (!is_string($name) || trim($name) === '') {
+        continue;
+    }
+
+    if ($kind === 'pine-v6') {
+        $script = $indicator['script'] ?? null;
+        if (!is_string($script) || trim($script) === '') {
+            continue;
+        }
+
+        $entries[] = [
+            'name' => $name,
+            'script' => $script,
+            'language' => 'pine',
+            'enabled' => false,
+            'category' => 'QNext',
+        ];
+        continue;
+    }
+
+    if ($kind !== 'adaptive-ema-qalg') {
         continue;
     }
 
