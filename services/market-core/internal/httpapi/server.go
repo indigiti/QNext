@@ -24,6 +24,7 @@ type Options struct {
 	Symbols          *symbol.Registry
 	Calendars        *marketcalendar.Registry
 	ResilienceStatus func() any
+	FeedStatus       func() any
 }
 
 type Server struct {
@@ -96,6 +97,9 @@ func (s *Server) routes() {
 	if s.options.ResilienceStatus != nil {
 		s.mux.HandleFunc("/api/v1/resilience", s.resilience)
 	}
+	if s.options.FeedStatus != nil {
+		s.mux.HandleFunc("/api/v1/feed-status", s.feedStatus)
+	}
 	if s.options.StreamHandler != nil {
 		s.mux.Handle("/api/v1/stream", s.options.StreamHandler)
 	}
@@ -116,6 +120,17 @@ func (s *Server) version(w http.ResponseWriter, _ *http.Request) {
 		"commit":     s.options.Commit,
 		"started_at": s.options.StartedAt.UTC().Format(time.RFC3339),
 	})
+}
+
+func (s *Server) feedStatus(w http.ResponseWriter, r *http.Request) {
+	if !requireGET(w, r) {
+		return
+	}
+	if s.options.FeedStatus == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "feed_status_unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.options.FeedStatus())
 }
 
 func (s *Server) resilience(w http.ResponseWriter, r *http.Request) {
