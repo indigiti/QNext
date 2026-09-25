@@ -97,6 +97,10 @@ root.innerHTML = `
         </div>
         <div id="feed-summary" class="status-grid feed-summary"></div>
         <div id="feed-providers" class="feed-provider-grid"></div>
+        <div class="actions feed-actions">
+          <button id="verify-dhan" class="secondary">Verify Dhan standby</button>
+          <span id="dhan-standby-result" class="muted">Configure Dhan credentials, restart Market Core, then verify standby readiness.</span>
+        </div>
       </section>
 
       <section class="card">
@@ -372,6 +376,28 @@ tokenButton.addEventListener('click', async () => {
 
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
 document.querySelector('#refresh-feed')!.addEventListener('click', () => void loadFeedStatus());
+document.querySelector('#verify-dhan')!.addEventListener('click', async () => {
+  const resultEl = document.querySelector<HTMLSpanElement>('#dhan-standby-result')!;
+  try {
+    const result = await api.verifyDhanStandby();
+    const age = typeof result.ageMs === 'number'
+      ? (result.ageMs < 1000 ? '<1s' : `${Math.floor(result.ageMs / 1000)}s`)
+      : 'n/a';
+    resultEl.textContent = result.ok
+      ? `PASS — Dhan fresh (${age}), received ${result.received ?? 0}, errors ${result.errors ?? 0}, authority ${result.authority ?? 'unknown'}.`
+      : `WAIT — ${result.reason ?? 'Dhan standby not ready'}.`;
+    toast(
+      result.ok
+        ? (result.safeForFailoverDrill ? 'Dhan standby PASS; safe for a controlled failover drill.' : 'Dhan standby is fresh.')
+        : (result.reason ?? 'Dhan standby not ready'),
+      !result.ok,
+    );
+    await loadFeedStatus();
+  } catch (error) {
+    resultEl.textContent = `ERROR — ${(error as Error).message}`;
+    toast((error as Error).message, true);
+  }
+});
 document.querySelector('#refresh-diagnostics')!.addEventListener('click', () => void loadDiagnostics());
 document.querySelector('#copy-diagnostics')!.addEventListener('click', async () => {
   const log = document.querySelector<HTMLPreElement>('#diagnostics-log')!;
@@ -481,7 +507,10 @@ secretForm.addEventListener('submit', async (event) => {
   }
   try {
     const result = await api.saveSecrets(secrets);
-    toast(`Stored: ${result.stored.join(', ')}. Restart Market Core to apply.`);
+    const resilienceNote = result.resilienceConfigured
+      ? ' Dhan NIFTY standby configuration created.'
+      : '';
+    toast(`Stored: ${result.stored.join(', ')}.${resilienceNote} Restart Market Core to apply.`);
     secretForm.reset();
   } catch (error) {
     toast((error as Error).message, true);
