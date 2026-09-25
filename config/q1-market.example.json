@@ -1,21 +1,155 @@
 {
   "timeframes": ["15s", "30s", "1m", "3m", "5m"],
-  "nifty": {
-    "instrument_id": "NSE:NIFTY50",
-    "provider_key": "NSE_INDEX|Nifty 50"
-  },
-  "synthetic": {
-    "instrument_id": "QNEXT:NIFTY-SYN",
-    "version": "nifty-syn-v2",
-    "minimum_valid_candidates": 3,
-    "max_leg_age_ms": 2000,
-    "max_leg_time_skew_ms": 1000,
-    "auto": {
-      "strike_interval": 50,
-      "active_strikes": 5,
-      "warm_strikes": 7,
-      "atm_hysteresis_points": 5,
-      "atm_confirmation_ms": 750
+  "markets": [
+    {
+      "symbol": "NIFTY",
+      "name": "Nifty 50",
+      "exchange": "NSE",
+      "calendar_id": "NSE_EQ",
+      "aliases": ["NIFTY 50"],
+      "underlying": {
+        "instrument_id": "NSE:NIFTY50",
+        "provider_key": "NSE_INDEX|Nifty 50"
+      },
+      "synthetic": {
+        "instrument_id": "QNEXT:NIFTY-SYN",
+        "version": "nifty-syn-v2",
+        "minimum_valid_candidates": 3,
+        "max_leg_age_ms": 2000,
+        "max_leg_time_skew_ms": 1000,
+        "auto": {
+          "strike_interval": 50,
+          "active_strikes": 5,
+          "warm_strikes": 7,
+          "atm_hysteresis_points": 5,
+          "atm_confirmation_ms": 750
+        }
+      }
+    },
+    {
+      "symbol": "BANKNIFTY",
+      "name": "Nifty Bank",
+      "exchange": "NSE",
+      "calendar_id": "NSE_EQ",
+      "aliases": ["NIFTY BANK", "BANK NIFTY"],
+      "underlying": {
+        "instrument_id": "NSE:BANKNIFTY",
+        "provider_key": "NSE_INDEX|Nifty Bank"
+      },
+      "synthetic": {
+        "instrument_id": "QNEXT:BANKNIFTY-SYN",
+        "version": "banknifty-syn-v1",
+        "minimum_valid_candidates": 3,
+        "max_leg_age_ms": 2000,
+        "max_leg_time_skew_ms": 1000,
+        "auto": {
+          "strike_interval": 100,
+          "active_strikes": 5,
+          "warm_strikes": 7,
+          "atm_hysteresis_points": 10,
+          "atm_confirmation_ms": 750
+        }
+      }
+    },
+    {
+      "symbol": "MIDCPNIFTY",
+      "name": "Nifty Midcap Select",
+      "exchange": "NSE",
+      "calendar_id": "NSE_EQ",
+      "aliases": ["NIFTY MID SELECT", "MIDCAP NIFTY"],
+      "underlying": {
+        "instrument_id": "NSE:MIDCPNIFTY",
+        "provider_key": "NSE_INDEX|NIFTY MID SELECT"
+      },
+      "synthetic": {
+        "instrument_id": "QNEXT:MIDCPNIFTY-SYN",
+        "version": "midcpnifty-syn-v1",
+        "minimum_valid_candidates": 3,
+        "max_leg_age_ms": 2000,
+        "max_leg_time_skew_ms": 1000,
+        "auto": {
+          "strike_interval": 25,
+          "active_strikes": 5,
+          "warm_strikes": 7,
+          "atm_hysteresis_points": 2.5,
+          "atm_confirmation_ms": 750
+        }
+      }
+    },
+    {
+      "symbol": "FINNIFTY",
+      "name": "Nifty Financial Services",
+      "exchange": "NSE",
+      "calendar_id": "NSE_EQ",
+      "aliases": ["NIFTY FIN SERVICE", "FIN NIFTY"],
+      "underlying": {
+        "instrument_id": "NSE:FINNIFTY",
+        "provider_key": "NSE_INDEX|Nifty Fin Service"
+      },
+      "synthetic": {
+        "instrument_id": "QNEXT:FINNIFTY-SYN",
+        "version": "finnifty-syn-v1",
+        "minimum_valid_candidates": 3,
+        "max_leg_age_ms": 2000,
+        "max_leg_time_skew_ms": 1000,
+        "auto": {
+          "strike_interval": 50,
+          "active_strikes": 5,
+          "warm_strikes": 7,
+          "atm_hysteresis_points": 5,
+          "atm_confirmation_ms": 750
+        }
+      }
+    },
+    {
+      "symbol": "SENSEX",
+      "name": "S&P BSE Sensex",
+      "exchange": "BSE",
+      "calendar_id": "BSE_EQ",
+      "aliases": ["BSE SENSEX", "BSX"],
+      "underlying": {
+        "instrument_id": "BSE:SENSEX",
+        "provider_key": "BSE_INDEX|SENSEX"
+      },
+      "synthetic": {
+        "instrument_id": "QNEXT:SENSEX-SYN",
+        "version": "sensex-syn-v1",
+        "minimum_valid_candidates": 3,
+        "max_leg_age_ms": 2000,
+        "max_leg_time_skew_ms": 1000,
+        "auto": {
+          "strike_interval": 100,
+          "active_strikes": 5,
+          "warm_strikes": 7,
+          "atm_hysteresis_points": 10,
+          "atm_confirmation_ms": 750
+        }
+      }
+    },
+    {
+      "symbol": "BANKEX",
+      "name": "S&P BSE Bankex",
+      "exchange": "BSE",
+      "calendar_id": "BSE_EQ",
+      "aliases": ["BSE BANKEX", "BKX"],
+      "underlying": {
+        "instrument_id": "BSE:BANKEX",
+        "provider_key": "BSE_INDEX|BANKEX"
+      },
+      "synthetic": {
+        "instrument_id": "QNEXT:BANKEX-SYN",
+        "version": "bankex-syn-v1",
+        "minimum_valid_candidates": 3,
+        "max_leg_age_ms": 2000,
+        "max_leg_time_skew_ms": 1000,
+        "auto": {
+          "strike_interval": 100,
+          "active_strikes": 5,
+          "warm_strikes": 7,
+          "atm_hysteresis_points": 10,
+          "atm_confirmation_ms": 750
+        }
+      }
     }
-  }
+  ]
 }
