@@ -24,7 +24,7 @@ func TestOptionContractsClient(t *testing.T) {
 			if req.Header.Get("Authorization") != "Bearer token" {
 				t.Fatalf("missing auth header")
 			}
-			body := "{"status":"success","data":[{"name":"NIFTY","segment":"NSE_FO","exchange":"NSE","expiry":"2026-09-29","instrument_key":"NSE_FO|123","trading_symbol":"NIFTY 25100 CE 29 SEP 26","instrument_type":"CE","underlying_key":"NSE_INDEX|Nifty 50","underlying_symbol":"NIFTY","strike_price":25100,"weekly":true}]}"
+			body := `{"status":"success","data":[{"name":"NIFTY","segment":"NSE_FO","exchange":"NSE","expiry":"2026-09-29","instrument_key":"NSE_FO|123","trading_symbol":"NIFTY 25100 CE 29 SEP 26","instrument_type":"CE","underlying_key":"NSE_INDEX|Nifty 50","underlying_symbol":"NIFTY","strike_price":25100,"weekly":true}]}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(body)),
