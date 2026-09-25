@@ -9,6 +9,7 @@ final class ReleaseCatalog
     public function __construct(
         private readonly string $releasesRoot,
         private readonly string $currentLink,
+        private readonly ?string $publicManifestPath = null,
     ) {
     }
 
@@ -32,6 +33,7 @@ final class ReleaseCatalog
         rsort($available, SORT_NATURAL);
 
         $current = null;
+        $mode = 'staged';
         if (is_link($this->currentLink)) {
             $target = readlink($this->currentLink);
             if (is_string($target) && $target !== '') {
@@ -39,9 +41,40 @@ final class ReleaseCatalog
             }
         }
 
+        if ($current === null) {
+            $directVersion = $this->directVersion();
+            if ($directVersion !== null) {
+                $current = $directVersion;
+                $mode = 'direct';
+            } elseif ($available === []) {
+                $mode = 'direct';
+            }
+        }
+
         return [
             'current' => $current,
             'available' => $available,
+            'mode' => $mode,
         ];
+    }
+
+    private function directVersion(): ?string
+    {
+        if ($this->publicManifestPath === null || !is_file($this->publicManifestPath)) {
+            return null;
+        }
+
+        $raw = file_get_contents($this->publicManifestPath);
+        if ($raw === false || trim($raw) === '') {
+            return null;
+        }
+
+        $payload = json_decode($raw, true);
+        $version = is_array($payload) ? ($payload['version'] ?? null) : null;
+        if (!is_string($version) || !preg_match('/^[A-Za-z0-9._-]{1,80}$/', $version)) {
+            return null;
+        }
+
+        return $version;
     }
 }

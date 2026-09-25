@@ -60,6 +60,21 @@ expect(str_contains($secretFile, 'abc123'), 'secret should be persisted for syst
 $release = (new ReleaseCatalog($config->releasesRoot(), $config->currentLink()))->snapshot();
 expect($release['current'] === 'r2', 'current release should resolve from symlink');
 expect($release['available'] === ['r2', 'r1'], 'release list should be sorted newest-first');
+expect($release['mode'] === 'staged', 'symlink release should report staged mode');
+
+$directRoot = $root . '/direct';
+mkdir($directRoot . '/public', 0750, true);
+AtomicFile::writeJson($directRoot . '/public/qnext-release.json', [
+    'version' => 'abc123def456',
+]);
+$direct = (new ReleaseCatalog(
+    $directRoot . '/releases',
+    $directRoot . '/current',
+    $directRoot . '/public/qnext-release.json',
+))->snapshot();
+expect($direct['current'] === 'abc123def456', 'direct deployment should read public manifest version');
+expect($direct['available'] === [], 'direct deployment should not invent staged releases');
+expect($direct['mode'] === 'direct', 'direct deployment should report direct mode');
 
 $control = new ServiceControl($config->helperPath);
 try {

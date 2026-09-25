@@ -11,6 +11,7 @@ export interface OpsStatus {
   release: {
     current: string | null;
     available: string[];
+    mode?: 'staged' | 'direct';
   };
   service: {
     ok: boolean;
@@ -24,6 +25,11 @@ export interface OpsStatus {
   };
   storageRoot: string;
   configPath: string;
+  host: {
+    processControl: boolean;
+    helperAvailable: boolean;
+    helperPath: string;
+  };
 }
 
 export interface SecretWriteResult {
