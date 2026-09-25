@@ -68,3 +68,8 @@ This slice intentionally retains the certified LTPC decoder and the existing rob
 ## Rollback
 
 The legacy fixed 10-leg configuration remains supported. Removing the `synthetic.auto` block and supplying the original ten fixed CE/PE legs returns QNext to the previous deterministic mode.
+
+
+## Certification
+
+PR merge requires the Q6 Auto Leg Manager gate plus the inherited Q0/Q1/Q2 and Q1-Q5 regression gates to pass on the final non-bot branch head.
