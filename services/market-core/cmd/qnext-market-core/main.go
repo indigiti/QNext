@@ -122,14 +122,14 @@ func main() {
 	}
 
 	handler := httpapi.New(store, httpapi.Options{
-		Version:          version,
-		Commit:           commit,
-		StartedAt:        started,
-		StreamHandler:    stream.NewWebSocketHandler(broker),
-		ChartTimeframes:  chartTimeframes,
-		LiveBars:         broker,
-		Symbols:          registry,
-		Calendars:        calendars,
+		Version:         version,
+		Commit:          commit,
+		StartedAt:       started,
+		StreamHandler:   stream.NewWebSocketHandler(broker),
+		ChartTimeframes: chartTimeframes,
+		LiveBars:        broker,
+		Symbols:         registry,
+		Calendars:       calendars,
 		ResilienceStatus: func() any {
 			return resilienceMetrics.Snapshot()
 		},
