@@ -33,7 +33,7 @@ type Options struct {
 	FeedStatus             func() any
 	HistoricalRepair       func(context.Context, int, []string, string) (any, error)
 	HistoricalRepairStatus func() any
-	EnabledTimeframes       []string
+	EnabledTimeframes      []string
 }
 
 type Server struct {
