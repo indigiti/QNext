@@ -312,7 +312,7 @@ final class OpsController
             return array_values(array_map(
                 static function (string $line): string {
                     $line = preg_replace(
-                        '/\bBearer\s+[A-Za-z0-9._~+\\\/-]+=*/i',
+                        '~\bBearer\s+\S+~i',
                         'Bearer [REDACTED]',
                         $line,
                     ) ?? $line;
