@@ -40,3 +40,16 @@ Provider adapters preserve source timing and sequence information. The Market Co
 ## No future data
 
 A historical consumer may only observe information available at its simulated timestamp. This is a release-blocking invariant for intelligence and replay.
+
+
+## Live session authority and finality
+
+For live canonical candles, instrument metadata resolves the market calendar and the calendar decides whether an event timestamp is inside the certified regular session.
+
+- out-of-session ticks do not create canonical candles;
+- intraday bucket alignment starts from the certified session open and clips at the certified session close;
+- forming candles become final from the Market Core clock when their canonical close boundary is due; a later tick is not required;
+- a tick that arrives after a shorter timeframe is already final is discarded for that closed timeframe, while it may still update a longer timeframe that remains forming;
+- finalized history is never silently reopened by late live ticks. Corrections continue through explicit recovery/revision semantics.
+
+The live finalization scheduler is an implementation detail of Market Core. Candle identity, close boundaries, and revision rules remain deterministic and are independent of browser activity.
