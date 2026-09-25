@@ -71,15 +71,20 @@ func (r OptionLegResolver) Resolve(
 			}
 
 			instrumentID := canonicalOptionID(contract)
+			exchange := strings.ToUpper(strings.TrimSpace(contract.Exchange))
+			if exchange == "" {
+				exchange = "NSE"
+			}
+			calendarID := exchange + "_EQ"
 			if err := r.Registry.Ensure(symbol.Instrument{
 				ID:         instrumentID,
 				Symbol:     contract.TradingSymbol,
 				Name:       contract.TradingSymbol,
 				AssetClass: "OPTION",
-				Exchange:   "NSE",
+				Exchange:   exchange,
 				Currency:   "INR",
 				Timezone:   "Asia/Kolkata",
-				CalendarID: "NSE_EQ",
+				CalendarID: calendarID,
 				Visible:    false,
 			}); err != nil {
 				return autolegs.Basket{}, err
@@ -162,8 +167,13 @@ func canonicalOptionID(contract OptionContract) string {
 	if underlying == "" {
 		underlying = "NIFTY"
 	}
+	exchange := strings.ToUpper(strings.TrimSpace(contract.Exchange))
+	if exchange == "" {
+		exchange = "NSE"
+	}
 	return fmt.Sprintf(
-		"NSE:%s:%s:%s:%s",
+		"%s:%s:%s:%s:%s",
+		exchange,
 		underlying,
 		contract.Expiry,
 		strconv.FormatFloat(contract.StrikePrice, 'f', -1, 64),
