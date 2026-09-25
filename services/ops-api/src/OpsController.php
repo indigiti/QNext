@@ -89,6 +89,25 @@ final class OpsController
         ];
     }
 
+    public function feedStatus(): array
+    {
+        $probe = $this->probe('/api/v1/feed-status');
+        if (!($probe['ok'] ?? false)) {
+            return [
+                'ok' => false,
+                'status' => $probe['status'] ?? null,
+                'error' => $probe['error'] ?? 'market feed status unavailable',
+            ];
+        }
+
+        $body = $probe['body'] ?? null;
+        return [
+            'ok' => true,
+            'status' => $probe['status'] ?? 200,
+            'body' => is_array($body) ? $body : [],
+        ];
+    }
+
     public function diagnostics(): array
     {
         $pid = null;
