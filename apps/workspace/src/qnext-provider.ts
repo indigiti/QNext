@@ -290,8 +290,12 @@ export class QNextProvider {
       void poll();
     };
 
+    const stopPolling = () => {
+      stopPolling();
+    };
+
     const scheduleReconnect = (instrumentID: string) => {
-      if (cancelled || polling || reconnectTimer !== undefined) {
+      if (cancelled || reconnectTimer !== undefined) {
         return;
       }
       reconnectTimer = setTimeout(() => {
@@ -310,11 +314,13 @@ export class QNextProvider {
       } catch (error) {
         console.warn('QNext WebSocket unavailable; falling back to REST polling', error);
         startPolling();
+        scheduleReconnect(instrumentID);
         return;
       }
       socketOpened = false;
       socket.onopen = () => {
         socketOpened = true;
+        stopPolling();
         if (needsSnapshot) {
           void healAndSubscribe(instrumentID);
           return;
@@ -378,10 +384,7 @@ export class QNextProvider {
       };
 
       socket.onclose = () => {
-        if (!socketOpened) {
-          startPolling();
-          return;
-        }
+        startPolling();
         scheduleReconnect(instrumentID);
       };
     };
