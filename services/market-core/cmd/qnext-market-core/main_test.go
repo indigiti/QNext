@@ -55,7 +55,6 @@ func TestRegularMarketSessionActive(t *testing.T) {
 	}
 }
 
-
 func TestMarketSessionResolverUsesInstrumentCalendarAuthority(t *testing.T) {
 	registry, err := buildRegistry(nil)
 	if err != nil {
