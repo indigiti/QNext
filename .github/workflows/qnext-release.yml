@@ -44,6 +44,16 @@ jobs:
           npm test
           npm run build
 
+      - name: Validate Ops PHP control plane
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l apps/ops-console/public/api/index.php
+          php -l services/ops-api/public/index.php
+          php -l services/ops-api/src/Auth.php
+          php -l services/ops-api/src/OpsConfig.php
+          php services/ops-api/tests/smoke.php
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:

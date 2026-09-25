@@ -34,30 +34,53 @@ function request_body(): array
     return $decoded;
 }
 
+function request_path(): string
+{
+    $route = $_GET['route'] ?? null;
+    if (is_string($route) && str_starts_with($route, '/')) {
+        return $route;
+    }
+
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $prefix = '/qnext/admin/api';
+    if (str_starts_with($path, $prefix)) {
+        $path = substr($path, strlen($prefix)) ?: '/';
+    }
+    if (str_starts_with($path, '/index.php')) {
+        $path = substr($path, strlen('/index.php')) ?: '/';
+    }
+    return $path;
+}
+
 try {
     $config = OpsConfig::fromEnvironment();
-    $auth = new Auth($config->adminToken);
+    $auth = new Auth($config->authPath(), $config->adminToken);
+    $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+    $path = request_path();
+
+    if ($method === 'GET' && $path === '/setup-status') {
+        respond(200, ['initialized' => $auth->initialized()]);
+    }
+
+    if ($method === 'POST' && $path === '/setup') {
+        if ($auth->initialized()) {
+            respond(409, ['error' => 'admin token is already initialized']);
+        }
+        $body = request_body();
+        $token = $body['token'] ?? null;
+        if (!is_string($token)) {
+            respond(400, ['error' => 'token is required']);
+        }
+        $auth->initialize($token);
+        respond(201, ['initialized' => true]);
+    }
+
     $provided = $_SERVER['HTTP_X_QNEXT_OPS_TOKEN'] ?? null;
     if (!$auth->authorized(is_string($provided) ? $provided : null)) {
         respond(403, ['error' => 'forbidden']);
     }
 
     $controller = new OpsController($config);
-    $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
-
-    $route = $_GET['route'] ?? null;
-    if (is_string($route) && str_starts_with($route, '/')) {
-        $path = $route;
-    } else {
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-        $prefix = '/qnext/admin/api';
-        if (str_starts_with($path, $prefix)) {
-            $path = substr($path, strlen($prefix)) ?: '/';
-        }
-        if (str_starts_with($path, '/index.php')) {
-            $path = substr($path, strlen('/index.php')) ?: '/';
-        }
-    }
 
     if ($method === 'GET' && $path === '/status') {
         respond(200, $controller->status());

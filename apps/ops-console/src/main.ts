@@ -17,6 +17,7 @@ if (!root) {
 const runtime = window.__QNEXT_OPS_CONFIG__ ?? {};
 let token = sessionStorage.getItem('qnext-ops-token') ?? '';
 let api = new OpsAPI({ base: runtime.apiBase, token });
+let setupInitialized: boolean | null = null;
 
 root.innerHTML = `
   <div class="shell">
@@ -94,6 +95,8 @@ root.innerHTML = `
 `;
 
 const tokenInput = document.querySelector<HTMLInputElement>('#token')!;
+const tokenLabel = document.querySelector<HTMLLabelElement>('label[for="token"]')!;
+const tokenButton = document.querySelector<HTMLButtonElement>('#save-token')!;
 tokenInput.value = token;
 
 function toast(message: string, error = false) {
@@ -150,12 +153,30 @@ async function loadConfig() {
   }
 }
 
-document.querySelector('#save-token')!.addEventListener('click', () => {
+tokenButton.addEventListener('click', async () => {
   token = tokenInput.value.trim();
-  sessionStorage.setItem('qnext-ops-token', token);
-  api = new OpsAPI({ base: runtime.apiBase, token });
-  void refresh();
-  void loadConfig();
+  if (!token) {
+    toast('Enter an admin token.', true);
+    return;
+  }
+
+  try {
+    if (setupInitialized === false) {
+      await api.initializeAdminToken(token);
+      setupInitialized = true;
+      tokenLabel.textContent = 'Staging admin token';
+      tokenInput.placeholder = 'Enter token';
+      tokenButton.textContent = 'Use token';
+      toast('QNext admin token initialized');
+    }
+
+    sessionStorage.setItem('qnext-ops-token', token);
+    api = new OpsAPI({ base: runtime.apiBase, token });
+    await refresh();
+    await loadConfig();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
 });
 
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
@@ -244,9 +265,31 @@ secretForm.addEventListener('submit', async (event) => {
   }
 });
 
-if (token) {
-  void refresh();
-  void loadConfig();
-} else {
-  toast('Enter the staging admin token to connect to QNext Ops.');
+async function bootstrapAdmin() {
+  try {
+    const setup = await api.setupStatus();
+    setupInitialized = setup.initialized;
+
+    if (!setup.initialized) {
+      sessionStorage.removeItem('qnext-ops-token');
+      token = '';
+      tokenInput.value = '';
+      tokenLabel.textContent = 'Create first-time admin token';
+      tokenInput.placeholder = 'Choose token (minimum 16 characters)';
+      tokenButton.textContent = 'Initialize';
+      toast('First-time setup: create the QNext admin token.');
+      return;
+    }
+
+    if (token) {
+      await refresh();
+      await loadConfig();
+    } else {
+      toast('Enter the staging admin token to connect to QNext Ops.');
+    }
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
 }
+
+void bootstrapAdmin();

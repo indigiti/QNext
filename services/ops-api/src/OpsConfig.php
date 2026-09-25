@@ -22,9 +22,9 @@ final class OpsConfig
         return new self(
             self::required('QNEXT_PRIVATE_ROOT'),
             self::required('QNEXT_PUBLIC_ROOT'),
-            rtrim(getenv('QNEXT_MARKET_CORE_URL') ?: 'http://127.0.0.1:8080', '/'),
-            self::required('QNEXT_OPS_ADMIN_TOKEN'),
-            getenv('QNEXT_OPS_HELPER') ?: '/usr/local/bin/qnext-ops-web',
+            rtrim(self::value('QNEXT_MARKET_CORE_URL', 'http://127.0.0.1:8080'), '/'),
+            self::value('QNEXT_OPS_ADMIN_TOKEN'),
+            self::value('QNEXT_OPS_HELPER', '/usr/local/bin/qnext-ops-web'),
         );
     }
 
@@ -38,6 +38,11 @@ final class OpsConfig
         return $this->privateRoot . '/secrets/qnext.env';
     }
 
+    public function authPath(): string
+    {
+        return $this->privateRoot . '/secrets/ops-auth.json';
+    }
+
     public function releasesRoot(): string
     {
         return $this->privateRoot . '/releases';
@@ -48,9 +53,27 @@ final class OpsConfig
         return $this->privateRoot . '/current';
     }
 
+    private static function value(string $key, string $default = ''): string
+    {
+        $environment = getenv($key);
+        if (is_string($environment) && trim($environment) !== '') {
+            return trim($environment);
+        }
+
+        if (isset($_SERVER[$key]) && trim((string) $_SERVER[$key]) !== '') {
+            return trim((string) $_SERVER[$key]);
+        }
+
+        if (isset($_ENV[$key]) && trim((string) $_ENV[$key]) !== '') {
+            return trim((string) $_ENV[$key]);
+        }
+
+        return $default;
+    }
+
     private static function required(string $key): string
     {
-        $value = trim((string) getenv($key));
+        $value = self::value($key);
         if ($value === '') {
             throw new RuntimeException($key . ' is required');
         }

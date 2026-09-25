@@ -31,8 +31,21 @@ $config = new OpsConfig(
     $root . '/missing-helper',
 );
 
-expect((new Auth('token'))->authorized('token'), 'auth should accept matching token');
-expect(!(new Auth('token'))->authorized('wrong'), 'auth should reject wrong token');
+$authPath = $root . '/secrets/ops-auth.json';
+$auth = new Auth($authPath);
+expect(!$auth->initialized(), 'auth should start uninitialized');
+$auth->initialize('0123456789abcdef');
+expect($auth->initialized(), 'auth should initialize once');
+expect($auth->authorized('0123456789abcdef'), 'auth should accept matching initialized token');
+expect(!$auth->authorized('wrong'), 'auth should reject wrong token');
+expect(is_file($authPath), 'auth hash should be persisted');
+$authPayload = json_decode(file_get_contents($authPath) ?: '{}', true);
+expect(
+    is_array($authPayload)
+    && isset($authPayload['token_hash'])
+    && !str_contains((string) $authPayload['token_hash'], '0123456789abcdef'),
+    'plaintext admin token must not be persisted'
+);
 
 AtomicFile::writeJson($config->configPath(), ['timeframes' => ['1m'], 'nifty' => [], 'synthetic' => []]);
 expect(is_file($config->configPath()), 'config should be atomically written');
