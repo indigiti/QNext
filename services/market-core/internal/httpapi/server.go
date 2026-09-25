@@ -16,11 +16,16 @@ type HistoryReader interface {
 	LoadRange(instrumentID, timeframe string, from, to time.Time) ([]domain.Bar, error)
 }
 
+type LiveBarReader interface {
+	LatestBar(instrumentID, timeframe string) (domain.Bar, bool)
+}
+
 type Options struct {
 	Version          string
 	Commit           string
 	StartedAt        time.Time
 	StreamHandler    http.Handler
+	LiveBars         LiveBarReader
 	Symbols          *symbol.Registry
 	Calendars        *marketcalendar.Registry
 	ResilienceStatus func() any
@@ -172,6 +177,24 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "history_read_failed"})
 		return
+	}
+
+	if s.options.LiveBars != nil {
+		if live, ok := s.options.LiveBars.LatestBar(instrumentID, timeframe); ok &&
+			!live.OpenTime.Before(time.UnixMilli(fromMS).UTC()) &&
+			live.OpenTime.Before(time.UnixMilli(toMS).UTC()) {
+			replaced := false
+			for i := range bars {
+				if bars[i].OpenTime.Equal(live.OpenTime) {
+					bars[i] = live
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				bars = append(bars, live)
+			}
+		}
 	}
 
 	response := barsResponse{Bars: make([]barResponse, 0, len(bars))}
