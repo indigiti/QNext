@@ -12,11 +12,11 @@ func TestTrackerObservesProviderInstrumentAndSyntheticStatus(t *testing.T) {
 	at := time.Date(2026, 9, 25, 7, 0, 0, 0, time.UTC)
 	tracker.Observe(domain.Tick{
 		InstrumentID: "NSE:NIFTY50",
-		Provider: "upstox",
-		Price: 25123.45,
-		EventTime: at,
+		Provider:     "upstox",
+		Price:        25123.45,
+		EventTime:    at,
 		ReceivedTime: at.Add(20 * time.Millisecond),
-		Quality: domain.QualityGood,
+		Quality:      domain.QualityGood,
 	})
 	tracker.SetSyntheticStatus(func() any {
 		return map[string]any{"atm": 25100.0, "active_legs": 6}
