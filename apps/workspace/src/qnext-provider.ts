@@ -4,6 +4,7 @@ export interface QNextProviderOptions {
   fetchImpl?: typeof fetch;
   webSocketFactory?: (url: string) => WebSocketLike;
   reconnectDelayMs?: number;
+  pollIntervalMs?: number;
 }
 
 export interface QNextRange {
@@ -80,6 +81,7 @@ export class QNextProvider {
   private readonly fetchImpl: typeof fetch;
   private readonly webSocketFactory: (url: string) => WebSocketLike;
   private readonly reconnectDelayMs: number;
+  private readonly pollIntervalMs: number;
   private symbolsPromise?: Promise<QNextSymbol[]>;
 
   constructor(options: QNextProviderOptions = {}) {
@@ -90,6 +92,7 @@ export class QNextProvider {
       options.webSocketFactory ??
       ((url: string) => new WebSocket(url) as unknown as WebSocketLike);
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
+    this.pollIntervalMs = options.pollIntervalMs ?? 1_000;
   }
 
   async listSymbols() {
@@ -170,11 +173,15 @@ export class QNextProvider {
     let cancelled = false;
     let socket: WebSocketLike | undefined;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let polling = false;
     let streamID = '';
     let lastSeq = 0;
     let resuming = false;
     let needsSnapshot = false;
     let healing = false;
+    let socketOpened = false;
+    let lastPollSignature = '';
 
     const send = (message: Record<string, unknown>) => {
       if (socket?.readyState === WS_OPEN) {
@@ -218,8 +225,47 @@ export class QNextProvider {
       }
     };
 
+    const startPolling = () => {
+      if (cancelled || polling) {
+        return;
+      }
+      polling = true;
+
+      const poll = async () => {
+        if (cancelled || !polling) {
+          return;
+        }
+        try {
+          const bars = await this.getBars(ticker, timeframe, { limit: 2 });
+          const latest = bars.at(-1);
+          if (latest) {
+            const signature = [
+              latest.time,
+              latest.open,
+              latest.high,
+              latest.low,
+              latest.close,
+              latest.volume ?? '',
+            ].join(':');
+            if (signature !== lastPollSignature) {
+              lastPollSignature = signature;
+              onBar(latest);
+            }
+          }
+        } catch (error) {
+          console.error('QNext live polling failed', error);
+        } finally {
+          if (!cancelled && polling) {
+            pollTimer = setTimeout(poll, this.pollIntervalMs);
+          }
+        }
+      };
+
+      void poll();
+    };
+
     const scheduleReconnect = (instrumentID: string) => {
-      if (cancelled || reconnectTimer !== undefined) {
+      if (cancelled || polling || reconnectTimer !== undefined) {
         return;
       }
       reconnectTimer = setTimeout(() => {
@@ -233,8 +279,16 @@ export class QNextProvider {
         return;
       }
 
-      socket = this.webSocketFactory(this.streamURL());
+      try {
+        socket = this.webSocketFactory(this.streamURL());
+      } catch (error) {
+        console.warn('QNext WebSocket unavailable; falling back to REST polling', error);
+        startPolling();
+        return;
+      }
+      socketOpened = false;
       socket.onopen = () => {
+        socketOpened = true;
         if (needsSnapshot) {
           void healAndSubscribe(instrumentID);
           return;
@@ -298,6 +352,10 @@ export class QNextProvider {
       };
 
       socket.onclose = () => {
+        if (!socketOpened) {
+          startPolling();
+          return;
+        }
         scheduleReconnect(instrumentID);
       };
     };
@@ -313,6 +371,11 @@ export class QNextProvider {
       if (reconnectTimer !== undefined) {
         clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
+      }
+      polling = false;
+      if (pollTimer !== undefined) {
+        clearTimeout(pollTimer);
+        pollTimer = undefined;
       }
       if (streamID) {
         send({ op: 'unsubscribe', stream_id: streamID });
