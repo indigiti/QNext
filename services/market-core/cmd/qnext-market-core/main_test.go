@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestBuildRegistryExposesSixIndexAndSyntheticPairsWithoutLiveConfig(t *testing.T) {
 	registry, err := buildRegistry(nil)
@@ -28,5 +31,25 @@ func TestBuildRegistryExposesSixIndexAndSyntheticPairsWithoutLiveConfig(t *testi
 		if !seen[symbol] {
 			t.Fatalf("workspace catalog missing %s: %+v", symbol, visible)
 		}
+	}
+}
+
+
+func TestRegularMarketSessionActive(t *testing.T) {
+	ist, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regularMarketSessionActive(time.Date(2026, 9, 25, 10, 0, 0, 0, ist)) {
+		t.Fatal("expected weekday market session to be active")
+	}
+	if regularMarketSessionActive(time.Date(2026, 9, 25, 16, 0, 0, 0, ist)) {
+		t.Fatal("expected after-hours watchdog to be inactive")
+	}
+	if regularMarketSessionActive(time.Date(2026, 9, 26, 10, 0, 0, 0, ist)) {
+		t.Fatal("expected weekend watchdog to be inactive")
+	}
+	if regularMarketSessionActive(time.Date(2026, 10, 2, 10, 0, 0, 0, ist)) {
+		t.Fatal("expected exchange holiday watchdog to be inactive")
 	}
 }
