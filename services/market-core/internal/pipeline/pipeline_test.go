@@ -112,7 +112,6 @@ func TestPipelineRequiresCanonicalMinuteForDerivedIntervals(t *testing.T) {
 	}
 }
 
-
 func TestPipelineClockFinalizesAndPersistsWithoutNextTick(t *testing.T) {
 	store := history.New(t.TempDir())
 	pipe, err := New(candle.New("candle-v3-clock"), store, []string{"30s", "1m"})
@@ -204,7 +203,6 @@ func TestPipelineIgnoresOutOfSessionTick(t *testing.T) {
 		t.Fatalf("out-of-session tick must not create candles: %+v", updates)
 	}
 }
-
 
 func TestLateTickSkipsClosedShortFrameButUpdatesOpenLongFrame(t *testing.T) {
 	pipe, err := New(candle.New("candle-v3-clock"), nil, []string{"30s", "1m"})
