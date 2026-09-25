@@ -84,6 +84,18 @@ is_running() {
   return 1
 }
 
+runtime_binary_current() {
+  local pid running_identity deployed_identity
+  pid="$(read_pid || true)"
+  [[ -n "$pid" ]] || return 1
+  [[ -e "/proc/$pid/exe" ]] || return 1
+  [[ -f "$BINARY" ]] || return 1
+
+  running_identity="$(stat -Lc '%d:%i' "/proc/$pid/exe" 2>/dev/null || true)"
+  deployed_identity="$(stat -Lc '%d:%i' "$BINARY" 2>/dev/null || true)"
+  [[ -n "$running_identity" && "$running_identity" == "$deployed_identity" ]]
+}
+
 acquire_lock() {
   local owner attempts=0
   while ! mkdir "$LOCK_DIR" 2>/dev/null; do
@@ -148,13 +160,16 @@ market_healthy() {
 
 start_service() {
   if is_running; then
-    if market_healthy; then
+    if ! runtime_binary_current; then
+      echo "QNext Market Core binary changed after deployment; restarting runtime" >>"$LOG_FILE"
+      stop_service >/dev/null || true
+    elif market_healthy; then
       echo "active"
       return 0
+    else
+      echo "QNext Market Core process exists but is not serving $MARKET_URL; replacing stale runtime" >>"$LOG_FILE"
+      stop_service >/dev/null || true
     fi
-
-    echo "QNext Market Core process exists but is not serving $MARKET_URL; replacing stale runtime" >>"$LOG_FILE"
-    stop_service >/dev/null || true
   fi
 
   if [[ ! -f "$BINARY" ]]; then
