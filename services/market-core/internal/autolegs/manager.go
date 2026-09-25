@@ -74,11 +74,13 @@ type SubscriptionController interface {
 }
 
 type Status struct {
-	ATM           float64
-	Expiry        string
-	Generation    uint64
-	PendingATM    float64
-	PendingExpiry string
+	ATM               float64 `json:"atm"`
+	Expiry            string  `json:"expiry"`
+	Generation        uint64  `json:"generation"`
+	PendingATM        float64 `json:"pending_atm"`
+	PendingExpiry     string  `json:"pending_expiry"`
+	ActiveLegs        int     `json:"active_legs"`
+	WarmSubscriptions int     `json:"warm_subscriptions"`
 }
 
 type observation struct {
@@ -216,6 +218,8 @@ func (m *Manager) Status() Status {
 		status.ATM = m.current.atm
 		status.Expiry = m.current.expiry
 		status.Generation = m.current.number
+		status.ActiveLegs = len(m.current.activeIDs)
+		status.WarmSubscriptions = len(m.current.warmKeys)
 	}
 	if m.pending != nil {
 		status.PendingATM = m.pending.atm
