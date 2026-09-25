@@ -1,4 +1,5 @@
 import tempfile
+from dataclasses import replace
 import unittest
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from qnext_intelligence.domain import Bar, ModelManifest
 from qnext_intelligence.features import build_feature_vector
 from qnext_intelligence.outcomes import evaluate_outcome
 from qnext_intelligence.prediction import predict
+from qnext_intelligence.shadow import evaluate_shadow, run_shadow
 from qnext_intelligence.store import ImmutableJSONLStore
 
 
@@ -140,6 +142,94 @@ class Q5CertificationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 store.append({"prediction_id": "p1", "state": "MUTATED"})
             self.assertEqual(store.read_all(), [record])
+
+
+    def test_decision_context_hash_binds_market_operating_context(self):
+        source = bars()
+        source[-1] = replace(source[-1], authority_provider="upstox")
+        as_of = source[-1].close_time_ms
+        first_features = build_feature_vector(
+            source,
+            as_of_time_ms=as_of,
+            lookback=5,
+            calendar_version="nse-2026-v1",
+            session="regular",
+            configuration_hash="config-a",
+        )
+        second_features = build_feature_vector(
+            source,
+            as_of_time_ms=as_of,
+            lookback=5,
+            calendar_version="nse-2026-v2",
+            session="regular",
+            configuration_hash="config-a",
+        )
+        first = predict(
+            first_features,
+            manifest_for(first_features),
+            lambda _: {"UP": 1},
+            horizon_bars=2,
+            strategy_version="strategy-v1",
+        )
+        second = predict(
+            second_features,
+            manifest_for(second_features),
+            lambda _: {"UP": 1},
+            horizon_bars=2,
+            strategy_version="strategy-v1",
+        )
+        self.assertNotEqual(first.decision_context_hash, second.decision_context_hash)
+        self.assertEqual(first.authority_provider, "upstox")
+        self.assertEqual(first.calendar_version, "nse-2026-v1")
+        self.assertEqual(first.configuration_hash, "config-a")
+
+    def test_candidate_runs_in_shadow_without_promotion(self):
+        source = bars()
+        features = build_feature_vector(
+            source,
+            as_of_time_ms=source[-1].close_time_ms,
+            lookback=5,
+            calendar_version="nse-2026-v1",
+            session="regular",
+            configuration_hash="config-a",
+        )
+        production = manifest_for(features)
+        candidate = ModelManifest(
+            model_name="candidate-demo",
+            model_version="2",
+            lifecycle_state="CANDIDATE",
+            feature_set_version=features.feature_set_version,
+            dataset_hash="candidate-dataset",
+            model_hash="candidate-model",
+            algorithm="deterministic-test",
+            training_window_start_ms=0,
+            training_window_end_ms=features.as_of_time_ms - 1,
+            created_at_ms=features.as_of_time_ms - 1,
+        )
+        pair = run_shadow(
+            features,
+            production_manifest=production,
+            production_model=lambda _: {"UP": 0.7, "DOWN": 0.2, "FLAT": 0.1},
+            candidate_manifest=candidate,
+            candidate_model=lambda _: {"DOWN": 0.7, "UP": 0.2, "FLAT": 0.1},
+            horizon_bars=2,
+            strategy_version="strategy-v1",
+        )
+        self.assertNotEqual(pair.production.prediction_id, pair.candidate.prediction_id)
+        self.assertEqual(pair.candidate.model_version, "2")
+
+        future = [
+            Bar("QNEXT:NIFTY", "1m", 480_000, 540_000, 108, 110, 107, 109, 1000),
+            Bar("QNEXT:NIFTY", "1m", 540_000, 600_000, 109, 112, 108, 111, 1000),
+        ]
+        comparison = evaluate_shadow(
+            pair,
+            origin_close=source[-1].close,
+            future_bars=future,
+        )
+        self.assertTrue(comparison.production_correct)
+        self.assertFalse(comparison.candidate_correct)
+        self.assertEqual(comparison.candidate_correctness_delta, -1)
 
 
 if __name__ == "__main__":

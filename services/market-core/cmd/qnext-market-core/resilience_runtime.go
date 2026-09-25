@@ -128,17 +128,19 @@ func runResilientMarket(
 		}
 	})
 
-	router, err := resilience.NewRouter(
+	router, err := resilience.NewRouterWithPolicy(
 		resolver,
 		downstream,
 		metrics,
 		config.GapRecovery(),
 		recoverable,
 		recoverer,
+		config.TransitionPolicy(upstox.ProviderName),
 	)
 	if err != nil {
 		return err
 	}
+	router.SetTransitionSink(resilience.NewTransitionStore(env("QNEXT_STORAGE_ROOT", "./storage")).Append)
 	onTick := func(tick domain.Tick) error {
 		return router.HandleContext(ctx, tick)
 	}

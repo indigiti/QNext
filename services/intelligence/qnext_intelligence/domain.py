@@ -28,6 +28,7 @@ class Bar:
     final: bool = True
     revision: int = 0
     quality: str = "GOOD"
+    authority_provider: str = ""
 
     def validate(self) -> None:
         if self.close_time_ms <= self.open_time_ms:
@@ -47,6 +48,10 @@ class FeatureVector:
     features: Mapping[str, float]
     snapshot_hash: str
     data_quality: str
+    authority_provider: str
+    calendar_version: str
+    session: str
+    configuration_hash: str
 
     def to_record(self) -> dict:
         return asdict(self)
@@ -93,6 +98,11 @@ class Prediction:
     horizon_bars: int
     data_quality: str
     state: str
+    authority_provider: str
+    calendar_version: str
+    session: str
+    strategy_version: str
+    configuration_hash: str
     decision_context_hash: str
 
     def to_record(self) -> dict:

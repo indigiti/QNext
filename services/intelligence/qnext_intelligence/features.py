@@ -32,6 +32,9 @@ def build_feature_vector(
     as_of_time_ms: int,
     lookback: int = 5,
     feature_set_version: str = FEATURE_SET_VERSION,
+    calendar_version: str = "UNSPECIFIED",
+    session: str = "UNSPECIFIED",
+    configuration_hash: str = "UNSPECIFIED",
 ) -> FeatureVector:
     if lookback < 3:
         raise ValueError("lookback must be >= 3")
@@ -88,10 +91,14 @@ def build_feature_vector(
                 "volume": bar.volume,
                 "revision": bar.revision,
                 "quality": bar.quality,
+                "authority_provider": bar.authority_provider,
             }
             for bar in selected
         ],
         "features": features,
+        "calendar_version": calendar_version,
+        "session": session,
+        "configuration_hash": configuration_hash,
     }
 
     return FeatureVector(
@@ -102,4 +109,8 @@ def build_feature_vector(
         features=features,
         snapshot_hash=stable_hash(snapshot_material),
         data_quality=_quality(selected),
+        authority_provider=last.authority_provider or "UNSPECIFIED",
+        calendar_version=calendar_version,
+        session=session,
+        configuration_hash=configuration_hash,
     )

@@ -76,6 +76,9 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 		current.Low = min(current.Low, tick.Price)
 		current.Close = tick.Price
 		current.Quality = worstQuality(current.Quality, tick.Quality)
+		current.AuthorityProvider = tick.Provider
+		current.SourceSequence = tick.Sequence
+		current.SyntheticVersion = tick.SyntheticVersion
 		e.bars[key] = current
 		return []domain.Bar{current}, nil
 	}
@@ -100,9 +103,21 @@ func newBar(tick domain.Tick, timeframe string, openTime, closeTime time.Time, v
 		Revision:            0,
 		AuthorityProvider:   tick.Provider,
 		Quality:             tick.Quality,
+		SourceSequence:      tick.Sequence,
 		CandleEngineVersion: version,
 		SyntheticVersion:    tick.SyntheticVersion,
+		CreatedAt:           tickCreationTime(tick),
 	}
+}
+
+func tickCreationTime(tick domain.Tick) time.Time {
+	if !tick.ProcessedTime.IsZero() {
+		return tick.ProcessedTime.UTC()
+	}
+	if !tick.ReceivedTime.IsZero() {
+		return tick.ReceivedTime.UTC()
+	}
+	return tick.EventTime.UTC()
 }
 
 func worstQuality(a, b domain.Quality) domain.Quality {

@@ -173,10 +173,48 @@ export class QNextProvider {
     let streamID = '';
     let lastSeq = 0;
     let resuming = false;
+    let needsSnapshot = false;
+    let healing = false;
 
     const send = (message: Record<string, unknown>) => {
       if (socket?.readyState === WS_OPEN) {
         socket.send(JSON.stringify(message));
+      }
+    };
+
+    const freshSubscribe = (instrumentID: string) => {
+      send({
+        op: 'subscribe',
+        channel: 'bars',
+        symbol: instrumentID,
+        timeframe,
+      });
+    };
+
+    const healAndSubscribe = async (instrumentID: string) => {
+      if (cancelled || healing) {
+        return;
+      }
+      healing = true;
+      needsSnapshot = true;
+      streamID = '';
+      lastSeq = 0;
+      resuming = false;
+      try {
+        const snapshot = await this.getBars(ticker, timeframe, { limit: 500 });
+        if (cancelled) {
+          return;
+        }
+        for (const bar of snapshot) {
+          onBar(bar);
+        }
+        needsSnapshot = false;
+        freshSubscribe(instrumentID);
+      } catch (error) {
+        console.error('QNext stream resync snapshot failed', error);
+        socket?.close();
+      } finally {
+        healing = false;
       }
     };
 
@@ -197,6 +235,10 @@ export class QNextProvider {
 
       socket = this.webSocketFactory(this.streamURL());
       socket.onopen = () => {
+        if (needsSnapshot) {
+          void healAndSubscribe(instrumentID);
+          return;
+        }
         if (streamID) {
           resuming = true;
           send({
@@ -207,12 +249,7 @@ export class QNextProvider {
           return;
         }
         resuming = false;
-        send({
-          op: 'subscribe',
-          channel: 'bars',
-          symbol: instrumentID,
-          timeframe,
-        });
+        freshSubscribe(instrumentID);
       };
 
       socket.onmessage = (event) => {
@@ -250,15 +287,8 @@ export class QNextProvider {
             break;
 
           case 'resync_required':
-            streamID = '';
-            lastSeq = 0;
-            resuming = false;
-            send({
-              op: 'subscribe',
-              channel: 'bars',
-              symbol: instrumentID,
-              timeframe,
-            });
+            needsSnapshot = true;
+            void healAndSubscribe(instrumentID);
             break;
         }
       };

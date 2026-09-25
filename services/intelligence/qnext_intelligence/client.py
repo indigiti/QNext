@@ -106,6 +106,7 @@ class MarketCoreHistoryClient:
                     final=bool(raw["final"]),
                     revision=int(raw.get("revision", 0)),
                     quality=str(raw.get("quality", "DEGRADED")),
+                    authority_provider=str(raw.get("authority_provider", "")),
                 )
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("invalid Market Core bar record") from exc

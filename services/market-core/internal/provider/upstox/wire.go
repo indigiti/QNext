@@ -34,6 +34,7 @@ type WireClient struct {
 	Normalizer   *Normalizer
 	NextSequence func() uint64
 	Now          func() time.Time
+	CaptureFrame func([]byte) error
 }
 
 func (c *WireClient) Open(
@@ -107,6 +108,11 @@ func (c *WireClient) Run(
 				return ctx.Err()
 			}
 			return fmt.Errorf("read Upstox market frame: %w", err)
+		}
+		if c.CaptureFrame != nil {
+			if err := c.CaptureFrame(payload); err != nil {
+				return fmt.Errorf("capture Upstox frame: %w", err)
+			}
 		}
 		ticks, err := c.HandleFrame(payload)
 		if err != nil {

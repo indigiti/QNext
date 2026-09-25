@@ -28,6 +28,7 @@ def predict(
     *,
     horizon_bars: int,
     regime: str = "UNSPECIFIED",
+    strategy_version: str = "UNSPECIFIED",
 ) -> Prediction:
     if horizon_bars < 1:
         raise ValueError("horizon_bars must be >= 1")
@@ -45,6 +46,14 @@ def predict(
 
     decision_material = {
         "feature_snapshot_hash": features.snapshot_hash,
+        "instrument_id": features.instrument_id,
+        "timeframe": features.timeframe,
+        "as_of_time_ms": features.as_of_time_ms,
+        "calendar_version": features.calendar_version,
+        "session": features.session,
+        "authority_provider": features.authority_provider,
+        "configuration_hash": features.configuration_hash,
+        "strategy_version": strategy_version,
         "model_name": manifest.model_name,
         "model_version": manifest.model_version,
         "model_hash": manifest.model_hash,
@@ -80,5 +89,10 @@ def predict(
         horizon_bars=horizon_bars,
         data_quality=quality,
         state=state,
+        authority_provider=features.authority_provider,
+        calendar_version=features.calendar_version,
+        session=features.session,
+        strategy_version=strategy_version,
+        configuration_hash=features.configuration_hash,
         decision_context_hash=decision_context_hash,
     )

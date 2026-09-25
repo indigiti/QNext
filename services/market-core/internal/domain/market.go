@@ -45,8 +45,11 @@ type Bar struct {
 	Quality             Quality
 	Recovered           bool
 	Corrected           bool
+	SourceSequence      uint64
 	CandleEngineVersion string
 	SyntheticVersion    string
+	CreatedAt           time.Time
+	CorrectedAt         time.Time
 }
 
 func (b Bar) Key() string {
