@@ -9,8 +9,9 @@ import (
 )
 
 type Config struct {
-	Timeframes []string       `json:"timeframes"`
-	Markets    []MarketConfig `json:"markets,omitempty"`
+	Timeframes    []string       `json:"timeframes"`
+	Markets       []MarketConfig `json:"markets,omitempty"`
+	ActiveMarkets []string       `json:"active_markets,omitempty"`
 
 	// Legacy single-market fields are retained for backwards compatibility
 	// with already-deployed q1-market.json files.
@@ -95,6 +96,25 @@ func (c Config) Validate() error {
 	}
 	if len(c.RecoverableTimeframes()) == 0 {
 		return errors.New("Q1 requires at least one recoverable minute timeframe: 1m, 3m, or 5m")
+	}
+
+	configuredMarkets := c.configuredMarkets()
+	if len(c.ActiveMarkets) > 0 {
+		available := make(map[string]bool, len(configuredMarkets))
+		for _, market := range configuredMarkets {
+			available[strings.ToUpper(strings.TrimSpace(market.Symbol))] = true
+		}
+		seenActive := make(map[string]bool, len(c.ActiveMarkets))
+		for _, symbol := range c.ActiveMarkets {
+			key := strings.ToUpper(strings.TrimSpace(symbol))
+			if key == "" || !available[key] {
+				return errors.New("active_markets contains an unknown market")
+			}
+			if seenActive[key] {
+				return errors.New("active_markets must not contain duplicates")
+			}
+			seenActive[key] = true
+		}
 	}
 
 	markets := c.EffectiveMarkets()
@@ -248,6 +268,26 @@ func validateFixedLegs(s SyntheticConfig) error {
 }
 
 func (c Config) EffectiveMarkets() []MarketConfig {
+	markets := c.configuredMarkets()
+	if len(c.ActiveMarkets) == 0 {
+		return markets
+	}
+
+	active := make(map[string]bool, len(c.ActiveMarkets))
+	for _, symbol := range c.ActiveMarkets {
+		active[strings.ToUpper(strings.TrimSpace(symbol))] = true
+	}
+
+	result := make([]MarketConfig, 0, len(markets))
+	for _, market := range markets {
+		if active[strings.ToUpper(strings.TrimSpace(market.Symbol))] {
+			result = append(result, market)
+		}
+	}
+	return result
+}
+
+func (c Config) configuredMarkets() []MarketConfig {
 	if len(c.Markets) > 0 {
 		result := make([]MarketConfig, len(c.Markets))
 		copy(result, c.Markets)
