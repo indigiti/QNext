@@ -114,7 +114,6 @@ func TestSupportedTimeframesValidate(t *testing.T) {
 	}
 }
 
-
 func TestSessionResolverOwnsIntradayBucketAlignment(t *testing.T) {
 	resolver := func(_ string, at time.Time) (SessionWindow, bool, error) {
 		open, _ := time.Parse(time.RFC3339, "2026-09-25T04:00:00Z")
