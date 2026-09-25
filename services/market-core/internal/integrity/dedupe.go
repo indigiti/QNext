@@ -23,6 +23,7 @@ type tickFingerprint struct {
 	InstrumentID string
 	EventMS      int64
 	PriceBits    uint64
+	QuantityBits uint64
 }
 
 func NewDedupeSink(capacity int, next TickSink) *DedupeSink {
@@ -42,6 +43,7 @@ func (d *DedupeSink) Handle(tick domain.Tick) error {
 		InstrumentID: tick.InstrumentID,
 		EventMS:      tick.EventTime.UTC().UnixMilli(),
 		PriceBits:    math.Float64bits(tick.Price),
+		QuantityBits: math.Float64bits(tick.Quantity),
 	}
 
 	d.mu.Lock()
@@ -65,8 +67,9 @@ func (d *DedupeSink) Handle(tick domain.Tick) error {
 }
 
 func FingerprintBytes(tick domain.Tick) []byte {
-	buffer := make([]byte, 16)
+	buffer := make([]byte, 24)
 	binary.BigEndian.PutUint64(buffer[:8], uint64(tick.EventTime.UTC().UnixMilli()))
-	binary.BigEndian.PutUint64(buffer[8:], math.Float64bits(tick.Price))
+	binary.BigEndian.PutUint64(buffer[8:16], math.Float64bits(tick.Price))
+	binary.BigEndian.PutUint64(buffer[16:], math.Float64bits(tick.Quantity))
 	return buffer
 }
