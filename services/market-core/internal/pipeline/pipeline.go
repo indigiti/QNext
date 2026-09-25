@@ -26,7 +26,7 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 		return nil, errors.New("at least one timeframe is required")
 	}
 	for _, timeframe := range timeframes {
-		if _, err := candle.ParseTimeframe(timeframe); err != nil {
+		if err := candle.ValidateTimeframe(timeframe); err != nil {
 			return nil, err
 		}
 	}
