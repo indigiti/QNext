@@ -64,7 +64,6 @@ func TestHistoryClientAggregatesThreeMinuteBars(t *testing.T) {
 	}
 }
 
-
 func TestOptionChainClientResolvesSecurityIDs(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("access-token") != "token" || r.Header.Get("client-id") != "client" {
