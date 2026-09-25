@@ -199,38 +199,32 @@ describe('OpsAPI', () => {
         return new Response(JSON.stringify({
           schema: 'QNEXT.INDICATORS/1',
           revision: 1,
-          kinds: [{ id: 'adaptive-ema-qalg', label: 'Adaptive EMA [QALG]' }],
+          kinds: [
+            { id: 'pine-v6', label: 'Pine Script v6' },
+            { id: 'pine-ema-cross', label: 'Adaptive EMA [QALG]' },
+          ],
           indicators: [],
         }), { status: 200 });
       }
       if (method === 'POST') {
-        return new Response(JSON.stringify({ saved: true, revision: 2, indicator: { id: 'adaptive-ema-qalg' } }), { status: 201 });
+        return new Response(JSON.stringify({ saved: true, revision: 2, indicator: { id: 'pine-ema-cross' } }), { status: 201 });
       }
       if (method === 'PUT') {
-        return new Response(JSON.stringify({ saved: true, revision: 3, indicator: { id: 'adaptive-ema-qalg', enabled: false } }), { status: 200 });
+        return new Response(JSON.stringify({ saved: true, revision: 3, indicator: { id: 'pine-ema-cross', enabled: false } }), { status: 200 });
       }
-      return new Response(JSON.stringify({ deleted: true, revision: 4, id: 'adaptive-ema-qalg' }), { status: 200 });
+      return new Response(JSON.stringify({ deleted: true, revision: 4, id: 'pine-ema-cross' }), { status: 200 });
     };
 
     const api = new OpsAPI({ token: 'secret', fetcher });
     await api.customIndicators();
     const indicator = {
-      id: 'adaptive-ema-qalg',
-      name: 'Adaptive EMA [QALG]',
+      id: 'pine-ema-cross',
+      name: 'Pine EMA Cross',
       category: 'QNext' as const,
-      kind: 'adaptive-ema-qalg' as const,
+      kind: 'pine-v6' as const,
+      language: 'pine' as const,
       enabled: true,
-      defaults: {
-        priceSource: 'close',
-        emaLength: 20,
-        lookbackPeriod: 30,
-        stddevMultiplier: 2,
-        atrLength: 14,
-        atrMultiplier: 1.5,
-        upColor: '#00ffaa',
-        downColor: '#ff0000',
-        colorBars: true,
-      },
+      script: '//@version=6\nindicator("Pine EMA Cross", overlay=true)\nplot(ta.ema(close, 9))',
     };
     await api.createCustomIndicator(indicator);
     await api.updateCustomIndicator(indicator.id, { enabled: false });
@@ -239,8 +233,8 @@ describe('OpsAPI', () => {
     expect(calls).toEqual([
       'GET /qnext/admin/api/index.php?route=%2Fcustom-indicators',
       'POST /qnext/admin/api/index.php?route=%2Fcustom-indicators',
-      'PUT /qnext/admin/api/index.php?route=%2Fcustom-indicators%2Fadaptive-ema-qalg',
-      'DELETE /qnext/admin/api/index.php?route=%2Fcustom-indicators%2Fadaptive-ema-qalg',
+      'PUT /qnext/admin/api/index.php?route=%2Fcustom-indicators%2Fpine-ema-cross',
+      'DELETE /qnext/admin/api/index.php?route=%2Fcustom-indicators%2Fpine-ema-cross',
     ]);
   });
 
