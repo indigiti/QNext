@@ -33,7 +33,7 @@ type Options struct {
 	FeedStatus             func() any
 	HistoricalRepair       func(context.Context, int, []string, string) (any, error)
 	HistoricalRepairStatus func() any
-	EnabledTimeframes      []string
+	ChartTimeframes      []string
 }
 
 type Server struct {
@@ -144,7 +144,7 @@ func (s *Server) timeframes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, timeframesResponse{
-		Timeframes: append([]string(nil), s.options.EnabledTimeframes...),
+		Timeframes: append([]string(nil), s.options.ChartTimeframes...),
 	})
 }
 
