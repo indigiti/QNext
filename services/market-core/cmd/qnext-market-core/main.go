@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -230,6 +231,7 @@ func main() {
 				*config,
 				accessToken,
 				registry,
+				calendars,
 				store,
 				broker,
 				resilienceConfig,
@@ -339,6 +341,7 @@ func runMarket(
 	config marketconfig.Config,
 	accessToken string,
 	registry *symbol.Registry,
+	calendars *marketcalendar.Registry,
 	store *history.Store,
 	broker *stream.Broker,
 	resilienceConfig *resilience.Config,
@@ -349,7 +352,10 @@ func runMarket(
 	gapRecoveryTracker *upstox.GapRecoveryTracker,
 ) error {
 	canonicalPipeline, err := pipeline.New(
-		candle.New("candle-v2-session-aligned"),
+		candle.NewWithSessionResolver(
+			"candle-v3-calendar-clock",
+			marketSessionResolver(registry, calendars),
+		),
 		store,
 		config.Timeframes,
 	)
@@ -477,7 +483,14 @@ func runMarket(
 		},
 		InactivityTimeout: 20 * time.Second,
 		WatchdogInterval:  5 * time.Second,
-		WatchdogActive:    regularMarketSessionActive,
+		WatchdogActive: func(at time.Time) bool {
+			_, _, active, sessionErr := calendars.WindowAt(
+				"NSE_EQ",
+				at,
+				marketcalendar.SessionRegular,
+			)
+			return sessionErr == nil && active
+		},
 	}
 	if strings.TrimSpace(os.Getenv("QNEXT_RAW_CAPTURE")) == "1" {
 		wire.CaptureFrame = capture.NewFrameStore(env("QNEXT_STORAGE_ROOT", "./storage"), upstox.ProviderName).Append
@@ -495,6 +508,7 @@ func runMarket(
 	}
 
 	request := subscriptions.Snapshot()
+	var runProvider func() error
 	if resilienceConfig == nil {
 		supervisor := &upstox.Supervisor{
 			Runner:          wire,
@@ -504,25 +518,85 @@ func runMarket(
 				log.Printf("Upstox gap recovery failed; keeping Market Core online and retrying stream: %v", err)
 			},
 		}
-		return supervisor.Run(ctx, accessToken, request, dedupe.Handle)
+		runProvider = func() error {
+			return supervisor.Run(ctx, accessToken, request, dedupe.Handle)
+		}
+	} else {
+		runProvider = func() error {
+			return runResilientMarket(
+				ctx,
+				config,
+				*resilienceConfig,
+				accessToken,
+				dhanClientID,
+				dhanAccessToken,
+				registry,
+				store,
+				wire,
+				recovery,
+				request,
+				subscriptions.Snapshot,
+				dedupe.Handle,
+				resilienceMetrics,
+			)
+		}
 	}
 
-	return runResilientMarket(
-		ctx,
-		config,
-		*resilienceConfig,
-		accessToken,
-		dhanClientID,
-		dhanAccessToken,
-		registry,
-		store,
-		wire,
-		recovery,
-		request,
-		subscriptions.Snapshot,
-		dedupe.Handle,
-		resilienceMetrics,
-	)
+	providerErr := make(chan error, 1)
+	go func() {
+		providerErr <- runProvider()
+	}()
+
+	finalizer := time.NewTicker(100 * time.Millisecond)
+	defer finalizer.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-providerErr:
+			return err
+		case now := <-finalizer.C:
+			bars, err := canonicalPipeline.FinalizeDue(now.UTC())
+			if err != nil {
+				return fmt.Errorf("finalize due candles: %w", err)
+			}
+			for _, bar := range bars {
+				broker.PublishBar(bar)
+			}
+		}
+	}
+}
+
+func marketSessionResolver(
+	registry *symbol.Registry,
+	calendars *marketcalendar.Registry,
+) candle.SessionResolver {
+	return func(instrumentID string, at time.Time) (candle.SessionWindow, bool, error) {
+		if registry == nil || calendars == nil {
+			return candle.SessionWindow{}, false, errors.New("market session authority is unavailable")
+		}
+		instrument, ok := registry.Instrument(instrumentID)
+		if !ok {
+			return candle.SessionWindow{}, false, fmt.Errorf("instrument %q is not registered", instrumentID)
+		}
+		if strings.TrimSpace(instrument.CalendarID) == "" {
+			return candle.SessionWindow{}, false, fmt.Errorf("instrument %q has no market calendar", instrumentID)
+		}
+
+		window, _, active, err := calendars.WindowAt(
+			instrument.CalendarID,
+			at,
+			marketcalendar.SessionRegular,
+		)
+		if err != nil {
+			return candle.SessionWindow{}, false, err
+		}
+		return candle.SessionWindow{
+			Open:  window.Start,
+			Close: window.End,
+		}, active, nil
+	}
 }
 
 func nonExactRecoveryTimeframes(timeframes []string) []string {
@@ -537,30 +611,12 @@ func nonExactRecoveryTimeframes(timeframes []string) []string {
 }
 
 func regularMarketSessionActive(at time.Time) bool {
-	definition := marketcalendar.NSEEquities2026()
-	location, err := time.LoadLocation(definition.Timezone)
-	if err != nil {
-		return false
-	}
-	local := at.In(location)
-	if local.Weekday() == time.Saturday || local.Weekday() == time.Sunday {
-		return false
-	}
-	if _, closed := definition.ClosedDates[local.Format("2006-01-02")]; closed {
-		return false
-	}
-
-	open := time.Date(
-		local.Year(), local.Month(), local.Day(),
-		definition.RegularOpen.Hour, definition.RegularOpen.Minute,
-		0, 0, location,
+	_, _, active, err := marketcalendar.DefaultRegistry().WindowAt(
+		"NSE_EQ",
+		at,
+		marketcalendar.SessionRegular,
 	)
-	closeAt := time.Date(
-		local.Year(), local.Month(), local.Day(),
-		definition.RegularClose.Hour, definition.RegularClose.Minute,
-		0, 0, location,
-	)
-	return !local.Before(open) && local.Before(closeAt)
+	return err == nil && active
 }
 
 func env(key, fallback string) string {
