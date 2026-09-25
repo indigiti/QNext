@@ -1,0 +1,23 @@
+[Unit]
+Description=QNext Market Core
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__QNEXT_SERVICE_USER__
+Group=__QNEXT_SERVICE_GROUP__
+EnvironmentFile=/etc/qnext/runtime.env
+EnvironmentFile=-__QNEXT_PRIVATE_ROOT__/secrets/qnext.env
+ExecStart=__QNEXT_PRIVATE_ROOT__/current/private/bin/qnext-market-core
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__QNEXT_PRIVATE_ROOT__/storage __QNEXT_PRIVATE_ROOT__/logs
+WorkingDirectory=__QNEXT_PRIVATE_ROOT__
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,86 @@
+<?php
+
+declare(strict_types=1);
+
+use QNext\Ops\Auth;
+use QNext\Ops\OpsConfig;
+use QNext\Ops\OpsController;
+
+require_once dirname(__DIR__) . '/bootstrap.php';
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
+
+function respond(int $status, array $payload): never
+{
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    exit;
+}
+
+function request_body(): array
+{
+    $raw = file_get_contents('php://input');
+    if ($raw === false || trim($raw) === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($decoded)) {
+        throw new RuntimeException('request body must be a JSON object');
+    }
+    return $decoded;
+}
+
+try {
+    $config = OpsConfig::fromEnvironment();
+    $auth = new Auth($config->adminToken);
+    $provided = $_SERVER['HTTP_X_QNEXT_OPS_TOKEN'] ?? null;
+    if (!$auth->authorized(is_string($provided) ? $provided : null)) {
+        respond(403, ['error' => 'forbidden']);
+    }
+
+    $controller = new OpsController($config);
+    $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $prefix = '/qnext/admin/api';
+    if (str_starts_with($path, $prefix)) {
+        $path = substr($path, strlen($prefix)) ?: '/';
+    }
+
+    if ($method === 'GET' && $path === '/status') {
+        respond(200, $controller->status());
+    }
+    if ($method === 'GET' && $path === '/config') {
+        respond(200, $controller->getConfig());
+    }
+    if ($method === 'PUT' && $path === '/config') {
+        respond(200, $controller->saveConfig(request_body()));
+    }
+    if ($method === 'POST' && $path === '/secrets') {
+        respond(200, $controller->saveSecrets(request_body()));
+    }
+    if ($method === 'POST' && preg_match('#^/service/(start|stop|restart)$#', $path, $matches)) {
+        respond(200, $controller->serviceAction($matches[1]));
+    }
+    if ($method === 'POST' && $path === '/smoke') {
+        respond(200, $controller->smoke());
+    }
+    if ($method === 'POST' && preg_match('#^/releases/([A-Za-z0-9._-]{1,80})/activate$#', $path, $matches)) {
+        respond(200, $controller->activate($matches[1]));
+    }
+    if ($method === 'POST' && $path === '/rollback') {
+        respond(200, $controller->rollback());
+    }
+
+    respond(404, ['error' => 'not found']);
+} catch (JsonException $error) {
+    respond(400, ['error' => 'invalid JSON']);
+} catch (RuntimeException $error) {
+    respond(400, ['error' => $error->getMessage()]);
+} catch (Throwable $error) {
+    error_log('QNext Ops API error: ' . $error->getMessage());
+    respond(500, ['error' => 'internal error']);
+}

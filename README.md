@@ -33,15 +33,15 @@ Browser
 Go Market Core ── canonical data ──► Python Intelligence
 ```
 
-PHP is not placed in the realtime market-data path.
+PHP is not placed in the realtime market-data path. The Q6 Operations Console uses PHP only for the restricted conventional admin/control plane.
 
 ## Current phase
 
-**Q1-Q5 plan closure before Q6 Production.**
+**Q6 staging deployment and web operations.**
 
-The consolidated Q1-Q5 CI baseline is green. Remaining detailed-plan closure items are tracked before Q6 production certification.
+The consolidated Q1-Q5 CI baseline is green, and NIFTY-SYN automatic option-leg management is merged. Q6 is now packaging a complete `digiops-release` and adding a browser-managed operations surface for staging deployment, health, configuration, service control, and rollback.
 
-Persistence remains file-backed/no-DB during this closure and through initial live validation. See ADR-0009 for the later MariaDB migration gate.
+Persistence remains file-backed/no-DB through initial live validation. See ADR-0009 for the later MariaDB migration gate.
 
 ## Certified vertical slice
 

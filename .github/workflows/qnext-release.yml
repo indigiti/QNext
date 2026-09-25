@@ -17,9 +17,6 @@ jobs:
   build-release:
     name: Build DigiOps release
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/workspace
 
     steps:
       - name: Checkout source
@@ -30,40 +27,96 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install workspace dependencies
-        run: npm install --no-audit --no-fund
+      - name: Build Vela workspace
+        working-directory: apps/workspace
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run vela:parity
+          npm run build
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Build Ops Console
+        working-directory: apps/ops-console
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run build
 
-      - name: Provider tests
-        run: npm test
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.sum
 
-      - name: Verify Vela runtime parity
-        run: npm run vela:parity
-
-      - name: Build static workspace
-        run: npm run build
-
-      - name: Add immutable release metadata
+      - name: Build Linux Market Core
+        working-directory: services/market-core
         shell: bash
         run: |
           set -euo pipefail
-          cat > dist/qnext-release.json <<EOF
+          go mod download
+          mkdir -p ../../build
+          version="${GITHUB_SHA:0:12}"
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0             go build -trimpath             -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA}"             -o ../../build/qnext-market-core             ./cmd/qnext-market-core
+
+      - name: Assemble public/private release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release/public/admin
+          mkdir -p release/private/bin release/private/config release/private/deploy
+
+          cp -a apps/workspace/dist/. release/public/
+          cp -a apps/ops-console/dist/. release/public/admin/
+          install -m 0750 build/qnext-market-core release/private/bin/qnext-market-core
+          cp -a services/ops-api release/private/ops-api
+
+          cp config/q1-market.example.json release/private/config/q1-market.example.json
+          cp config/q3-resilience.example.json release/private/config/q3-resilience.example.json
+          cp config/q3-intelligence.example.json release/private/config/q3-intelligence.example.json
+
+          install -m 0750 deploy/qnext-ops-helper release/private/deploy/qnext-ops-helper
+          install -m 0750 deploy/qnext-ops-web release/private/deploy/qnext-ops-web
+          cp deploy/qnext-market-core.service release/private/deploy/
+          cp deploy/qnext-ops.env.example release/private/deploy/
+          cp deploy/qnext-runtime.env.example release/private/deploy/
+          cp deploy/qnext-sudoers.example release/private/deploy/
+
+          version="${GITHUB_SHA:0:12}"
+          cat > release/release-manifest.json <<EOF
           {
+            "schema": "QNEXT.RELEASE/1",
+            "artifact": "digiops-release",
+            "version": "${version}",
             "commit": "${GITHUB_SHA}",
             "run_id": "${GITHUB_RUN_ID}",
             "run_attempt": "${GITHUB_RUN_ATTEMPT}",
-            "ref": "${GITHUB_REF_NAME}"
+            "ref": "${GITHUB_REF_NAME}",
+            "public_prefix": "public",
+            "private_prefix": "private",
+            "routes": {
+              "workspace": "/qnext/",
+              "ops_console": "/qnext/admin/",
+              "ops_api": "/qnext/admin/api"
+            }
           }
           EOF
-          test -s dist/index.html
-          test -s dist/qnext-release.json
+
+          cp release/release-manifest.json release/public/qnext-release.json
+
+          test -s release/public/index.html
+          test -s release/public/admin/index.html
+          test -s release/private/bin/qnext-market-core
+          test -f release/private/ops-api/public/index.php
+          test -x release/private/deploy/qnext-ops-helper
+          test -s release/release-manifest.json
 
       - name: Upload DigiOps release artifact
         uses: actions/upload-artifact@v4
         with:
           name: digiops-release
-          path: apps/workspace/dist/
+          path: release/
           if-no-files-found: error
           retention-days: 14

@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_FILE="${QNEXT_OPS_HELPER_CONFIG:-/etc/qnext/ops.env}"
+if [[ ! -r "$CONFIG_FILE" ]]; then
+  echo "QNext ops config is not readable: $CONFIG_FILE" >&2
+  exit 2
+fi
+
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+
+: "${QNEXT_PRIVATE_ROOT:?QNEXT_PRIVATE_ROOT is required}"
+: "${QNEXT_PUBLIC_ROOT:?QNEXT_PUBLIC_ROOT is required}"
+: "${QNEXT_SERVICE_NAME:=qnext-market-core.service}"
+: "${QNEXT_MARKET_CORE_URL:=http://127.0.0.1:8080}"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "qnext-ops-helper must run with root privileges" >&2
+  exit 2
+fi
+
+valid_version() {
+  [[ "$1" =~ ^[A-Za-z0-9._-]{1,80}$ ]]
+}
+
+smoke() {
+  curl --fail --silent --show-error --max-time 3 "$QNEXT_MARKET_CORE_URL/health" >/dev/null
+  curl --fail --silent --show-error --max-time 3 "$QNEXT_MARKET_CORE_URL/ready" >/dev/null
+  curl --fail --silent --show-error --max-time 3 "$QNEXT_MARKET_CORE_URL/version" >/dev/null
+}
+
+status() {
+  systemctl is-active "$QNEXT_SERVICE_NAME"
+}
+
+publish_public() {
+  local release="$1"
+  local stage="${QNEXT_PUBLIC_ROOT}.next.$$"
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  cp -a "$release/public/." "$stage/"
+  printf '%s\n' "$stage"
+}
+
+activate_release() {
+  local version="$1"
+  if ! valid_version "$version"; then
+    echo "invalid release version" >&2
+    exit 2
+  fi
+
+  local release="$QNEXT_PRIVATE_ROOT/releases/$version"
+  [[ -f "$release/release-manifest.json" ]] || {
+    echo "release manifest missing: $version" >&2
+    exit 3
+  }
+  [[ -s "$release/public/index.html" ]] || {
+    echo "workspace payload missing: $version" >&2
+    exit 3
+  }
+  [[ -s "$release/private/bin/qnext-market-core" ]] || {
+    echo "market-core binary missing: $version" >&2
+    exit 3
+  }
+  [[ -f "$release/private/ops-api/public/index.php" ]] || {
+    echo "ops API payload missing: $version" >&2
+    exit 3
+  }
+
+  chmod 0750 "$release/private/bin/qnext-market-core"
+
+  local old_current=""
+  if [[ -L "$QNEXT_PRIVATE_ROOT/current" ]]; then
+    old_current="$(readlink -f "$QNEXT_PRIVATE_ROOT/current" || true)"
+  fi
+
+  local stage
+  stage="$(publish_public "$release")"
+  local old_public="${QNEXT_PUBLIC_ROOT}.rollback.$$"
+  rm -rf "$old_public"
+
+  if [[ -e "$QNEXT_PUBLIC_ROOT" ]]; then
+    mv "$QNEXT_PUBLIC_ROOT" "$old_public"
+  fi
+  mv "$stage" "$QNEXT_PUBLIC_ROOT"
+  ln -sfn "$release" "$QNEXT_PRIVATE_ROOT/current"
+
+  if ! systemctl restart "$QNEXT_SERVICE_NAME" || ! smoke; then
+    echo "release failed health checks; restoring previous release" >&2
+    rm -f "$QNEXT_PRIVATE_ROOT/current"
+    if [[ -n "$old_current" ]]; then
+      ln -sfn "$old_current" "$QNEXT_PRIVATE_ROOT/current"
+    fi
+    rm -rf "$QNEXT_PUBLIC_ROOT"
+    if [[ -e "$old_public" ]]; then
+      mv "$old_public" "$QNEXT_PUBLIC_ROOT"
+    fi
+    systemctl restart "$QNEXT_SERVICE_NAME" || true
+    exit 4
+  fi
+
+  if [[ -n "$old_current" ]]; then
+    ln -sfn "$old_current" "$QNEXT_PRIVATE_ROOT/previous"
+  fi
+  rm -rf "$old_public"
+
+  echo "activated $version"
+}
+
+rollback_release() {
+  if [[ ! -L "$QNEXT_PRIVATE_ROOT/previous" ]]; then
+    echo "no previous release is available" >&2
+    exit 3
+  fi
+  local previous
+  previous="$(basename "$(readlink -f "$QNEXT_PRIVATE_ROOT/previous")")"
+  activate_release "$previous"
+}
+
+action="${1:-}"
+case "$action" in
+  status)
+    status
+    ;;
+  start)
+    systemctl start "$QNEXT_SERVICE_NAME"
+    status
+    ;;
+  stop)
+    systemctl stop "$QNEXT_SERVICE_NAME"
+    echo "stopped"
+    ;;
+  restart)
+    systemctl restart "$QNEXT_SERVICE_NAME"
+    status
+    ;;
+  smoke)
+    smoke
+    echo "smoke PASS"
+    ;;
+  activate)
+    [[ $# -eq 2 ]] || { echo "activate requires a release version" >&2; exit 2; }
+    activate_release "$2"
+    ;;
+  rollback)
+    [[ $# -eq 1 ]] || { echo "rollback takes no arguments" >&2; exit 2; }
+    rollback_release
+    ;;
+  *)
+    echo "unsupported action" >&2
+    exit 2
+    ;;
+esac
