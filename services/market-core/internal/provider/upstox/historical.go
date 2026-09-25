@@ -80,10 +80,12 @@ func (c HistoricalRangeClient) FetchRange(
 			historicalTo = todayStart.Add(-time.Nanosecond)
 		}
 		if historicalTo.After(localFrom) {
-			candles, err := c.fetchHistorical(
+			candles, err := c.fetchHistoricalUnit(
 				ctx,
 				accessToken,
 				instrumentKey,
+				"minutes",
+				1,
 				localFrom.Format("2006-01-02"),
 				historicalTo.Format("2006-01-02"),
 			)
@@ -126,10 +128,33 @@ func (c HistoricalRangeClient) FetchRange(
 	return result, nil
 }
 
-func (c HistoricalRangeClient) fetchHistorical(
+func (c HistoricalRangeClient) FetchMonthlyRange(
 	ctx context.Context,
 	accessToken string,
 	instrumentKey string,
+	from time.Time,
+	to time.Time,
+) ([]ProviderCandle, error) {
+	if from.IsZero() || to.IsZero() || !from.Before(to) {
+		return nil, errors.New("invalid monthly historical range")
+	}
+	return c.fetchHistoricalUnit(
+		ctx,
+		accessToken,
+		instrumentKey,
+		"months",
+		1,
+		from.Format("2006-01-02"),
+		to.Format("2006-01-02"),
+	)
+}
+
+func (c HistoricalRangeClient) fetchHistoricalUnit(
+	ctx context.Context,
+	accessToken string,
+	instrumentKey string,
+	unit string,
+	interval int,
 	fromDate string,
 	toDate string,
 ) ([]ProviderCandle, error) {
@@ -143,10 +168,10 @@ func (c HistoricalRangeClient) fetchHistorical(
 	}
 
 	endpoint := base + "/" +
-		url.PathEscape(instrumentKey) +
-		"/minutes/1/" +
-		url.PathEscape(toDate) +
-		"/" +
+		url.PathEscape(instrumentKey) + "/" +
+		url.PathEscape(unit) + "/" +
+		strconv.Itoa(interval) + "/" +
+		url.PathEscape(toDate) + "/" +
 		url.PathEscape(fromDate)
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
