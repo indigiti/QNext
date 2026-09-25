@@ -27,19 +27,22 @@ type Snapshot struct {
 	Providers   map[string]ProviderSnapshot   `json:"providers"`
 	Instruments map[string]InstrumentSnapshot `json:"instruments"`
 	Synthetic   any                           `json:"synthetic,omitempty"`
+	Synthetics  map[string]any                `json:"synthetics,omitempty"`
 }
 
 type Tracker struct {
 	mu              sync.RWMutex
 	providers       map[string]ProviderSnapshot
 	instruments     map[string]InstrumentSnapshot
-	syntheticStatus func() any
+	syntheticStatus   func() any
+	syntheticStatuses map[string]func() any
 }
 
 func New() *Tracker {
 	return &Tracker{
-		providers:   map[string]ProviderSnapshot{},
-		instruments: map[string]InstrumentSnapshot{},
+		providers:         map[string]ProviderSnapshot{},
+		instruments:       map[string]InstrumentSnapshot{},
+		syntheticStatuses: map[string]func() any{},
 	}
 }
 
@@ -90,6 +93,15 @@ func (t *Tracker) SetSyntheticStatus(status func() any) {
 	t.mu.Unlock()
 }
 
+func (t *Tracker) SetSyntheticStatusFor(instrumentID string, status func() any) {
+	if t == nil || instrumentID == "" || status == nil {
+		return
+	}
+	t.mu.Lock()
+	t.syntheticStatuses[instrumentID] = status
+	t.mu.Unlock()
+}
+
 func (t *Tracker) Snapshot() Snapshot {
 	if t == nil {
 		return Snapshot{Providers: map[string]ProviderSnapshot{}, Instruments: map[string]InstrumentSnapshot{}}
@@ -105,13 +117,26 @@ func (t *Tracker) Snapshot() Snapshot {
 		instruments[key] = value
 	}
 	status := t.syntheticStatus
+	statuses := make(map[string]func() any, len(t.syntheticStatuses))
+	for key, value := range t.syntheticStatuses {
+		statuses[key] = value
+	}
 	t.mu.RUnlock()
 
 	var synthetic any
 	if status != nil {
 		synthetic = status()
 	}
-	return Snapshot{Providers: providers, Instruments: instruments, Synthetic: synthetic}
+	synthetics := make(map[string]any, len(statuses))
+	for key, statusFn := range statuses {
+		synthetics[key] = statusFn()
+	}
+	return Snapshot{
+		Providers: providers,
+		Instruments: instruments,
+		Synthetic: synthetic,
+		Synthetics: synthetics,
+	}
 }
 
 func AgeMS(atMS int64, now time.Time) int64 {
