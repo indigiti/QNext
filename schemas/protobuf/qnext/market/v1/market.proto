@@ -25,6 +25,7 @@ message CanonicalTick {
   int64 published_time_ms = 8;
   uint64 sequence = 9;
   DataQuality quality = 10;
+  double quantity = 11;             // last-traded quantity when supplied; zero for non-traded indices
 }
 
 message Bar {
