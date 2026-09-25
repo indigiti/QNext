@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,13 @@ var ErrHistoricalRepairRunning = errors.New("historical repair is already runnin
 
 type HistoricalRangeFetcher interface {
 	FetchRange(
+		context.Context,
+		string,
+		string,
+		time.Time,
+		time.Time,
+	) ([]ProviderCandle, error)
+	FetchMonthlyRange(
 		context.Context,
 		string,
 		string,
@@ -203,19 +211,114 @@ func (r *HistoricalRepairer) Repair(
 			return result, wrapped
 		}
 
-		for _, interval := range []int{3, 5} {
-			timeframe := fmt.Sprintf("%dm", interval)
+		for _, target := range []struct {
+			minutes   int
+			timeframe string
+		}{
+			{2, "2m"}, {3, "3m"}, {5, "5m"}, {10, "10m"},
+			{15, "15m"}, {30, "30m"}, {45, "45m"},
+			{60, "1h"}, {120, "2h"}, {180, "3h"}, {240, "4h"},
+		} {
 			rollups, err := aggregateMinuteBars(
 				canonical1m,
-				interval,
+				target.minutes,
+				target.timeframe,
 				definition,
 				to,
 			)
 			if err != nil {
-				wrapped := fmt.Errorf("aggregate %s %s: %w", market.Symbol, timeframe, err)
+				wrapped := fmt.Errorf("aggregate %s %s: %w", market.Symbol, target.timeframe, err)
 				r.finish(result, wrapped)
 				return result, wrapped
 			}
+			counts, changed, err := r.repairBars(from, to, rollups)
+			if err != nil {
+				wrapped := fmt.Errorf("repair %s %s: %w", market.Symbol, target.timeframe, err)
+				r.finish(result, wrapped)
+				return result, wrapped
+			}
+			marketResult.Timeframes[target.timeframe] = counts
+			if changed && r.Resync != nil {
+				r.Resync.PublishResync(
+					market.Underlying.InstrumentID,
+					target.timeframe,
+					"historical_repair",
+				)
+			}
+		}
+
+		daily := aggregateDailyBars(canonical1m, definition, to)
+		counts, changed, err = r.repairBars(from, to, daily)
+		if err != nil {
+			wrapped := fmt.Errorf("repair %s 1D: %w", market.Symbol, err)
+			r.finish(result, wrapped)
+			return result, wrapped
+		}
+		marketResult.Timeframes["1D"] = counts
+		if changed && r.Resync != nil {
+			r.Resync.PublishResync(market.Underlying.InstrumentID, "1D", "historical_repair")
+		}
+
+		canonicalDaily, err := r.History.LoadRange(
+			market.Underlying.InstrumentID,
+			"1D",
+			from.AddDate(0, 0, -7),
+			to,
+		)
+		if err != nil {
+			wrapped := fmt.Errorf("load repaired %s 1D: %w", market.Symbol, err)
+			r.finish(result, wrapped)
+			return result, wrapped
+		}
+		weekly := aggregateCalendarBars(canonicalDaily, "1W", to)
+		counts, changed, err = r.repairBars(from, to, weekly)
+		if err != nil {
+			wrapped := fmt.Errorf("repair %s 1W: %w", market.Symbol, err)
+			r.finish(result, wrapped)
+			return result, wrapped
+		}
+		marketResult.Timeframes["1W"] = counts
+		if changed && r.Resync != nil {
+			r.Resync.PublishResync(market.Underlying.InstrumentID, "1W", "historical_repair")
+		}
+
+		monthlySource, err := r.Client.FetchMonthlyRange(
+			ctx,
+			r.AccessToken,
+			market.Underlying.ProviderKey,
+			from.AddDate(-1, 0, 0),
+			to,
+		)
+		if err != nil {
+			wrapped := fmt.Errorf("repair %s monthly source: %w", market.Symbol, err)
+			r.finish(result, wrapped)
+			return result, wrapped
+		}
+		monthly := providerMonthlyBars(market.Underlying.InstrumentID, monthlySource, to)
+		counts, changed, err = r.repairBars(from, to, monthly)
+		if err != nil {
+			wrapped := fmt.Errorf("repair %s 1M: %w", market.Symbol, err)
+			r.finish(result, wrapped)
+			return result, wrapped
+		}
+		marketResult.Timeframes["1M"] = counts
+		if changed && r.Resync != nil {
+			r.Resync.PublishResync(market.Underlying.InstrumentID, "1M", "historical_repair")
+		}
+
+		canonicalMonthly, err := r.History.LoadRange(
+			market.Underlying.InstrumentID,
+			"1M",
+			from.AddDate(-1, 0, 0),
+			to,
+		)
+		if err != nil {
+			wrapped := fmt.Errorf("load repaired %s 1M: %w", market.Symbol, err)
+			r.finish(result, wrapped)
+			return result, wrapped
+		}
+		for _, timeframe := range []string{"3M", "6M", "12M"} {
+			rollups := aggregateCalendarBars(canonicalMonthly, timeframe, to)
 			counts, changed, err := r.repairBars(from, to, rollups)
 			if err != nil {
 				wrapped := fmt.Errorf("repair %s %s: %w", market.Symbol, timeframe, err)
@@ -370,11 +473,12 @@ func providerBar(
 func aggregateMinuteBars(
 	bars []domain.Bar,
 	interval int,
+	timeframe string,
 	definition marketcalendar.Definition,
 	now time.Time,
 ) ([]domain.Bar, error) {
-	if interval != 3 && interval != 5 {
-		return nil, errors.New("historical rollup interval must be 3 or 5 minutes")
+	if interval <= 1 || interval > 240 {
+		return nil, errors.New("historical intraday rollup interval must be between 2 and 240 minutes")
 	}
 	location, err := time.LoadLocation(definition.Timezone)
 	if err != nil {
@@ -442,7 +546,18 @@ func aggregateMinuteBars(
 		sort.Slice(group.bars, func(i, j int) bool {
 			return group.bars[i].OpenTime.Before(group.bars[j].OpenTime)
 		})
-		if len(group.bars) != interval {
+		groupStartLocal := group.start.In(location)
+		sessionClose := time.Date(
+			groupStartLocal.Year(), groupStartLocal.Month(), groupStartLocal.Day(),
+			definition.RegularClose.Hour, definition.RegularClose.Minute,
+			0, 0, location,
+		).UTC()
+		closeTime := group.start.Add(time.Duration(interval) * time.Minute)
+		if closeTime.After(sessionClose) {
+			closeTime = sessionClose
+		}
+		expectedCount := int(closeTime.Sub(group.start) / time.Minute)
+		if expectedCount <= 0 || len(group.bars) != expectedCount {
 			continue
 		}
 
@@ -454,7 +569,6 @@ func aggregateMinuteBars(
 				break
 			}
 		}
-		closeTime := group.start.Add(time.Duration(interval) * time.Minute)
 		if !complete || closeTime.After(now.UTC()) {
 			continue
 		}
@@ -476,7 +590,7 @@ func aggregateMinuteBars(
 
 		result = append(result, domain.Bar{
 			InstrumentID:        first.InstrumentID,
-			Timeframe:           fmt.Sprintf("%dm", interval),
+			Timeframe:           timeframe,
 			OpenTime:            group.start,
 			CloseTime:           closeTime,
 			Open:                first.Open,
@@ -492,6 +606,191 @@ func aggregateMinuteBars(
 		})
 	}
 	return result, nil
+}
+
+func aggregateDailyBars(
+	bars []domain.Bar,
+	definition marketcalendar.Definition,
+	now time.Time,
+) []domain.Bar {
+	location, err := time.LoadLocation(definition.Timezone)
+	if err != nil {
+		return nil
+	}
+	byDay := make(map[string][]domain.Bar)
+	for _, bar := range bars {
+		if !bar.Final || bar.Timeframe != "1m" {
+			continue
+		}
+		local := bar.OpenTime.In(location)
+		key := local.Format("2006-01-02")
+		byDay[key] = append(byDay[key], bar)
+	}
+
+	keys := make([]string, 0, len(byDay))
+	for key := range byDay {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := make([]domain.Bar, 0, len(keys))
+	for _, key := range keys {
+		group := byDay[key]
+		sort.Slice(group, func(i, j int) bool { return group[i].OpenTime.Before(group[j].OpenTime) })
+		if len(group) == 0 {
+			continue
+		}
+		local := group[0].OpenTime.In(location)
+		sessionOpen := time.Date(
+			local.Year(), local.Month(), local.Day(),
+			definition.RegularOpen.Hour, definition.RegularOpen.Minute,
+			0, 0, location,
+		)
+		sessionClose := time.Date(
+			local.Year(), local.Month(), local.Day(),
+			definition.RegularClose.Hour, definition.RegularClose.Minute,
+			0, 0, location,
+		)
+		expected := int(sessionClose.Sub(sessionOpen) / time.Minute)
+		if len(group) != expected || sessionClose.After(now.In(location)) {
+			continue
+		}
+
+		openTime := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location).UTC()
+		closeTime := openTime.In(location).AddDate(0, 0, 1).UTC()
+		result = append(result, aggregateBarGroup(group, "1D", openTime, closeTime))
+	}
+	return result
+}
+
+func providerMonthlyBars(
+	instrumentID string,
+	candles []ProviderCandle,
+	now time.Time,
+) []domain.Bar {
+	location := time.FixedZone("IST", 5*60*60+30*60)
+	result := make([]domain.Bar, 0, len(candles))
+	for _, candle := range candles {
+		local := candle.OpenTime.In(location)
+		openTime := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, location)
+		closeTime := openTime.AddDate(0, 1, 0)
+		if closeTime.After(now.In(location)) {
+			continue
+		}
+		result = append(result, domain.Bar{
+			InstrumentID:        instrumentID,
+			Timeframe:           "1M",
+			OpenTime:            openTime.UTC(),
+			CloseTime:           closeTime.UTC(),
+			Open:                candle.Open,
+			High:                candle.High,
+			Low:                 candle.Low,
+			Close:               candle.Close,
+			Volume:              candle.Volume,
+			Final:               true,
+			AuthorityProvider:   ProviderName,
+			Quality:             domain.QualityRecovered,
+			Recovered:           true,
+			CandleEngineVersion: "historical-monthly-v1",
+		})
+	}
+	return result
+}
+
+func aggregateCalendarBars(
+	bars []domain.Bar,
+	timeframe string,
+	now time.Time,
+) []domain.Bar {
+	location := time.FixedZone("IST", 5*60*60+30*60)
+	type bucket struct {
+		open  time.Time
+		close time.Time
+		bars  []domain.Bar
+	}
+	buckets := make(map[int64]*bucket)
+
+	for _, bar := range bars {
+		if !bar.Final {
+			continue
+		}
+		local := bar.OpenTime.In(location)
+		var open, close time.Time
+		switch timeframe {
+		case "1W":
+			day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+			offset := (int(day.Weekday()) + 6) % 7
+			open = day.AddDate(0, 0, -offset)
+			close = open.AddDate(0, 0, 7)
+		case "3M", "6M", "12M":
+			months, _ := strconv.Atoi(strings.TrimSuffix(timeframe, "M"))
+			startMonth := ((int(local.Month())-1)/months)*months + 1
+			open = time.Date(local.Year(), time.Month(startMonth), 1, 0, 0, 0, 0, location)
+			close = open.AddDate(0, months, 0)
+		default:
+			continue
+		}
+		key := open.UnixMilli()
+		if buckets[key] == nil {
+			buckets[key] = &bucket{open: open.UTC(), close: close.UTC()}
+		}
+		buckets[key].bars = append(buckets[key].bars, bar)
+	}
+
+	keys := make([]int64, 0, len(buckets))
+	for key := range buckets {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	result := make([]domain.Bar, 0, len(keys))
+	for _, key := range keys {
+		group := buckets[key]
+		if group.close.After(now.UTC()) || len(group.bars) == 0 {
+			continue
+		}
+		sort.Slice(group.bars, func(i, j int) bool { return group.bars[i].OpenTime.Before(group.bars[j].OpenTime) })
+		result = append(result, aggregateBarGroup(group.bars, timeframe, group.open, group.close))
+	}
+	return result
+}
+
+func aggregateBarGroup(
+	group []domain.Bar,
+	timeframe string,
+	openTime time.Time,
+	closeTime time.Time,
+) domain.Bar {
+	first := group[0]
+	last := group[len(group)-1]
+	high := first.High
+	low := first.Low
+	volume := float64(0)
+	for _, bar := range group {
+		if bar.High > high {
+			high = bar.High
+		}
+		if bar.Low < low {
+			low = bar.Low
+		}
+		volume += bar.Volume
+	}
+	return domain.Bar{
+		InstrumentID:        first.InstrumentID,
+		Timeframe:           timeframe,
+		OpenTime:            openTime.UTC(),
+		CloseTime:           closeTime.UTC(),
+		Open:                first.Open,
+		High:                high,
+		Low:                 low,
+		Close:               last.Close,
+		Volume:              volume,
+		Final:               true,
+		AuthorityProvider:   ProviderName,
+		Quality:             domain.QualityRecovered,
+		Recovered:           true,
+		CandleEngineVersion: "historical-rollup-v2",
+	}
 }
 
 func sameHistoricalBar(a, b domain.Bar) bool {
