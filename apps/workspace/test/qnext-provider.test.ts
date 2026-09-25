@@ -315,6 +315,59 @@ describe('QNextProvider', () => {
     expect(barsRequests).toBe(requestsAfterUnsubscribe);
   });
 
+  it('promotes from REST polling back to WSS when a later retry opens', async () => {
+    const sockets: FakeSocket[] = [];
+    let barsRequests = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      if (target.startsWith('/qnext/api/v1/symbols/')) {
+        return jsonResponse(symbolsPayload);
+      }
+      if (target.startsWith('/qnext/api/v1/bars/?')) {
+        barsRequests += 1;
+        return jsonResponse({
+          bars: [
+            {
+              time: 1_000,
+              open: 23000,
+              high: 23010,
+              low: 22995,
+              close: 23005 + barsRequests,
+              volume: 0,
+            },
+          ],
+        });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const provider = new QNextProvider({
+      apiBase: '/qnext',
+      fetchImpl,
+      webSocketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      pollIntervalMs: 5,
+      reconnectDelayMs: 5,
+    });
+
+    const onBar = vi.fn();
+    const unsubscribe = provider.subscribe('NIFTY', '15s', onBar);
+
+    await waitFor(() => sockets.length === 1);
+    sockets[0].close();
+    await waitFor(() => barsRequests >= 1 && sockets.length >= 2);
+
+    const beforeOpen = barsRequests;
+    sockets[1].open();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(barsRequests).toBe(beforeOpen);
+
+    unsubscribe();
+  });
+
   it('heals RESYNC_REQUIRED with a REST snapshot before fresh live subscribe', async () => {
     const sockets: FakeSocket[] = [];
     let barsRequests = 0;

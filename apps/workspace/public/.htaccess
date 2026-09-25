@@ -1,0 +1,12 @@
+# QNext public WebSocket bridge.
+#
+# Cloudways Flexible/Hybrid requires mod_proxy (and WebSocket proxy support)
+# to be enabled. When unavailable, only this stream route fails and the
+# browser falls back to the existing REST live-bars path.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  RewriteCond %{HTTP:Upgrade} =websocket [NC]
+  RewriteCond %{HTTP:Connection} (^|,)\s*upgrade\s*(,|$) [NC]
+  RewriteRule ^api/v1/stream/?$ ws://127.0.0.1:18080/api/v1/stream [P,L]
+</IfModule>

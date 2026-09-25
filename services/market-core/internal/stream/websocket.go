@@ -250,7 +250,29 @@ func sameOrigin(r *http.Request) bool {
 	if err != nil || parsed.Host == "" {
 		return false
 	}
-	return strings.EqualFold(parsed.Host, r.Host)
+
+	for _, host := range requestHosts(r) {
+		if strings.EqualFold(parsed.Host, host) {
+			return true
+		}
+	}
+	return false
+}
+
+func requestHosts(r *http.Request) []string {
+	hosts := make([]string, 0, 3)
+	if host := strings.TrimSpace(r.Host); host != "" {
+		hosts = append(hosts, host)
+	}
+	for _, header := range []string{"X-Forwarded-Host", "X-Original-Host"} {
+		for _, value := range strings.Split(r.Header.Get(header), ",") {
+			host := strings.TrimSpace(value)
+			if host != "" {
+				hosts = append(hosts, host)
+			}
+		}
+	}
+	return hosts
 }
 
 var errClosedSubscription = errors.New("subscription closed")

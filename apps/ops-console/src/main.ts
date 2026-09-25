@@ -98,6 +98,10 @@ root.innerHTML = `
         <div id="feed-summary" class="status-grid feed-summary"></div>
         <div id="feed-providers" class="feed-provider-grid"></div>
         <div class="actions feed-actions">
+          <button id="probe-stream" class="secondary">Probe WSS</button>
+          <span id="browser-transport-status" class="muted">Browser transport: probing...</span>
+        </div>
+        <div class="actions feed-actions">
           <button id="verify-dhan" class="secondary">Verify Dhan standby</button>
           <span id="dhan-standby-result" class="muted">Configure Dhan credentials, restart Market Core, then verify standby readiness.</span>
         </div>
@@ -302,6 +306,49 @@ function renderFeedStatus(response: FeedStatusResponse) {
     providerCard('dhan', body.resilience_configured);
 }
 
+async function probeBrowserStream() {
+  const status = document.querySelector<HTMLSpanElement>('#browser-transport-status')!;
+  status.textContent = 'Browser transport: probing WSS...';
+
+  const url = new URL('../api/v1/stream', window.location.href);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const socket = new WebSocket(url.toString());
+    const finish = (label: string) => {
+      if (settled) return;
+      settled = true;
+      status.textContent = `Browser transport: ${label}`;
+      try { socket.close(); } catch {}
+      resolve();
+    };
+    const timer = window.setTimeout(() => finish('REST FALLBACK'), 2500);
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(String(event.data)) as { op?: string; protocol?: string };
+        if (message.op === 'hello' && message.protocol === 'QNEXT.STREAM/1') {
+          window.clearTimeout(timer);
+          finish('WSS READY');
+        }
+      } catch {
+        // Ignore non-protocol frames during the short probe.
+      }
+    };
+    socket.onerror = () => {
+      window.clearTimeout(timer);
+      finish('REST FALLBACK');
+    };
+    socket.onclose = () => {
+      if (!settled) {
+        window.clearTimeout(timer);
+        finish('REST FALLBACK');
+      }
+    };
+  });
+}
+
 async function loadFeedStatus() {
   try {
     renderFeedStatus(await api.feedStatus());
@@ -441,6 +488,7 @@ tokenButton.addEventListener('click', async () => {
 
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
 document.querySelector('#refresh-feed')!.addEventListener('click', () => void loadFeedStatus());
+document.querySelector('#probe-stream')!.addEventListener('click', () => void probeBrowserStream());
 document.querySelector('#verify-dhan')!.addEventListener('click', async () => {
   const resultEl = document.querySelector<HTMLSpanElement>('#dhan-standby-result')!;
   try {
@@ -636,6 +684,7 @@ async function bootstrapAdmin() {
       await refresh();
       await loadConfig();
       await loadActiveMarkets();
+      await probeBrowserStream();
     } else {
       toast('Enter the staging admin token to connect to QNext Ops.');
     }
