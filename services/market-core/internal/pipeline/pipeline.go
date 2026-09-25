@@ -14,11 +14,11 @@ type HistoryWriter interface {
 }
 
 type Pipeline struct {
-	candles    *candle.Engine
-	rollups    *rollupEngine
-	history    HistoryWriter
-	direct     []string
-	derived    []string
+	candles *candle.Engine
+	rollups *rollupEngine
+	history HistoryWriter
+	direct  []string
+	derived []string
 }
 
 func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*Pipeline, error) {
