@@ -316,7 +316,7 @@ final class OpsController
                         '$1[REDACTED]',
                         $line,
                     ) ?? $line;
-                    return mb_substr($line, 0, 2000);
+                    return substr($line, 0, 2000);
                 },
                 $lines,
             ));
