@@ -10,8 +10,18 @@ final class ServiceControl
 {
     private const ACTIONS = ['status', 'start', 'stop', 'restart', 'smoke', 'rollback', 'activate'];
 
-    public function __construct(private readonly string $helperPath)
+    public function __construct(
+        private readonly string $helperPath,
+        private readonly array $environment = [],
+    ) {
+    }
+
+    public function available(): bool
     {
+        return function_exists('proc_open')
+            && function_exists('proc_close')
+            && is_file($this->helperPath)
+            && is_executable($this->helperPath);
     }
 
     public function run(string $action, ?string $argument = null): array
@@ -27,8 +37,13 @@ final class ServiceControl
             throw new RuntimeException('unexpected service action argument');
         }
 
+        if (!function_exists('proc_open') || !function_exists('proc_close')) {
+            throw new RuntimeException(
+                'Cloudways PHP process control is disabled; enable proc_open and proc_close for this application'
+            );
+        }
         if (!is_file($this->helperPath) || !is_executable($this->helperPath)) {
-            throw new RuntimeException('QNext service helper is unavailable');
+            throw new RuntimeException('QNext service helper is unavailable: ' . $this->helperPath);
         }
 
         $command = [$this->helperPath, $action];
@@ -37,6 +52,14 @@ final class ServiceControl
         }
 
         $pipes = [];
+        $environment = null;
+        if ($this->environment !== []) {
+            $environment = array_merge([
+                'PATH' => getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin',
+                'HOME' => getenv('HOME') ?: '/',
+            ], $this->environment);
+        }
+
         $process = proc_open(
             $command,
             [
@@ -46,7 +69,7 @@ final class ServiceControl
             ],
             $pipes,
             null,
-            [],
+            $environment,
             ['bypass_shell' => true],
         );
 
