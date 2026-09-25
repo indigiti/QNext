@@ -162,6 +162,18 @@ export interface ActiveMarketsSaveResult {
   active: string[];
 }
 
+export interface CandleTimeframes {
+  available: string[];
+  enabled: string[];
+  protected: string[];
+  defaults: string[];
+}
+
+export interface CandleTimeframesSaveResult {
+  saved: boolean;
+  enabled: string[];
+}
+
 export interface SecretWriteResult {
   stored: string[];
   resilienceConfigured?: boolean;
@@ -242,6 +254,17 @@ export class OpsAPI {
     return this.request<ActiveMarketsSaveResult>('/active-markets', {
       method: 'PUT',
       body: JSON.stringify({ active }),
+    });
+  }
+
+  candleTimeframes(): Promise<CandleTimeframes> {
+    return this.request<CandleTimeframes>('/candle-timeframes');
+  }
+
+  saveCandleTimeframes(enabled: string[]): Promise<CandleTimeframesSaveResult> {
+    return this.request<CandleTimeframesSaveResult>('/candle-timeframes', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
     });
   }
 

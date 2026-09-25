@@ -284,6 +284,78 @@ final class OpsController
         ];
     }
 
+    public function candleTimeframes(): array
+    {
+        $available = [
+            '15s', '30s',
+            '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
+            '1h', '2h', '3h', '4h',
+            '1D', '1W', '1M',
+        ];
+        $defaults = ['15s', '30s', '1m', '2m', '3m', '5m', '15m', '30m', '1h', '1D'];
+        $config = $this->getConfig();
+        $configured = $config['timeframes'] ?? null;
+
+        $enabled = $defaults;
+        if (is_array($configured) && $configured !== []) {
+            $enabled = [];
+            foreach ($available as $timeframe) {
+                if (in_array($timeframe, $configured, true)) {
+                    $enabled[] = $timeframe;
+                }
+            }
+        }
+        if (!in_array('1m', $enabled, true)) {
+            $enabled[] = '1m';
+        }
+
+        return [
+            'available' => $available,
+            'enabled' => $enabled,
+            'protected' => ['1m'],
+            'defaults' => $defaults,
+        ];
+    }
+
+    public function saveCandleTimeframes(array $payload): array
+    {
+        $available = [
+            '15s', '30s',
+            '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
+            '1h', '2h', '3h', '4h',
+            '1D', '1W', '1M',
+        ];
+        $requested = $payload['enabled'] ?? null;
+        if (!is_array($requested)) {
+            throw new RuntimeException('enabled candle timeframes must be an array');
+        }
+
+        foreach ($requested as $timeframe) {
+            if (!is_string($timeframe) || !in_array($timeframe, $available, true)) {
+                throw new RuntimeException('unknown candle timeframe');
+            }
+        }
+        if (!in_array('1m', $requested, true)) {
+            throw new RuntimeException('1m is protected and must remain enabled');
+        }
+
+        $enabled = [];
+        foreach ($available as $timeframe) {
+            if (in_array($timeframe, $requested, true)) {
+                $enabled[] = $timeframe;
+            }
+        }
+
+        $config = $this->getConfig();
+        $config['timeframes'] = $enabled;
+        AtomicFile::writeJson($this->config->configPath(), $config);
+
+        return [
+            'saved' => true,
+            'enabled' => $enabled,
+        ];
+    }
+
     public function saveActiveMarkets(array $payload): array
     {
         $available = ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX'];

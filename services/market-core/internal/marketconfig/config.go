@@ -8,6 +8,19 @@ import (
 	"strings"
 )
 
+var defaultEnabledTimeframes = []string{
+	"15s", "30s",
+	"1m", "2m", "3m", "5m", "15m", "30m",
+	"1h", "1D",
+}
+
+var adminTimeframes = []string{
+	"15s", "30s",
+	"1m", "2m", "3m", "5m", "10m", "15m", "30m", "45m",
+	"1h", "2h", "3h", "4h",
+	"1D", "1W", "1M",
+}
+
 type Config struct {
 	Timeframes    []string       `json:"timeframes"`
 	Markets       []MarketConfig `json:"markets,omitempty"`
@@ -94,8 +107,27 @@ func (c Config) Validate() error {
 	if len(c.Timeframes) == 0 {
 		return errors.New("at least one timeframe is required")
 	}
-	if len(c.RecoverableTimeframes()) == 0 {
-		return errors.New("Q1 requires at least one recoverable minute timeframe: 1m, 3m, or 5m")
+	allowed := make(map[string]bool, len(ChartTimeframes()))
+	for _, timeframe := range ChartTimeframes() {
+		allowed[timeframe] = true
+	}
+	seenTimeframes := make(map[string]bool, len(c.Timeframes))
+	hasCanonicalMinute := false
+	for _, timeframe := range c.Timeframes {
+		timeframe = strings.TrimSpace(timeframe)
+		if !allowed[timeframe] {
+			return errors.New("timeframes contains an unsupported timeframe")
+		}
+		if seenTimeframes[timeframe] {
+			return errors.New("timeframes must not contain duplicates")
+		}
+		seenTimeframes[timeframe] = true
+		if timeframe == "1m" {
+			hasCanonicalMinute = true
+		}
+	}
+	if !hasCanonicalMinute {
+		return errors.New("1m is required as the canonical recovery timeframe")
 	}
 
 	configuredMarkets := c.configuredMarkets()
@@ -437,6 +469,14 @@ func ChartTimeframes() []string {
 	}
 }
 
+func DefaultEnabledTimeframes() []string {
+	return append([]string(nil), defaultEnabledTimeframes...)
+}
+
+func AdminTimeframes() []string {
+	return append([]string(nil), adminTimeframes...)
+}
+
 func (c Config) AutoLegsEnabled() bool {
 	for _, market := range c.EffectiveMarkets() {
 		if market.Synthetic.Auto != nil {
@@ -461,12 +501,10 @@ func (c Config) ProviderKeys() []string {
 }
 
 func (c Config) RecoverableTimeframes() []string {
-	var result []string
 	for _, timeframe := range c.Timeframes {
-		switch timeframe {
-		case "1m", "3m", "5m":
-			result = append(result, timeframe)
+		if timeframe == "1m" {
+			return []string{"1m"}
 		}
 	}
-	return result
+	return nil
 }

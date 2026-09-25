@@ -97,6 +97,9 @@ try {
     if ($method === 'GET' && $path === '/active-markets') {
         respond(200, $controller->marketActivation());
     }
+    if ($method === 'GET' && $path === '/candle-timeframes') {
+        respond(200, $controller->candleTimeframes());
+    }
     if ($method === 'GET' && $path === '/history-repair') {
         respond(200, $controller->historicalRepairStatus());
     }
@@ -111,6 +114,9 @@ try {
     }
     if ($method === 'PUT' && $path === '/active-markets') {
         respond(200, $controller->saveActiveMarkets(request_body()));
+    }
+    if ($method === 'PUT' && $path === '/candle-timeframes') {
+        respond(200, $controller->saveCandleTimeframes(request_body()));
     }
     if ($method === 'POST' && $path === '/secrets') {
         respond(200, $controller->saveSecrets(request_body()));

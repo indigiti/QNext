@@ -95,6 +95,7 @@ type HistoricalRepairer struct {
 	History     HistoricalRepairStore
 	Calendars   *marketcalendar.Registry
 	Markets     []marketconfig.MarketConfig
+	Timeframes  []string
 	Resync      HistoricalRepairResync
 	Now         func() time.Time
 
@@ -226,6 +227,9 @@ func (r *HistoricalRepairer) Repair(
 			{15, "15m"}, {30, "30m"}, {45, "45m"},
 			{60, "1h"}, {120, "2h"}, {180, "3h"}, {240, "4h"},
 		} {
+			if !r.timeframeEnabled(target.timeframe) {
+				continue
+			}
 			rollups, err := aggregateMinuteBars(
 				canonical1m,
 				target.minutes,
@@ -254,97 +258,108 @@ func (r *HistoricalRepairer) Repair(
 			}
 		}
 
-		daily := aggregateDailyBars(canonical1m, definition, to)
-		counts, changed, err = r.repairBars(from, to, daily)
-		if err != nil {
-			wrapped := fmt.Errorf("repair %s 1D: %w", market.Symbol, err)
-			r.finish(result, wrapped)
-			return result, wrapped
-		}
-		marketResult.Timeframes["1D"] = counts
-		if changed && r.Resync != nil {
-			r.Resync.PublishResync(market.Underlying.InstrumentID, "1D", "historical_repair")
-		}
-
-		weeklySource, err := r.Client.FetchWeeklyRange(
-			ctx,
-			r.AccessToken,
-			market.Underlying.ProviderKey,
-			from.AddDate(0, 0, -7),
-			to,
-		)
-		if err != nil {
-			wrapped := fmt.Errorf("repair %s weekly source: %w", market.Symbol, err)
-			r.finish(result, wrapped)
-			return result, wrapped
-		}
-		weekly := providerCalendarBars(
-			market.Underlying.InstrumentID,
-			"1W",
-			weeklySource,
-			to,
-		)
-		counts, changed, err = r.repairBars(from, to, weekly)
-		if err != nil {
-			wrapped := fmt.Errorf("repair %s 1W: %w", market.Symbol, err)
-			r.finish(result, wrapped)
-			return result, wrapped
-		}
-		marketResult.Timeframes["1W"] = counts
-		if changed && r.Resync != nil {
-			r.Resync.PublishResync(market.Underlying.InstrumentID, "1W", "historical_repair")
-		}
-
-		monthlySource, err := r.Client.FetchMonthlyRange(
-			ctx,
-			r.AccessToken,
-			market.Underlying.ProviderKey,
-			from.AddDate(-1, 0, 0),
-			to,
-		)
-		if err != nil {
-			wrapped := fmt.Errorf("repair %s monthly source: %w", market.Symbol, err)
-			r.finish(result, wrapped)
-			return result, wrapped
-		}
-		monthly := providerMonthlyBars(market.Underlying.InstrumentID, monthlySource, to)
-		counts, changed, err = r.repairBars(from, to, monthly)
-		if err != nil {
-			wrapped := fmt.Errorf("repair %s 1M: %w", market.Symbol, err)
-			r.finish(result, wrapped)
-			return result, wrapped
-		}
-		marketResult.Timeframes["1M"] = counts
-		if changed && r.Resync != nil {
-			r.Resync.PublishResync(market.Underlying.InstrumentID, "1M", "historical_repair")
-		}
-
-		canonicalMonthly, err := r.History.LoadRange(
-			market.Underlying.InstrumentID,
-			"1M",
-			from.AddDate(-1, 0, 0),
-			to,
-		)
-		if err != nil {
-			wrapped := fmt.Errorf("load repaired %s 1M: %w", market.Symbol, err)
-			r.finish(result, wrapped)
-			return result, wrapped
-		}
-		for _, timeframe := range []string{"3M", "6M", "12M"} {
-			rollups := aggregateCalendarBars(canonicalMonthly, timeframe, to)
-			counts, changed, err := r.repairBars(from, to, rollups)
+		if r.timeframeEnabled("1D") {
+			daily := aggregateDailyBars(canonical1m, definition, to)
+			counts, changed, err = r.repairBars(from, to, daily)
 			if err != nil {
-				wrapped := fmt.Errorf("repair %s %s: %w", market.Symbol, timeframe, err)
+				wrapped := fmt.Errorf("repair %s 1D: %w", market.Symbol, err)
 				r.finish(result, wrapped)
 				return result, wrapped
 			}
-			marketResult.Timeframes[timeframe] = counts
+			marketResult.Timeframes["1D"] = counts
 			if changed && r.Resync != nil {
-				r.Resync.PublishResync(
-					market.Underlying.InstrumentID,
-					timeframe,
-					"historical_repair",
-				)
+				r.Resync.PublishResync(market.Underlying.InstrumentID, "1D", "historical_repair")
+			}
+		}
+
+		if r.timeframeEnabled("1W") {
+			weeklySource, err := r.Client.FetchWeeklyRange(
+				ctx,
+				r.AccessToken,
+				market.Underlying.ProviderKey,
+				from.AddDate(0, 0, -7),
+				to,
+			)
+			if err != nil {
+				wrapped := fmt.Errorf("repair %s weekly source: %w", market.Symbol, err)
+				r.finish(result, wrapped)
+				return result, wrapped
+			}
+			weekly := providerCalendarBars(
+				market.Underlying.InstrumentID,
+				"1W",
+				weeklySource,
+				to,
+			)
+			counts, changed, err = r.repairBars(from, to, weekly)
+			if err != nil {
+				wrapped := fmt.Errorf("repair %s 1W: %w", market.Symbol, err)
+				r.finish(result, wrapped)
+				return result, wrapped
+			}
+			marketResult.Timeframes["1W"] = counts
+			if changed && r.Resync != nil {
+				r.Resync.PublishResync(market.Underlying.InstrumentID, "1W", "historical_repair")
+			}
+		}
+
+		if r.anyTimeframeEnabled("1M", "3M", "6M", "12M") {
+			monthlySource, err := r.Client.FetchMonthlyRange(
+				ctx,
+				r.AccessToken,
+				market.Underlying.ProviderKey,
+				from.AddDate(-1, 0, 0),
+				to,
+			)
+			if err != nil {
+				wrapped := fmt.Errorf("repair %s monthly source: %w", market.Symbol, err)
+				r.finish(result, wrapped)
+				return result, wrapped
+			}
+			monthly := providerMonthlyBars(market.Underlying.InstrumentID, monthlySource, to)
+			counts, changed, err = r.repairBars(from, to, monthly)
+			if err != nil {
+				wrapped := fmt.Errorf("repair %s 1M: %w", market.Symbol, err)
+				r.finish(result, wrapped)
+				return result, wrapped
+			}
+			if r.timeframeEnabled("1M") {
+				marketResult.Timeframes["1M"] = counts
+				if changed && r.Resync != nil {
+					r.Resync.PublishResync(market.Underlying.InstrumentID, "1M", "historical_repair")
+				}
+			}
+
+			canonicalMonthly, err := r.History.LoadRange(
+				market.Underlying.InstrumentID,
+				"1M",
+				from.AddDate(-1, 0, 0),
+				to,
+			)
+			if err != nil {
+				wrapped := fmt.Errorf("load repaired %s 1M: %w", market.Symbol, err)
+				r.finish(result, wrapped)
+				return result, wrapped
+			}
+			for _, timeframe := range []string{"3M", "6M", "12M"} {
+				if !r.timeframeEnabled(timeframe) {
+					continue
+				}
+				rollups := aggregateCalendarBars(canonicalMonthly, timeframe, to)
+				counts, changed, err := r.repairBars(from, to, rollups)
+				if err != nil {
+					wrapped := fmt.Errorf("repair %s %s: %w", market.Symbol, timeframe, err)
+					r.finish(result, wrapped)
+					return result, wrapped
+				}
+				marketResult.Timeframes[timeframe] = counts
+				if changed && r.Resync != nil {
+					r.Resync.PublishResync(
+						market.Underlying.InstrumentID,
+						timeframe,
+						"historical_repair",
+					)
+				}
 			}
 		}
 
@@ -354,6 +369,27 @@ func (r *HistoricalRepairer) Repair(
 	result.CompletedAtMS = now().UTC().UnixMilli()
 	r.finish(result, nil)
 	return result, nil
+}
+
+func (r *HistoricalRepairer) timeframeEnabled(timeframe string) bool {
+	if len(r.Timeframes) == 0 {
+		return true
+	}
+	for _, enabled := range r.Timeframes {
+		if enabled == timeframe {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *HistoricalRepairer) anyTimeframeEnabled(timeframes ...string) bool {
+	for _, timeframe := range timeframes {
+		if r.timeframeEnabled(timeframe) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *HistoricalRepairer) Status() HistoricalRepairStatus {
