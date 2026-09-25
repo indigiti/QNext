@@ -9,8 +9,8 @@ import (
 )
 
 type Config struct {
-	Timeframes []string        `json:"timeframes"`
-	Markets    []MarketConfig  `json:"markets,omitempty"`
+	Timeframes []string       `json:"timeframes"`
+	Markets    []MarketConfig `json:"markets,omitempty"`
 
 	// Legacy single-market fields are retained for backwards compatibility
 	// with already-deployed q1-market.json files.

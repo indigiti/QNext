@@ -47,7 +47,6 @@ func TestConfigRejectsMissingLeg(t *testing.T) {
 	}
 }
 
-
 func TestLegacyConfigExpandsToSixMarketPairs(t *testing.T) {
 	config := validConfig()
 	markets := config.EffectiveMarkets()

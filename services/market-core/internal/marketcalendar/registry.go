@@ -225,7 +225,6 @@ func NSEEquities2026() Definition {
 	}
 }
 
-
 func BSEEquities2026() Definition {
 	definition := NSEEquities2026()
 	definition.ID = "BSE_EQ"

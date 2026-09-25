@@ -54,7 +54,6 @@ func TestMarketSinkUsesSamePipelineForDirectAndSyntheticTicks(t *testing.T) {
 	}
 }
 
-
 func TestMarketSinkFansOutToMultipleSyntheticAssemblers(t *testing.T) {
 	pipeline := &fakePipeline{}
 	sink := &MarketSink{

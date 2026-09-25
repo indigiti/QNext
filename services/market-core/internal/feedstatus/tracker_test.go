@@ -34,7 +34,6 @@ func TestTrackerObservesProviderInstrumentAndSyntheticStatus(t *testing.T) {
 	}
 }
 
-
 func TestTrackerReportsMultipleSyntheticStatuses(t *testing.T) {
 	tracker := New()
 	tracker.SetSyntheticStatusFor("QNEXT:NIFTY-SYN", func() any {
