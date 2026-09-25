@@ -174,6 +174,36 @@ h2 { font-size: 1.1rem; margin-bottom: 1rem; }
 }
 .feed-actions .muted { flex: 1; }
 
+.market-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .7rem;
+}
+.market-toggle {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .85rem;
+  border: 1px solid #202635;
+  border-radius: 10px;
+  background: #0c1017;
+  cursor: pointer;
+}
+.market-toggle input {
+  width: auto;
+  margin: 0;
+  accent-color: #315dff;
+}
+.market-toggle span { min-width: 0; }
+.market-toggle strong { display: block; }
+.market-toggle small {
+  display: block;
+  margin-top: .2rem;
+  color: #8e98aa;
+  font-size: .7rem;
+  font-weight: 700;
+}
+
 .feed-provider-card {
   padding: 1rem;
   border: 1px solid #202635;
@@ -234,9 +264,11 @@ button.compact { padding: .45rem .7rem; font-size: .82rem; }
   .span-2 { grid-column: span 1; }
   .status-grid { grid-template-columns: 1fr 1fr; }
   .feed-provider-grid { grid-template-columns: 1fr; }
+  .market-toggle-grid { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 560px) {
   .shell { padding: 1rem; }
   .status-grid { grid-template-columns: 1fr; }
+  .market-toggle-grid { grid-template-columns: 1fr; }
 }
