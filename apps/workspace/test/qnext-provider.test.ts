@@ -33,7 +33,7 @@ describe('QNextProvider', () => {
   it('exposes canonical QNext symbols to Vela', async () => {
     const provider = new QNextProvider({
       fetchImpl: jsonFetch({
-        '/api/v1/symbols': symbolsPayload,
+        '/api/v1/symbols/': symbolsPayload,
       }),
     });
 
@@ -58,7 +58,7 @@ describe('QNextProvider', () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);
       calls.push(target);
-      if (target.startsWith('/qnext/api/v1/symbols')) {
+      if (target.startsWith('/qnext/api/v1/symbols/')) {
         return jsonResponse(symbolsPayload);
       }
       return new Response(null, { status: 404 });
@@ -70,16 +70,16 @@ describe('QNextProvider', () => {
     });
 
     await provider.listSymbols();
-    expect(calls).toEqual(['/qnext/api/v1/symbols']);
+    expect(calls).toEqual(['/qnext/api/v1/symbols/']);
   });
 
   it('normalizes, de-duplicates and orders history bars', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);
-      if (target.startsWith('/api/v1/symbols')) {
+      if (target.startsWith('/api/v1/symbols/')) {
         return jsonResponse(symbolsPayload);
       }
-      if (target.startsWith('/api/v1/bars?')) {
+      if (target.startsWith('/api/v1/bars/?')) {
         expect(target).toContain('instrument_id=NSE%3ANIFTY50');
         expect(target).toContain('timeframe=1m');
         return jsonResponse({
@@ -110,10 +110,10 @@ describe('QNextProvider', () => {
   it('passes the resolved NSE calendar windows to Vela', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);
-      if (target.startsWith('/api/v1/symbols')) {
+      if (target.startsWith('/api/v1/symbols/')) {
         return jsonResponse(symbolsPayload);
       }
-      if (target.startsWith('/api/v1/calendar?')) {
+      if (target.startsWith('/api/v1/calendar/?')) {
         expect(target).toContain('instrument_id=NSE%3ANIFTY50');
         expect(target).toContain('session=regular');
         return jsonResponse({
@@ -147,7 +147,7 @@ describe('QNextProvider', () => {
     const sockets: FakeSocket[] = [];
     const provider = new QNextProvider({
       fetchImpl: jsonFetch({
-        '/api/v1/symbols': symbolsPayload,
+        '/api/v1/symbols/': symbolsPayload,
       }),
       webSocketFactory: (url) => {
         expect(url).toContain('/api/v1/stream');
@@ -212,10 +212,10 @@ describe('QNextProvider', () => {
     let barsRequests = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);
-      if (target.startsWith('/qnext/api/v1/symbols')) {
+      if (target.startsWith('/qnext/api/v1/symbols/')) {
         return jsonResponse(symbolsPayload);
       }
-      if (target.startsWith('/qnext/api/v1/bars?')) {
+      if (target.startsWith('/qnext/api/v1/bars/?')) {
         barsRequests += 1;
         return jsonResponse({
           bars: [
@@ -270,10 +270,10 @@ describe('QNextProvider', () => {
     let barsRequests = 0;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);
-      if (target.startsWith('/api/v1/symbols')) {
+      if (target.startsWith('/api/v1/symbols/')) {
         return jsonResponse(symbolsPayload);
       }
-      if (target.startsWith('/api/v1/bars?')) {
+      if (target.startsWith('/api/v1/bars/?')) {
         barsRequests += 1;
         return jsonResponse({
           bars: [

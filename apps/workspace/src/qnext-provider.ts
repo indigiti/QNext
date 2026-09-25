@@ -125,7 +125,7 @@ export class QNextProvider {
     });
 
     const response = await this.fetchImpl(
-      this.endpoint(`/api/v1/bars?${query.toString()}`),
+      this.endpoint(`/api/v1/bars/?${query.toString()}`),
     );
     if (!response.ok) {
       throw new Error(`QNext bars request failed: HTTP ${response.status}`);
@@ -154,7 +154,7 @@ export class QNextProvider {
     });
 
     const response = await this.fetchImpl(
-      this.endpoint(`/api/v1/calendar?${query.toString()}`),
+      this.endpoint(`/api/v1/calendar/?${query.toString()}`),
     );
     if (!response.ok) {
       throw new Error(`QNext calendar request failed: HTTP ${response.status}`);
@@ -404,7 +404,7 @@ export class QNextProvider {
 
   private async loadSymbols(): Promise<QNextSymbol[]> {
     if (!this.symbolsPromise) {
-      this.symbolsPromise = this.fetchImpl(this.endpoint('/api/v1/symbols'))
+      this.symbolsPromise = this.fetchImpl(this.endpoint('/api/v1/symbols/'))
         .then(async (response) => {
           if (!response.ok) {
             throw new Error(
