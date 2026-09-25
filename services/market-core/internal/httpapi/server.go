@@ -17,11 +17,11 @@ type HistoryReader interface {
 }
 
 type Options struct {
-	Version       string
-	Commit        string
-	StartedAt     time.Time
-	StreamHandler http.Handler
-	Symbols       *symbol.Registry
+	Version          string
+	Commit           string
+	StartedAt        time.Time
+	StreamHandler    http.Handler
+	Symbols          *symbol.Registry
 	Calendars        *marketcalendar.Registry
 	ResilienceStatus func() any
 }
