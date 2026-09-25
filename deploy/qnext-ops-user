@@ -1,0 +1,166 @@
+#!/bin/bash
+set -euo pipefail
+
+: "${QNEXT_PRIVATE_ROOT:?QNEXT_PRIVATE_ROOT is required}"
+
+PRIVATE_ROOT="${QNEXT_PRIVATE_ROOT%/}"
+DIRECT_PRIVATE="$PRIVATE_ROOT/private"
+CURRENT_PRIVATE=""
+
+if [[ -L "$PRIVATE_ROOT/current" ]]; then
+  current_target="$(readlink -f "$PRIVATE_ROOT/current" 2>/dev/null || true)"
+  if [[ -n "$current_target" && -d "$current_target/private" ]]; then
+    CURRENT_PRIVATE="$current_target/private"
+  fi
+fi
+
+PAYLOAD_PRIVATE="${CURRENT_PRIVATE:-$DIRECT_PRIVATE}"
+BINARY="$PAYLOAD_PRIVATE/bin/qnext-market-core"
+PID_FILE="$PRIVATE_ROOT/run/market-core.pid"
+LOG_FILE="$PRIVATE_ROOT/logs/market-core.log"
+CONFIG_FILE="$PRIVATE_ROOT/config/q1-market.json"
+RESILIENCE_FILE="$PRIVATE_ROOT/config/q3-resilience.json"
+SECRETS_FILE="$PRIVATE_ROOT/secrets/qnext.env"
+MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:8080}"
+
+mkdir -p "$PRIVATE_ROOT/run" "$PRIVATE_ROOT/logs" "$PRIVATE_ROOT/storage" "$PRIVATE_ROOT/config" "$PRIVATE_ROOT/secrets"
+
+read_pid() {
+  if [[ -s "$PID_FILE" ]]; then
+    cat "$PID_FILE"
+  fi
+}
+
+is_running() {
+  local pid
+  pid="$(read_pid || true)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+status() {
+  if is_running; then
+    echo "active"
+    return 0
+  fi
+  rm -f "$PID_FILE"
+  echo "stopped"
+  return 3
+}
+
+load_runtime_environment() {
+  export QNEXT_HTTP_ADDR="127.0.0.1:8080"
+  export QNEXT_STORAGE_ROOT="$PRIVATE_ROOT/storage"
+  export QNEXT_RAW_CAPTURE="1"
+
+  if [[ -r "$SECRETS_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$SECRETS_FILE"
+    set +a
+  fi
+
+  unset QNEXT_MARKET_CONFIG QNEXT_RESILIENCE_CONFIG
+
+  if [[ -s "$CONFIG_FILE" && -n "${UPSTOX_ACCESS_TOKEN:-}" ]]; then
+    export QNEXT_MARKET_CONFIG="$CONFIG_FILE"
+  fi
+
+  if [[ -s "$RESILIENCE_FILE" && -n "${DHAN_CLIENT_ID:-}" && -n "${DHAN_ACCESS_TOKEN:-}" && -n "${QNEXT_MARKET_CONFIG:-}" ]]; then
+    export QNEXT_RESILIENCE_CONFIG="$RESILIENCE_FILE"
+  fi
+}
+
+start_service() {
+  if is_running; then
+    echo "active"
+    return 0
+  fi
+
+  if [[ ! -f "$BINARY" ]]; then
+    echo "QNext Market Core binary is missing: $BINARY" >&2
+    return 2
+  fi
+  if [[ ! -x "$BINARY" ]]; then
+    chmod 0750 "$BINARY" || {
+      echo "QNext Market Core binary is not executable: $BINARY" >&2
+      return 2
+    }
+  fi
+
+  load_runtime_environment
+
+  nohup "$BINARY" >>"$LOG_FILE" 2>&1 </dev/null &
+  pid=$!
+  printf '%s\n' "$pid" > "$PID_FILE"
+
+  sleep 1
+  if ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$PID_FILE"
+    echo "QNext Market Core exited during startup" >&2
+    if [[ -s "$LOG_FILE" ]]; then
+      tail -n 20 "$LOG_FILE" >&2 || true
+    fi
+    return 4
+  fi
+
+  echo "active"
+}
+
+stop_service() {
+  if ! is_running; then
+    rm -f "$PID_FILE"
+    echo "stopped"
+    return 0
+  fi
+
+  pid="$(read_pid)"
+  kill -TERM "$pid" 2>/dev/null || true
+
+  for _ in {1..30}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$PID_FILE"
+      echo "stopped"
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  kill -KILL "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE"
+  echo "stopped"
+}
+
+smoke() {
+  curl --fail --silent --show-error --max-time 3 "$MARKET_URL/health" >/dev/null
+  curl --fail --silent --show-error --max-time 3 "$MARKET_URL/ready" >/dev/null
+  curl --fail --silent --show-error --max-time 3 "$MARKET_URL/version" >/dev/null
+  echo "smoke PASS"
+}
+
+action="${1:-}"
+case "$action" in
+  status)
+    status
+    ;;
+  start)
+    start_service
+    ;;
+  stop)
+    stop_service
+    ;;
+  restart)
+    stop_service >/dev/null
+    start_service
+    ;;
+  smoke)
+    smoke
+    ;;
+  activate|rollback)
+    echo "release activation is managed by the DigiOps direct deployment on this host" >&2
+    exit 3
+    ;;
+  *)
+    echo "unsupported action" >&2
+    exit 2
+    ;;
+esac
