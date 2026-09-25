@@ -62,7 +62,7 @@ func TestPipelinePersistsOnlyFinalizedBars(t *testing.T) {
 }
 
 func TestPipelineRejectsUnsupportedTimeframe(t *testing.T) {
-	_, err := New(candle.New("candle-v1"), nil, []string{"2m"})
+	_, err := New(candle.New("candle-v1"), nil, []string{"7h"})
 	if err == nil {
 		t.Fatal("expected unsupported timeframe to fail")
 	}

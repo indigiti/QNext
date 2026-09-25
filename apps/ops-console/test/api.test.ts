@@ -159,6 +159,36 @@ describe('OpsAPI', () => {
     ]);
   });
 
+  it('loads and runs historical repair', async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${String(input)}`);
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          days: 30,
+          markets: [],
+          started_at_ms: 1,
+          completed_at_ms: 2,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        ok: true,
+        body: { running: false },
+      }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ token: 'secret', fetcher });
+    const status = await api.historicalRepairStatus();
+    expect(status.body?.running).toBe(false);
+
+    const result = await api.runHistoricalRepair(30);
+    expect(result.days).toBe(30);
+    expect(calls).toEqual([
+      'GET /qnext/admin/api/index.php?route=%2Fhistory-repair',
+      'POST /qnext/admin/api/index.php?route=%2Fhistory-repair',
+    ]);
+  });
+
   it('surfaces API errors', async () => {
     const fetcher: typeof fetch = async () =>
       new Response(JSON.stringify({ error: 'denied' }), { status: 403 });

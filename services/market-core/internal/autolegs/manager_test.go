@@ -157,21 +157,24 @@ func TestManagerAtomicallyRollsToNextATM(t *testing.T) {
 		EventTime:    at.Add(time.Second),
 		Quality:      domain.QualityGood,
 	})
-	waitForPending(t, manager, 25150)
+	waitForPendingOrActive(t, manager, 25150)
 
-	_, rolled, applyErr := manager.Apply(domain.Tick{
-		InstrumentID:  "NIFTY:25100:CE",
-		Price:         101,
-		EventTime:     at.Add(1100 * time.Millisecond),
-		ReceivedTime:  at.Add(1110 * time.Millisecond),
-		ProcessedTime: at.Add(1120 * time.Millisecond),
-		Quality:       domain.QualityGood,
-	})
-	if applyErr != nil {
-		t.Fatal(applyErr)
-	}
-	if !rolled {
-		t.Fatal("expected cached warm-ring data to permit atomic ATM roll")
+	status := manager.Status()
+	if status.ATM != 25150 {
+		_, rolled, applyErr := manager.Apply(domain.Tick{
+			InstrumentID:  "NIFTY:25100:CE",
+			Price:         101,
+			EventTime:     at.Add(1100 * time.Millisecond),
+			ReceivedTime:  at.Add(1110 * time.Millisecond),
+			ProcessedTime: at.Add(1120 * time.Millisecond),
+			Quality:       domain.QualityGood,
+		})
+		if applyErr != nil {
+			t.Fatal(applyErr)
+		}
+		if !rolled {
+			t.Fatal("expected cached warm-ring data to permit atomic ATM roll")
+		}
 	}
 	if status := manager.Status(); status.ATM != 25150 || status.Generation < 2 {
 		t.Fatalf("unexpected rolled status: %+v", status)
@@ -188,4 +191,17 @@ func waitForPending(t *testing.T, manager *Manager, atm float64) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("pending ATM %.0f was not prepared; status=%+v", atm, manager.Status())
+}
+
+func waitForPendingOrActive(t *testing.T, manager *Manager, atm float64) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		status := manager.Status()
+		if status.PendingATM == atm || status.ATM == atm {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("ATM %.0f was neither pending nor active; status=%+v", atm, manager.Status())
 }

@@ -71,3 +71,45 @@ func TestLateTickRejected(t *testing.T) {
 		t.Fatalf("expected ErrLateTick, got %v", err)
 	}
 }
+
+func TestExpandedTimeframesUseIndianSessionAnchors(t *testing.T) {
+	tests := []struct {
+		timeframe string
+		at        string
+		wantOpen  string
+		wantClose string
+	}{
+		{"10m", "2026-09-25T03:47:00Z", "2026-09-25T03:45:00Z", "2026-09-25T03:55:00Z"},
+		{"1h", "2026-09-25T05:20:00Z", "2026-09-25T04:45:00Z", "2026-09-25T05:45:00Z"},
+		{"4h", "2026-09-25T08:00:00Z", "2026-09-25T07:45:00Z", "2026-09-25T10:00:00Z"},
+		{"1D", "2026-09-25T08:00:00Z", "2026-09-24T18:30:00Z", "2026-09-25T18:30:00Z"},
+		{"1W", "2026-09-25T08:00:00Z", "2026-09-20T18:30:00Z", "2026-09-27T18:30:00Z"},
+		{"3M", "2026-09-25T08:00:00Z", "2026-06-30T18:30:00Z", "2026-09-30T18:30:00Z"},
+	}
+
+	for _, test := range tests {
+		at, _ := time.Parse(time.RFC3339, test.at)
+		wantOpen, _ := time.Parse(time.RFC3339, test.wantOpen)
+		wantClose, _ := time.Parse(time.RFC3339, test.wantClose)
+		open, closeAt, err := Bucket(at, test.timeframe)
+		if err != nil {
+			t.Fatalf("%s: %v", test.timeframe, err)
+		}
+		if !open.Equal(wantOpen) || !closeAt.Equal(wantClose) {
+			t.Fatalf("%s bucket=%s..%s want %s..%s", test.timeframe, open, closeAt, wantOpen, wantClose)
+		}
+	}
+}
+
+func TestSupportedTimeframesValidate(t *testing.T) {
+	for _, timeframe := range SupportedTimeframes() {
+		if err := ValidateTimeframe(timeframe); err != nil {
+			t.Fatalf("%s should validate: %v", timeframe, err)
+		}
+	}
+	for _, timeframe := range []string{"0m", "7h", "2D", "2W", "2M"} {
+		if err := ValidateTimeframe(timeframe); err == nil {
+			t.Fatalf("%s should be rejected", timeframe)
+		}
+	}
+}

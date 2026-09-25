@@ -157,6 +157,32 @@ describe('QNextProvider', () => {
     ]);
   });
 
+  it('keeps calendar-month history requests bounded and distinct from minutes', async () => {
+    const now = Date.UTC(2026, 8, 25, 12, 0, 0);
+    let barsURL = '';
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      if (target.startsWith('/api/v1/symbols/')) {
+        return jsonResponse(symbolsPayload);
+      }
+      if (target.startsWith('/api/v1/bars/?')) {
+        barsURL = target;
+        return jsonResponse({ bars: [] });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const provider = new QNextProvider({ fetchImpl });
+    await provider.getBars('NIFTY', '12M', { to: now, limit: 500 });
+
+    const parsed = new URL(barsURL, 'https://example.test');
+    expect(parsed.searchParams.get('timeframe')).toBe('12M');
+    const from = Number(parsed.searchParams.get('from_ms'));
+    const to = Number(parsed.searchParams.get('to_ms'));
+    expect(to - from).toBeLessThanOrEqual(366 * 24 * 60 * 60 * 1000);
+    expect(to - from).toBeGreaterThan(300 * 24 * 60 * 60 * 1000);
+  });
+
   it('passes the resolved NSE calendar windows to Vela', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);

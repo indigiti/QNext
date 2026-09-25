@@ -97,6 +97,12 @@ try {
     if ($method === 'GET' && $path === '/active-markets') {
         respond(200, $controller->marketActivation());
     }
+    if ($method === 'GET' && $path === '/history-repair') {
+        respond(200, $controller->historicalRepairStatus());
+    }
+    if ($method === 'POST' && $path === '/history-repair') {
+        respond(200, $controller->runHistoricalRepair(request_body()));
+    }
     if ($method === 'POST' && $path === '/dhan-standby-check') {
         respond(200, $controller->verifyDhanStandby());
     }

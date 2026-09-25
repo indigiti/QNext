@@ -141,7 +141,7 @@ export class QNextProvider {
     const limit = range.limit ?? 500;
     const from =
       range.from ??
-      to - timeframeDurationMs(timeframe) * Math.max(limit, 1) * 8;
+      to - defaultHistoryLookbackMs(timeframe, Math.max(limit, 1));
 
     const query = new URLSearchParams({
       instrument_id: instrument.instrument_id,
@@ -511,15 +511,34 @@ function normalizeBar(bar: QNextBar): QNextBar {
   };
 }
 
+function defaultHistoryLookbackMs(timeframe: string, limit: number): number {
+  const duration = timeframeDurationMs(timeframe);
+  const requested = duration * limit * 8;
+  const day = 86_400_000;
+  const unit = timeframe.trim().slice(-1);
+
+  const cap =
+    unit === 's'
+      ? 3 * day
+      : unit === 'm'
+        ? 31 * day
+        : unit === 'h'
+          ? 90 * day
+          : 366 * day;
+
+  return Math.min(requested, cap);
+}
+
 function timeframeDurationMs(timeframe: string): number {
-  const normalized = timeframe.trim().toLowerCase();
-  const match = normalized.match(/^(\d+)(s|m|h|d)?$/);
+  const normalized = timeframe.trim();
+  const match = normalized.match(/^(\d+)(s|m|h|D|W|M)$/);
   if (!match) {
     throw new Error(`Unsupported QNext timeframe: ${timeframe}`);
   }
 
   const value = Number(match[1]);
-  const unit = match[2] ?? 'm';
+  const unit = match[2];
+  const day = 86_400_000;
   const multiplier =
     unit === 's'
       ? 1_000
@@ -527,7 +546,11 @@ function timeframeDurationMs(timeframe: string): number {
         ? 60_000
         : unit === 'h'
           ? 3_600_000
-          : 86_400_000;
+          : unit === 'D'
+            ? day
+            : unit === 'W'
+              ? 7 * day
+              : 30 * day;
   return value * multiplier;
 }
 

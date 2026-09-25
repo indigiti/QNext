@@ -115,6 +115,43 @@ export interface FeedStatusResponse {
   body?: FeedStatusBody;
 }
 
+export interface HistoricalRepairCounts {
+  scanned: number;
+  missing: number;
+  corrected: number;
+  unchanged: number;
+}
+
+export interface HistoricalRepairMarketResult {
+  symbol: string;
+  instrument_id: string;
+  provider_key: string;
+  timeframes: Record<string, HistoricalRepairCounts>;
+}
+
+export interface HistoricalRepairResult {
+  days: number;
+  markets: HistoricalRepairMarketResult[];
+  started_at_ms: number;
+  completed_at_ms: number;
+  reason?: string;
+}
+
+export interface HistoricalRepairStatusResponse {
+  ok: boolean;
+  status?: number | null;
+  error?: string;
+  body?: {
+    running?: boolean;
+    days?: number;
+    reason?: string;
+    started_at_ms?: number;
+    completed_at_ms?: number;
+    last_error?: string;
+    last_result?: HistoricalRepairResult;
+  };
+}
+
 export interface ActiveMarkets {
   available: string[];
   active: string[];
@@ -184,6 +221,17 @@ export class OpsAPI {
 
   feedStatus(): Promise<FeedStatusResponse> {
     return this.request<FeedStatusResponse>('/feed-status');
+  }
+
+  historicalRepairStatus(): Promise<HistoricalRepairStatusResponse> {
+    return this.request<HistoricalRepairStatusResponse>('/history-repair');
+  }
+
+  runHistoricalRepair(days: 3 | 7 | 15 | 30): Promise<HistoricalRepairResult> {
+    return this.request<HistoricalRepairResult>('/history-repair', {
+      method: 'POST',
+      body: JSON.stringify({ days }),
+    });
   }
 
   activeMarkets(): Promise<ActiveMarkets> {
