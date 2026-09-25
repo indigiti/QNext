@@ -91,6 +91,21 @@ final class OpsConfig
         return $this->publicRoot . '/qnext-release.json';
     }
 
+    public function controlRequestPath(): string
+    {
+        return $this->privateRoot . '/run/control-request';
+    }
+
+    public function desiredStatePath(): string
+    {
+        return $this->privateRoot . '/run/desired-state';
+    }
+
+    public function cronHeartbeatPath(): string
+    {
+        return $this->privateRoot . '/run/cron-heartbeat';
+    }
+
     private static function value(string $key, string $default = ''): string
     {
         $environment = getenv($key);
