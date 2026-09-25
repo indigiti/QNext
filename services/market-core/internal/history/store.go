@@ -16,7 +16,10 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
 
-const barRecordSchema = "QNEXT.HISTORY.BAR/1"
+const (
+	barRecordSchemaV1 = "QNEXT.HISTORY.BAR/1"
+	barRecordSchema   = "QNEXT.HISTORY.BAR/2"
+)
 
 type Store struct {
 	root string
@@ -42,6 +45,9 @@ type barRecord struct {
 	Corrected           bool           `json:"corrected"`
 	CandleEngineVersion string         `json:"candle_engine_version"`
 	SyntheticVersion    string         `json:"synthetic_version,omitempty"`
+	SourceSequence      uint64         `json:"source_sequence,omitempty"`
+	CreatedAtMS         int64          `json:"created_at_ms,omitempty"`
+	CorrectedAtMS       int64          `json:"corrected_at_ms,omitempty"`
 }
 
 func New(root string) *Store {
@@ -117,7 +123,7 @@ func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain
 		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
 			return nil, fmt.Errorf("decode history record: %w", err)
 		}
-		if record.Schema != barRecordSchema {
+		if record.Schema != barRecordSchema && record.Schema != barRecordSchemaV1 {
 			return nil, fmt.Errorf("unsupported history schema %q", record.Schema)
 		}
 		bar := record.toBar()
@@ -158,6 +164,14 @@ func safeComponent(value string) string {
 }
 
 func fromBar(bar domain.Bar) barRecord {
+	createdAt := bar.CreatedAt.UTC()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	correctedAt := bar.CorrectedAt.UTC()
+	if bar.Corrected && correctedAt.IsZero() {
+		correctedAt = time.Now().UTC()
+	}
 	return barRecord{
 		Schema:              barRecordSchema,
 		InstrumentID:        bar.InstrumentID,
@@ -177,6 +191,9 @@ func fromBar(bar domain.Bar) barRecord {
 		Corrected:           bar.Corrected,
 		CandleEngineVersion: bar.CandleEngineVersion,
 		SyntheticVersion:    bar.SyntheticVersion,
+		SourceSequence:      bar.SourceSequence,
+		CreatedAtMS:         createdAt.UnixMilli(),
+		CorrectedAtMS:       unixMilliOrZero(correctedAt),
 	}
 }
 
@@ -199,5 +216,22 @@ func (r barRecord) toBar() domain.Bar {
 		Corrected:           r.Corrected,
 		CandleEngineVersion: r.CandleEngineVersion,
 		SyntheticVersion:    r.SyntheticVersion,
+		SourceSequence:      r.SourceSequence,
+		CreatedAt:           timeFromMilli(r.CreatedAtMS),
+		CorrectedAt:         timeFromMilli(r.CorrectedAtMS),
 	}
+}
+
+func unixMilliOrZero(value time.Time) int64 {
+	if value.IsZero() {
+		return 0
+	}
+	return value.UTC().UnixMilli()
+}
+
+func timeFromMilli(value int64) time.Time {
+	if value <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(value).UTC()
 }
