@@ -1,0 +1,78 @@
+name: Q6 Web Ops
+
+on:
+  pull_request:
+    paths:
+      - "apps/ops-console/**"
+      - "services/ops-api/**"
+      - "deploy/**"
+      - ".github/workflows/qnext-release.yml"
+      - ".github/workflows/q6-web-ops.yml"
+      - "docs/architecture/q6-web-ops-deployment.md"
+  push:
+    branches:
+      - q6-web-ops-console
+    paths:
+      - "apps/ops-console/**"
+      - "services/ops-api/**"
+      - "deploy/**"
+      - ".github/workflows/qnext-release.yml"
+      - ".github/workflows/q6-web-ops.yml"
+      - "docs/architecture/q6-web-ops-deployment.md"
+
+jobs:
+  console:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/ops-console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  php-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+      - name: PHP syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          find services/ops-api -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: PHP smoke
+        run: php services/ops-api/tests/smoke.php
+      - name: Helper syntax
+        run: |
+          bash -n deploy/qnext-ops-helper
+          bash -n deploy/qnext-ops-web
+      - name: Reject generic shell execution surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R -E 'shell_exec\(|passthru\(|system\(|exec\(' services/ops-api
+
+  release-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify full release contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'name: digiops-release' .github/workflows/qnext-release.yml
+          grep -q 'release/private/bin/qnext-market-core' .github/workflows/qnext-release.yml
+          grep -q 'release/public/admin' .github/workflows/qnext-release.yml
+          grep -q 'services/ops-api' .github/workflows/qnext-release.yml
+          grep -q 'QNEXT.RELEASE/1' .github/workflows/qnext-release.yml
+          test -x deploy/qnext-ops-helper
+          test -x deploy/qnext-ops-web
