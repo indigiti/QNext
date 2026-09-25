@@ -38,7 +38,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	addr := env("QNEXT_HTTP_ADDR", ":8080")
+	addr := env("QNEXT_HTTP_ADDR", "127.0.0.1:18080")
 	storageRoot := env("QNEXT_STORAGE_ROOT", "./storage")
 	started := time.Now().UTC()
 
