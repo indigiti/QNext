@@ -140,6 +140,7 @@ func runResilientMarket(
 	if err != nil {
 		return err
 	}
+	router.SetTransitionSink(resilience.NewTransitionStore(env("QNEXT_STORAGE_ROOT", "./storage")).Append)
 	onTick := func(tick domain.Tick) error {
 		return router.HandleContext(ctx, tick)
 	}

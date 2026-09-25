@@ -41,6 +41,7 @@ type GapRecoverer interface {
 }
 
 type TickSink func(domain.Tick) error
+type TransitionSink func(SwitchEvent) error
 
 type Router struct {
 	mu             sync.Mutex
@@ -57,6 +58,7 @@ type Router struct {
 	candidateSince map[string]time.Time
 	lastSwitch     map[string]time.Time
 	policy         TransitionPolicy
+	transitionSink TransitionSink
 }
 
 func NewRouter(resolver *authority.Resolver, downstream TickSink, metrics *Metrics, gapThreshold time.Duration, recoverable map[string]bool, recoverer GapRecoverer) (*Router, error) {
@@ -202,11 +204,7 @@ func (r *Router) HandleContext(ctx context.Context, tick domain.Tick) error {
 		reason = "PRIMARY_STALE"
 		nextState = StateSecondaryActive
 	}
-	r.active[tick.InstrumentID] = provider
-	r.lastSwitch[tick.InstrumentID] = now
-	r.clearCandidate(tick.InstrumentID)
-	r.state[tick.InstrumentID] = nextState
-	r.metrics.switched(SwitchEvent{
+	event := SwitchEvent{
 		InstrumentID:  tick.InstrumentID,
 		From:          active,
 		To:            provider,
@@ -214,7 +212,18 @@ func (r *Router) HandleContext(ctx context.Context, tick domain.Tick) error {
 		PolicyVersion: r.policy.PolicyVersion,
 		AtMS:          now.UnixMilli(),
 		GapMS:         gap.Milliseconds(),
-	}, nextState)
+	}
+	if r.transitionSink != nil {
+		if err := r.transitionSink(event); err != nil {
+			r.metrics.ObserveError(provider)
+			return err
+		}
+	}
+	r.active[tick.InstrumentID] = provider
+	r.lastSwitch[tick.InstrumentID] = now
+	r.clearCandidate(tick.InstrumentID)
+	r.state[tick.InstrumentID] = nextState
+	r.metrics.switched(event, nextState)
 	return r.accept(tick)
 }
 
@@ -275,6 +284,12 @@ func (r *Router) setStableState(instrumentID, provider string) {
 func (r *Router) clearCandidate(instrumentID string) {
 	delete(r.candidate, instrumentID)
 	delete(r.candidateSince, instrumentID)
+}
+
+func (r *Router) SetTransitionSink(sink TransitionSink) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.transitionSink = sink
 }
 
 func (r *Router) Snapshot() Snapshot {
