@@ -312,7 +312,12 @@ final class OpsController
             return array_values(array_map(
                 static function (string $line): string {
                     $line = preg_replace(
-                        '/((?:access[_ -]?token|authorization|bearer|api[_ -]?key|client[_ -]?secret)\s*[:=]\s*)\S+/i',
+                        '/\bBearer\s+[A-Za-z0-9._~+\\\/-]+=*/i',
+                        'Bearer [REDACTED]',
+                        $line,
+                    ) ?? $line;
+                    $line = preg_replace(
+                        '/((?:access[_ -]?token|authorization|api[_ -]?key|client[_ -]?secret)\s*[:=]\s*)\S+/i',
                         '$1[REDACTED]',
                         $line,
                     ) ?? $line;
