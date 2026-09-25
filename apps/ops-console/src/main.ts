@@ -1,4 +1,4 @@
-import { OpsAPI, type OpsStatus, type ServiceAction } from './api';
+import { OpsAPI, type OpsStatus, type RuntimeDiagnostics, type ServiceAction } from './api';
 import './style.css';
 
 declare global {
@@ -66,6 +66,24 @@ root.innerHTML = `
           <select id="release-select"></select>
           <button id="activate">Activate selected release</button>
           <button id="rollback" class="secondary">Rollback previous</button>
+        </div>
+      </section>
+
+      <section class="card span-3" id="diagnostics-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Diagnostics</p>
+            <h2>Market Core runtime</h2>
+          </div>
+          <button id="refresh-diagnostics" class="secondary">Refresh diagnostics</button>
+        </div>
+        <div id="diagnostics-meta" class="status-grid diagnostics-meta"></div>
+        <div class="diagnostics-log-wrap">
+          <div class="line">
+            <span class="muted">Recent Market Core log</span>
+            <button id="copy-diagnostics" class="secondary compact">Copy</button>
+          </div>
+          <pre id="diagnostics-log">No runtime log available yet.</pre>
         </div>
       </section>
 
@@ -169,9 +187,46 @@ function renderStatus(status: OpsStatus) {
   }
 }
 
+function renderDiagnostics(diagnostics: RuntimeDiagnostics) {
+  const meta = document.querySelector<HTMLDivElement>('#diagnostics-meta')!;
+  const heartbeat = diagnostics.cronHeartbeatAgeSeconds === null
+    ? 'none'
+    : `${diagnostics.cronHeartbeatAgeSeconds}s ago`;
+
+  meta.innerHTML = `
+    <div><span>Desired state</span><strong>${diagnostics.desiredState}</strong></div>
+    <div><span>PID</span><strong>${diagnostics.pid ?? 'none'}</strong></div>
+    <div><span>PID alive</span>${badge(diagnostics.pidAlive, diagnostics.pidAlive ? 'PASS' : 'NO')}</div>
+    <div><span>Binary</span>${badge(diagnostics.binaryFound, diagnostics.binaryFound ? 'FOUND' : 'MISSING')}</div>
+    <div><span>Cron heartbeat</span><strong>${heartbeat}</strong></div>
+    <div><span>Control mode</span><strong>${diagnostics.controlMode.toUpperCase()}</strong></div>
+  `;
+
+  const log = document.querySelector<HTMLPreElement>('#diagnostics-log')!;
+  log.textContent = diagnostics.logLines.length > 0
+    ? diagnostics.logLines.join('\n')
+    : 'No runtime log available yet.';
+
+  log.dataset.logPath = diagnostics.logPath;
+  log.dataset.binaryPath = diagnostics.binaryPath ?? '';
+}
+
+async function loadDiagnostics() {
+  try {
+    renderDiagnostics(await api.diagnostics());
+  } catch (error) {
+    const log = document.querySelector<HTMLPreElement>('#diagnostics-log')!;
+    log.textContent = `Diagnostics unavailable: ${(error as Error).message}`;
+  }
+}
+
 async function refresh() {
   try {
-    renderStatus(await api.status());
+    const [status] = await Promise.all([
+      api.status(),
+      loadDiagnostics(),
+    ]);
+    renderStatus(status);
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -214,6 +269,21 @@ tokenButton.addEventListener('click', async () => {
 });
 
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
+document.querySelector('#refresh-diagnostics')!.addEventListener('click', () => void loadDiagnostics());
+document.querySelector('#copy-diagnostics')!.addEventListener('click', async () => {
+  const log = document.querySelector<HTMLPreElement>('#diagnostics-log')!;
+  const metadata = [
+    `Log path: ${log.dataset.logPath ?? ''}`,
+    `Binary path: ${log.dataset.binaryPath ?? ''}`,
+    '',
+  ].join('\n');
+  try {
+    await navigator.clipboard.writeText(metadata + log.textContent);
+    toast('Runtime diagnostics copied');
+  } catch {
+    toast('Copy failed. Select the diagnostic text manually.', true);
+  }
+});
 document.querySelector('#load-config')!.addEventListener('click', () => void loadConfig());
 document.querySelector('#copy-cron')!.addEventListener('click', async () => {
   const command = document.querySelector<HTMLElement>('#cron-command')!.textContent?.trim() ?? '';

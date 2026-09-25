@@ -35,6 +35,21 @@ export interface OpsStatus {
   };
 }
 
+export interface RuntimeDiagnostics {
+  desiredState: 'running' | 'stopped';
+  pid: number | null;
+  pidAlive: boolean;
+  pidPath: string;
+  binaryPath: string | null;
+  binaryFound: boolean;
+  logPath: string;
+  logLines: string[];
+  cronHeartbeatAt: string | null;
+  cronHeartbeatAgeSeconds: number | null;
+  controlMode: 'direct' | 'cron' | 'setup';
+  helperPath: string;
+}
+
 export interface SecretWriteResult {
   stored: string[];
 }
@@ -73,6 +88,10 @@ export class OpsAPI {
 
   getConfig(): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('/config');
+  }
+
+  diagnostics(): Promise<RuntimeDiagnostics> {
+    return this.request<RuntimeDiagnostics>('/diagnostics');
   }
 
   saveConfig(config: Record<string, unknown>): Promise<{ saved: boolean }> {
