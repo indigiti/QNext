@@ -143,7 +143,6 @@ func testRegistry(t *testing.T) *symbol.Registry {
 	return registry
 }
 
-
 func TestResolverCanAddDynamicInstrumentPolicy(t *testing.T) {
 	registry := testRegistry(t)
 	option := symbol.Instrument{
