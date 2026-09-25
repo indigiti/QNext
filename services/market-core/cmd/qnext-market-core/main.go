@@ -180,6 +180,7 @@ func main() {
 			return map[string]any{
 				"live_configured":         config != nil,
 				"resilience_configured":   resilienceConfig != nil,
+				"stream":                  broker.Snapshot(),
 				"nifty_instrument_id":     niftyID,
 				"synthetic_instrument_id": syntheticID,
 				"markets":                 marketStatus,

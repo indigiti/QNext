@@ -18,11 +18,23 @@ type BarEvent struct {
 }
 
 type Broker struct {
-	mu               sync.Mutex
-	retention        int
-	subscriberBuffer int
-	streams          map[string]*streamState
-	nextSubscriberID uint64
+	mu                      sync.Mutex
+	retention               int
+	subscriberBuffer        int
+	streams                 map[string]*streamState
+	nextSubscriberID        uint64
+	publishedEvents         uint64
+	publishedResyncControls uint64
+	slowSubscriberDrops     uint64
+}
+
+type BrokerSnapshot struct {
+	Streams                 int    `json:"streams"`
+	ActiveSubscribers       int    `json:"active_subscribers"`
+	ReplayEvents            int    `json:"replay_events"`
+	PublishedEvents         uint64 `json:"published_events"`
+	PublishedResyncControls uint64 `json:"published_resync_controls"`
+	SlowSubscriberDrops     uint64 `json:"slow_subscriber_drops"`
 }
 
 type streamState struct {
@@ -70,6 +82,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		b.streams[key] = state
 	}
 	state.seq++
+	b.publishedEvents++
 	event := BarEvent{
 		StreamID: streamID(bar.InstrumentID, bar.Timeframe),
 		Seq:      state.seq,
@@ -86,6 +99,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		default:
 			close(ch)
 			delete(state.subs, id)
+			b.slowSubscriberDrops++
 		}
 	}
 }
@@ -103,6 +117,7 @@ func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
 	if state == nil {
 		return
 	}
+	b.publishedResyncControls++
 	event := BarEvent{
 		StreamID:       streamID(instrumentID, timeframe),
 		ResyncRequired: true,
@@ -114,8 +129,26 @@ func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
 		default:
 			close(ch)
 			delete(state.subs, id)
+			b.slowSubscriberDrops++
 		}
 	}
+}
+
+func (b *Broker) Snapshot() BrokerSnapshot {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	snapshot := BrokerSnapshot{
+		Streams:                 len(b.streams),
+		PublishedEvents:         b.publishedEvents,
+		PublishedResyncControls: b.publishedResyncControls,
+		SlowSubscriberDrops:     b.slowSubscriberDrops,
+	}
+	for _, state := range b.streams {
+		snapshot.ActiveSubscribers += len(state.subs)
+		snapshot.ReplayEvents += len(state.replay)
+	}
+	return snapshot
 }
 
 func (b *Broker) LatestBar(instrumentID, timeframe string) (domain.Bar, bool) {
