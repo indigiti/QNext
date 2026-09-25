@@ -194,42 +194,67 @@ root.innerHTML = `
           <div>
             <p class="eyebrow">Charts</p>
             <h2>Custom Indicators</h2>
-            <p class="muted">Manage the QNext indicator catalog. Enabled indicators appear under Indicators → QNext. Changes are file-backed and do not restart Market Core.</p>
+            <p class="muted">Manage native QNext indicators and full Pine Script v6 source. Pine runs off the main UI thread through the Vela PineWorkerEngine.</p>
           </div>
-          <button id="reload-custom-indicators" class="secondary">Reload</button>
+          <div class="actions indicator-head-actions">
+            <button id="add-pine-indicator" type="button">+ Add Pine Script</button>
+            <button id="reload-custom-indicators" type="button" class="secondary">Reload</button>
+          </div>
         </div>
         <div id="custom-indicator-list" class="custom-indicator-list"></div>
         <form id="custom-indicator-form" class="indicator-form">
           <input type="hidden" name="editingId" />
           <div class="indicator-form-grid">
-            <label><span>Name</span><input name="name" value="Adaptive EMA [QALG]" required /></label>
-            <label><span>ID</span><input name="id" value="adaptive-ema-qalg" pattern="[a-z0-9][a-z0-9-]{0,63}" required /></label>
-            <label><span>Kind</span><select name="kind"><option value="adaptive-ema-qalg">Adaptive EMA [QALG]</option></select></label>
-            <label class="checkbox-field"><span>Enabled</span><input name="enabled" type="checkbox" checked /></label>
-            <label><span>Price Source</span><select name="priceSource">
-              <option value="close">close</option><option value="open">open</option><option value="high">high</option><option value="low">low</option>
-              <option value="hl2">hl2</option><option value="hlc3">hlc3</option><option value="ohlc4">ohlc4</option>
+            <label><span>Name</span><input name="name" placeholder="My Pine Indicator" required /></label>
+            <label><span>ID</span><input name="id" placeholder="my-pine-indicator" pattern="[a-z0-9][a-z0-9-]{0,63}" required /></label>
+            <label><span>Kind</span><select name="kind" id="custom-indicator-kind">
+              <option value="pine-v6">Pine Script v6</option>
+              <option value="adaptive-ema-qalg">Adaptive EMA [QALG]</option>
             </select></label>
-            <label><span>EMA Length</span><input name="emaLength" type="number" min="1" max="1000" value="20" /></label>
-            <label><span>SD Lookback</span><input name="lookbackPeriod" type="number" min="2" max="1000" value="30" /></label>
-            <label><span>SD Multiplier</span><input name="stddevMultiplier" type="number" min="0.1" max="20" step="0.1" value="2" /></label>
-            <label><span>ATR Length</span><input name="atrLength" type="number" min="1" max="1000" value="14" /></label>
-            <label><span>ATR Multiplier</span><input name="atrMultiplier" type="number" min="0.1" max="20" step="0.1" value="1.5" /></label>
-            <label><span>Up Color</span><input name="upColor" type="color" value="#00ffaa" /></label>
-            <label><span>Down Color</span><input name="downColor" type="color" value="#ff0000" /></label>
-            <label class="checkbox-field"><span>Color Bars</span><input name="colorBars" type="checkbox" checked /></label>
-            <label><span>Attribution</span><input name="attribution" value="QuantAlgo" /></label>
-            <label><span>License</span><input name="license" value="MPL-2.0" /></label>
+            <label class="checkbox-field"><span>Enabled</span><input name="enabled" type="checkbox" checked /></label>
           </div>
-          <label><span>Description</span><input name="description" value="Adaptive EMA trend overlay using EMA, standard deviation and ATR filters." /></label>
-          <label><span>License URL</span><input name="licenseUrl" value="https://mozilla.org/MPL/2.0/" /></label>
+
+          <div id="pine-script-settings" class="indicator-kind-panel">
+            <div class="line">
+              <div>
+                <strong>Pine Script v6 source</strong>
+                <div class="muted">Paste an indicator() or strategy() script beginning with //@version=6.</div>
+              </div>
+              <span class="badge good">WEB WORKER</span>
+            </div>
+            <textarea id="pine-script-editor" name="script" class="pine-code-editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+            <p class="muted pine-license-note">Runtime: @luxalgo/vela-pinets + PineTS (AGPL-3.0-only). QNext stores your source file-backed and publishes enabled scripts under Indicators → QNext.</p>
+          </div>
+
+          <div id="native-indicator-settings" class="indicator-kind-panel" hidden>
+            <div class="indicator-form-grid">
+              <label><span>Price Source</span><select name="priceSource">
+                <option value="close">close</option><option value="open">open</option><option value="high">high</option><option value="low">low</option>
+                <option value="hl2">hl2</option><option value="hlc3">hlc3</option><option value="ohlc4">ohlc4</option>
+              </select></label>
+              <label><span>EMA Length</span><input name="emaLength" type="number" min="1" max="1000" value="20" /></label>
+              <label><span>SD Lookback</span><input name="lookbackPeriod" type="number" min="2" max="1000" value="30" /></label>
+              <label><span>SD Multiplier</span><input name="stddevMultiplier" type="number" min="0.1" max="20" step="0.1" value="2" /></label>
+              <label><span>ATR Length</span><input name="atrLength" type="number" min="1" max="1000" value="14" /></label>
+              <label><span>ATR Multiplier</span><input name="atrMultiplier" type="number" min="0.1" max="20" step="0.1" value="1.5" /></label>
+              <label><span>Up Color</span><input name="upColor" type="color" value="#00ffaa" /></label>
+              <label><span>Down Color</span><input name="downColor" type="color" value="#ff0000" /></label>
+              <label class="checkbox-field"><span>Color Bars</span><input name="colorBars" type="checkbox" checked /></label>
+            </div>
+          </div>
+
+          <div class="indicator-form-grid">
+            <label><span>Attribution</span><input name="attribution" placeholder="Author / source" /></label>
+            <label><span>License</span><input name="license" placeholder="e.g. MPL-2.0" /></label>
+            <label><span>License URL</span><input name="licenseUrl" placeholder="https://..." /></label>
+          </div>
+          <label><span>Description</span><input name="description" placeholder="What this indicator does" /></label>
           <div class="actions">
-            <button type="submit" id="save-custom-indicator">Add indicator</button>
+            <button type="submit" id="save-custom-indicator">Add Pine indicator</button>
             <button type="button" id="cancel-custom-indicator" class="secondary">Reset</button>
           </div>
         </form>
       </section>
-
 
       <section class="card">
         <p class="eyebrow">Secrets</p>
