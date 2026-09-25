@@ -79,6 +79,69 @@ func (r *Registry) Definition(id string) (Definition, bool) {
 	return definition, ok
 }
 
+func (r *Registry) WindowAt(id string, at time.Time, session Session) (Window, Definition, bool, error) {
+	definition, ok := r.Definition(id)
+	if !ok {
+		return Window{}, Definition{}, false, errors.New("market calendar is not registered")
+	}
+	if at.IsZero() {
+		return Window{}, Definition{}, false, errors.New("market timestamp is required")
+	}
+	if session == "" {
+		session = SessionRegular
+	}
+	if session != SessionRegular && session != SessionExtended {
+		return Window{}, Definition{}, false, errors.New("unsupported market session")
+	}
+
+	location, err := time.LoadLocation(definition.Timezone)
+	if err != nil {
+		return Window{}, Definition{}, false, fmt.Errorf("load calendar timezone: %w", err)
+	}
+	supportedFrom, err := time.ParseInLocation("2006-01-02", definition.SupportedFrom, location)
+	if err != nil {
+		return Window{}, Definition{}, false, fmt.Errorf("parse supported_from: %w", err)
+	}
+	supportedTo, err := time.ParseInLocation("2006-01-02", definition.SupportedTo, location)
+	if err != nil {
+		return Window{}, Definition{}, false, fmt.Errorf("parse supported_to: %w", err)
+	}
+	if at.Before(supportedFrom) || !at.Before(supportedTo) {
+		return Window{}, definition, false, fmt.Errorf(
+			"calendar timestamp is outside certified window [%s, %s)",
+			definition.SupportedFrom,
+			definition.SupportedTo,
+		)
+	}
+
+	local := at.In(location)
+	dateKey := local.Format("2006-01-02")
+	if local.Weekday() == time.Saturday || local.Weekday() == time.Sunday {
+		return Window{}, definition, false, nil
+	}
+	if _, closed := definition.ClosedDates[dateKey]; closed {
+		return Window{}, definition, false, nil
+	}
+
+	openClock := definition.RegularOpen
+	closeClock := definition.RegularClose
+	if session == SessionExtended {
+		openClock = definition.ExtendedOpen
+		closeClock = definition.ExtendedClose
+	}
+	start := time.Date(
+		local.Year(), local.Month(), local.Day(),
+		openClock.Hour, openClock.Minute, 0, 0, location,
+	)
+	end := time.Date(
+		local.Year(), local.Month(), local.Day(),
+		closeClock.Hour, closeClock.Minute, 0, 0, location,
+	)
+	window := Window{Start: start.UTC(), End: end.UTC()}
+	active := !at.Before(window.Start) && at.Before(window.End)
+	return window, definition, active, nil
+}
+
 func (r *Registry) Windows(id string, from, to time.Time, session Session) ([]Window, Definition, error) {
 	definition, ok := r.Definition(id)
 	if !ok {
