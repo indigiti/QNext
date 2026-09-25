@@ -14,6 +14,7 @@ declare global {
 }
 
 const runtime = window.__QNEXT_CONFIG__ ?? {};
+const defaultApiBase = import.meta.env.BASE_URL.replace(/\/+$/, '');
 
 const workspace = new VelaWorkspace('#app', {
   layout: false,
@@ -26,7 +27,7 @@ const workspace = new VelaWorkspace('#app', {
   providers: {
     qnext: () =>
       new QNextProvider({
-        apiBase: runtime.apiBase,
+        apiBase: runtime.apiBase ?? defaultApiBase,
         streamUrl: runtime.streamUrl,
       }),
   },
