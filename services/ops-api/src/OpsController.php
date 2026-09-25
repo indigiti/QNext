@@ -17,8 +17,13 @@ final class OpsController
         $this->releases = new ReleaseCatalog(
             $config->releasesRoot(),
             $config->currentLink(),
+            $config->publicManifestPath(),
         );
-        $this->service = new ServiceControl($config->helperPath);
+        $this->service = new ServiceControl($config->helperPath, [
+            'QNEXT_PRIVATE_ROOT' => $config->privateRoot,
+            'QNEXT_PUBLIC_ROOT' => $config->publicRoot,
+            'QNEXT_MARKET_CORE_URL' => $config->marketCoreUrl,
+        ]);
     }
 
     public function status(): array
@@ -45,12 +50,20 @@ final class OpsController
             ],
             'storageRoot' => $this->config->privateRoot . '/storage',
             'configPath' => $this->config->configPath(),
+            'host' => [
+                'processControl' => function_exists('proc_open') && function_exists('proc_close'),
+                'helperAvailable' => is_file($this->config->helperPath) && is_executable($this->config->helperPath),
+                'helperPath' => $this->config->helperPath,
+            ],
         ];
     }
 
     public function getConfig(): array
     {
         $path = $this->config->configPath();
+        if (!is_file($path)) {
+            $this->seedDefaultConfig($path);
+        }
         if (!is_file($path)) {
             return [];
         }
@@ -150,6 +163,31 @@ final class OpsController
         }
 
         return ['ok' => true, 'output' => $result['output']];
+    }
+
+    private function seedDefaultConfig(string $path): void
+    {
+        foreach ($this->config->configCandidates() as $candidate) {
+            if (!is_file($candidate)) {
+                continue;
+            }
+
+            $contents = file_get_contents($candidate);
+            if ($contents === false || trim($contents) === '') {
+                continue;
+            }
+
+            try {
+                $decoded = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                continue;
+            }
+
+            if (is_array($decoded)) {
+                AtomicFile::writeJson($path, $decoded);
+                return;
+            }
+        }
     }
 
     private function probe(string $path): array
