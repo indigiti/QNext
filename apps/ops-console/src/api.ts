@@ -42,7 +42,7 @@ export class OpsAPI {
   private readonly fetcher: typeof fetch;
 
   constructor(options: APIOptions = {}) {
-    this.base = (options.base ?? '/qnext/admin/api').replace(/\/$/, '');
+    this.base = (options.base ?? '/qnext/admin/api/index.php').replace(/\/$/, '');
     this.token = options.token;
     this.fetcher = options.fetcher ?? fetch;
   }
@@ -95,17 +95,35 @@ export class OpsAPI {
       headers.set('X-QNext-Ops-Token', this.token);
     }
 
-    const response = await this.fetcher(this.base + path, {
+    const separator = this.base.includes('?') ? '&' : '?';
+    const url = this.base + separator + 'route=' + encodeURIComponent(path);
+    const response = await this.fetcher(url, {
       ...init,
       headers,
       credentials: 'same-origin',
     });
     const text = await response.text();
-    const payload = text ? JSON.parse(text) : {};
+
+    let payload: unknown = {};
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        const contentType = response.headers.get('Content-Type') ?? 'unknown';
+        throw new Error(
+          `Ops API returned non-JSON HTTP ${response.status} (${contentType}). Check /qnext/admin/api/index.php routing.`,
+        );
+      }
+    }
 
     if (!response.ok) {
       const message =
-        typeof payload?.error === 'string' ? payload.error : `HTTP ${response.status}`;
+        typeof payload === 'object' &&
+        payload !== null &&
+        'error' in payload &&
+        typeof (payload as { error?: unknown }).error === 'string'
+          ? (payload as { error: string }).error
+          : `HTTP ${response.status}`;
       throw new Error(message);
     }
     return payload as T;

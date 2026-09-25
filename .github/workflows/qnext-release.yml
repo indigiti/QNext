@@ -99,7 +99,7 @@ jobs:
             "routes": {
               "workspace": "/qnext/",
               "ops_console": "/qnext/admin/",
-              "ops_api": "/qnext/admin/api"
+              "ops_api": "/qnext/admin/api/index.php"
             }
           }
           EOF
@@ -108,6 +108,8 @@ jobs:
 
           test -s release/public/index.html
           test -s release/public/admin/index.html
+          test -f release/public/admin/api/index.php
+          php -l release/public/admin/api/index.php
           test -s release/private/bin/qnext-market-core
           test -f release/private/ops-api/public/index.php
           test -x release/private/deploy/qnext-ops-helper

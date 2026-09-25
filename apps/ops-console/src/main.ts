@@ -244,5 +244,9 @@ secretForm.addEventListener('submit', async (event) => {
   }
 });
 
-void refresh();
-void loadConfig();
+if (token) {
+  void refresh();
+  void loadConfig();
+} else {
+  toast('Enter the staging admin token to connect to QNext Ops.');
+}
