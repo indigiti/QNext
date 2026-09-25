@@ -1,7 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-: "${QNEXT_PRIVATE_ROOT:?QNEXT_PRIVATE_ROOT is required}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${QNEXT_PRIVATE_ROOT:-}" ]]; then
+  QNEXT_PRIVATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 
 PRIVATE_ROOT="${QNEXT_PRIVATE_ROOT%/}"
 DIRECT_PRIVATE="$PRIVATE_ROOT/private"
@@ -21,9 +24,16 @@ LOG_FILE="$PRIVATE_ROOT/logs/market-core.log"
 CONFIG_FILE="$PRIVATE_ROOT/config/q1-market.json"
 RESILIENCE_FILE="$PRIVATE_ROOT/config/q3-resilience.json"
 SECRETS_FILE="$PRIVATE_ROOT/secrets/qnext.env"
+CONTROL_REQUEST="$PRIVATE_ROOT/run/control-request"
+DESIRED_STATE="$PRIVATE_ROOT/run/desired-state"
+CRON_HEARTBEAT="$PRIVATE_ROOT/run/cron-heartbeat"
 MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:8080}"
 
 mkdir -p "$PRIVATE_ROOT/run" "$PRIVATE_ROOT/logs" "$PRIVATE_ROOT/storage" "$PRIVATE_ROOT/config" "$PRIVATE_ROOT/secrets"
+
+if [[ ! -s "$DESIRED_STATE" ]]; then
+  printf 'stopped\n' > "$DESIRED_STATE"
+fi
 
 read_pid() {
   if [[ -s "$PID_FILE" ]]; then
@@ -137,20 +147,78 @@ smoke() {
   echo "smoke PASS"
 }
 
+set_desired() {
+  local state="$1"
+  printf '%s\n' "$state" > "$DESIRED_STATE"
+}
+
+reconcile() {
+  date +%s > "$CRON_HEARTBEAT"
+
+  local request=""
+  if [[ -s "$CONTROL_REQUEST" ]]; then
+    request="$(tr -d '\r\n' < "$CONTROL_REQUEST")"
+    rm -f "$CONTROL_REQUEST"
+
+    case "$request" in
+      start)
+        set_desired "running"
+        start_service
+        return
+        ;;
+      stop)
+        set_desired "stopped"
+        stop_service
+        return
+        ;;
+      restart)
+        set_desired "running"
+        stop_service >/dev/null || true
+        start_service
+        return
+        ;;
+      *)
+        echo "ignoring invalid QNext control request: $request" >&2
+        ;;
+    esac
+  fi
+
+  desired="$(tr -d '\r\n' < "$DESIRED_STATE" 2>/dev/null || true)"
+  case "$desired" in
+    running)
+      start_service
+      ;;
+    stopped|"")
+      stop_service
+      ;;
+    *)
+      echo "invalid desired state: $desired" >&2
+      set_desired "stopped"
+      stop_service
+      ;;
+  esac
+}
+
 action="${1:-}"
 case "$action" in
   status)
     status
     ;;
   start)
+    set_desired "running"
     start_service
     ;;
   stop)
+    set_desired "stopped"
     stop_service
     ;;
   restart)
+    set_desired "running"
     stop_service >/dev/null
     start_service
+    ;;
+  reconcile)
+    reconcile
     ;;
   smoke)
     smoke
