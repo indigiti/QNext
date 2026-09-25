@@ -26,6 +26,13 @@ type HistoricalRangeFetcher interface {
 		time.Time,
 		time.Time,
 	) ([]ProviderCandle, error)
+	FetchWeeklyRange(
+		context.Context,
+		string,
+		string,
+		time.Time,
+		time.Time,
+	) ([]ProviderCandle, error)
 	FetchMonthlyRange(
 		context.Context,
 		string,
@@ -259,18 +266,24 @@ func (r *HistoricalRepairer) Repair(
 			r.Resync.PublishResync(market.Underlying.InstrumentID, "1D", "historical_repair")
 		}
 
-		canonicalDaily, err := r.History.LoadRange(
-			market.Underlying.InstrumentID,
-			"1D",
+		weeklySource, err := r.Client.FetchWeeklyRange(
+			ctx,
+			r.AccessToken,
+			market.Underlying.ProviderKey,
 			from.AddDate(0, 0, -7),
 			to,
 		)
 		if err != nil {
-			wrapped := fmt.Errorf("load repaired %s 1D: %w", market.Symbol, err)
+			wrapped := fmt.Errorf("repair %s weekly source: %w", market.Symbol, err)
 			r.finish(result, wrapped)
 			return result, wrapped
 		}
-		weekly := aggregateCalendarBars(canonicalDaily, "1W", to)
+		weekly := providerCalendarBars(
+			market.Underlying.InstrumentID,
+			"1W",
+			weeklySource,
+			to,
+		)
 		counts, changed, err = r.repairBars(from, to, weekly)
 		if err != nil {
 			wrapped := fmt.Errorf("repair %s 1W: %w", market.Symbol, err)
@@ -391,14 +404,26 @@ func (r *HistoricalRepairer) repairBars(
 	to time.Time,
 	candidates []domain.Bar,
 ) (HistoricalRepairCounts, bool, error) {
-	counts := HistoricalRepairCounts{Scanned: uint64(len(candidates))}
-	if len(candidates) == 0 {
+	filtered := make([]domain.Bar, 0, len(candidates))
+	for _, candidate := range filtered {
+		if candidate.CloseTime.After(from) && !candidate.CloseTime.After(to) {
+			filtered = append(filtered, candidate)
+		}
+	}
+	counts := HistoricalRepairCounts{Scanned: uint64(len(filtered))}
+	if len(filtered) == 0 {
 		return counts, false, nil
 	}
 
-	instrumentID := candidates[0].InstrumentID
-	timeframe := candidates[0].Timeframe
-	existing, err := r.History.LoadRange(instrumentID, timeframe, from, to)
+	instrumentID := filtered[0].InstrumentID
+	timeframe := filtered[0].Timeframe
+	loadFrom := from
+	for _, candidate := range filtered {
+		if candidate.OpenTime.Before(loadFrom) {
+			loadFrom = candidate.OpenTime
+		}
+	}
+	existing, err := r.History.LoadRange(instrumentID, timeframe, loadFrom, to)
 	if err != nil {
 		return counts, false, err
 	}
@@ -663,6 +688,49 @@ func aggregateDailyBars(
 	return result
 }
 
+func providerCalendarBars(
+	instrumentID string,
+	timeframe string,
+	candles []ProviderCandle,
+	now time.Time,
+) []domain.Bar {
+	location := time.FixedZone("IST", 5*60*60+30*60)
+	result := make([]domain.Bar, 0, len(candles))
+	for _, candle := range candles {
+		local := candle.OpenTime.In(location)
+		var openTime, closeTime time.Time
+		switch timeframe {
+		case "1W":
+			day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+			offset := (int(day.Weekday()) + 6) % 7
+			openTime = day.AddDate(0, 0, -offset)
+			closeTime = openTime.AddDate(0, 0, 7)
+		default:
+			continue
+		}
+		if closeTime.After(now.In(location)) {
+			continue
+		}
+		result = append(result, domain.Bar{
+			InstrumentID:        instrumentID,
+			Timeframe:           timeframe,
+			OpenTime:            openTime.UTC(),
+			CloseTime:           closeTime.UTC(),
+			Open:                candle.Open,
+			High:                candle.High,
+			Low:                 candle.Low,
+			Close:               candle.Close,
+			Volume:              candle.Volume,
+			Final:               true,
+			AuthorityProvider:   ProviderName,
+			Quality:             domain.QualityRecovered,
+			Recovered:           true,
+			CandleEngineVersion: "historical-calendar-v1",
+		})
+	}
+	return result
+}
+
 func providerMonthlyBars(
 	instrumentID string,
 	candles []ProviderCandle,
@@ -748,6 +816,12 @@ func aggregateCalendarBars(
 		group := buckets[key]
 		if group.close.After(now.UTC()) || len(group.bars) == 0 {
 			continue
+		}
+		if strings.HasSuffix(timeframe, "M") {
+			months, _ := strconv.Atoi(strings.TrimSuffix(timeframe, "M"))
+			if len(group.bars) != months {
+				continue
+			}
 		}
 		sort.Slice(group.bars, func(i, j int) bool { return group.bars[i].OpenTime.Before(group.bars[j].OpenTime) })
 		result = append(result, aggregateBarGroup(group.bars, timeframe, group.open, group.close))
