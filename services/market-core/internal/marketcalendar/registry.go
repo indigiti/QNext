@@ -51,6 +51,7 @@ func NewRegistry() *Registry {
 func DefaultRegistry() *Registry {
 	registry := NewRegistry()
 	_ = registry.Register(NSEEquities2026())
+	_ = registry.Register(BSEEquities2026())
 	return registry
 }
 
@@ -222,4 +223,12 @@ func NSEEquities2026() Definition {
 			"2026-12-25": "Christmas",
 		},
 	}
+}
+
+
+func BSEEquities2026() Definition {
+	definition := NSEEquities2026()
+	definition.ID = "BSE_EQ"
+	definition.Version = "bse-equities-2026-v1"
+	return definition
 }

@@ -100,3 +100,52 @@ func TestOptionLegResolverSkipsIncompleteNearestExpiry(t *testing.T) {
 		t.Fatalf("expected next complete expiry, got %s", basket.Expiry)
 	}
 }
+
+
+func TestOptionLegResolverPreservesBSEExchangeMetadata(t *testing.T) {
+	var contracts []OptionContract
+	for _, strike := range []float64{80000, 80100, 80200} {
+		for _, side := range []string{"CE", "PE"} {
+			contracts = append(contracts, OptionContract{
+				Exchange:         "BSE",
+				Expiry:           "2026-09-29",
+				InstrumentKey:    fmt.Sprintf("BSE_FO|%.0f|%s", strike, side),
+				TradingSymbol:    fmt.Sprintf("SENSEX %.0f %s", strike, side),
+				InstrumentType:   side,
+				UnderlyingKey:    "BSE_INDEX|SENSEX",
+				UnderlyingSymbol: "SENSEX",
+				StrikePrice:      strike,
+			})
+		}
+	}
+
+	registry := symbol.NewRegistry()
+	resolver := OptionLegResolver{
+		Client:        fakeContractSource{contracts: contracts},
+		AccessToken:   "token",
+		UnderlyingKey: "BSE_INDEX|SENSEX",
+		Registry:      registry,
+	}
+	basket, err := resolver.Resolve(
+		context.Background(),
+		time.Date(2026, 9, 25, 9, 15, 0, 0, time.FixedZone("IST", 5*60*60+30*60)),
+		[]float64{80000, 80100, 80200},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(basket.Legs) != 6 {
+		t.Fatalf("expected six BSE legs, got %d", len(basket.Legs))
+	}
+	first := basket.Legs[0]
+	if first.InstrumentID[:4] != "BSE:" {
+		t.Fatalf("expected BSE canonical option ID, got %q", first.InstrumentID)
+	}
+	instrument, ok := registry.Instrument(first.InstrumentID)
+	if !ok {
+		t.Fatal("expected BSE option instrument in registry")
+	}
+	if instrument.Exchange != "BSE" || instrument.CalendarID != "BSE_EQ" {
+		t.Fatalf("unexpected BSE option metadata: %+v", instrument)
+	}
+}

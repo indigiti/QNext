@@ -340,6 +340,17 @@ final class OpsController
         $market = $this->getConfig();
         $nifty = is_array($market['nifty'] ?? null) ? $market['nifty'] : [];
         $synthetic = is_array($market['synthetic'] ?? null) ? $market['synthetic'] : [];
+
+        $markets = is_array($market['markets'] ?? null) ? $market['markets'] : [];
+        foreach ($markets as $entry) {
+            if (!is_array($entry) || strcasecmp((string) ($entry['symbol'] ?? ''), 'NIFTY') !== 0) {
+                continue;
+            }
+            $nifty = is_array($entry['underlying'] ?? null) ? $entry['underlying'] : [];
+            $synthetic = is_array($entry['synthetic'] ?? null) ? $entry['synthetic'] : [];
+            break;
+        }
+
         $auto = $synthetic['auto'] ?? null;
 
         if (!is_array($auto)) {

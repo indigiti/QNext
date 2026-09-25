@@ -30,8 +30,8 @@ func TestConfigValidatesFiveStrikeSynthetic(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := config.ProviderKeys()
-	if len(keys) != 11 {
-		t.Fatalf("expected 11 provider keys, got %d", len(keys))
+	if len(keys) != 16 {
+		t.Fatalf("expected 16 provider keys across six markets, got %d", len(keys))
 	}
 	recoverable := config.RecoverableTimeframes()
 	if len(recoverable) != 3 {
@@ -44,5 +44,44 @@ func TestConfigRejectsMissingLeg(t *testing.T) {
 	config.Synthetic.Legs = config.Synthetic.Legs[:9]
 	if err := config.Validate(); err == nil {
 		t.Fatal("expected missing leg validation failure")
+	}
+}
+
+
+func TestLegacyConfigExpandsToSixMarketPairs(t *testing.T) {
+	config := validConfig()
+	markets := config.EffectiveMarkets()
+	if len(markets) != 6 {
+		t.Fatalf("expected six market pairs, got %d", len(markets))
+	}
+
+	want := []string{"NIFTY", "BANKNIFTY", "MIDCPNIFTY", "FINNIFTY", "SENSEX", "BANKEX"}
+	for i, symbol := range want {
+		if markets[i].Symbol != symbol {
+			t.Fatalf("market %d symbol=%q want %q", i, markets[i].Symbol, symbol)
+		}
+		if markets[i].Synthetic.InstrumentID == "" {
+			t.Fatalf("market %s missing synthetic instrument", symbol)
+		}
+	}
+	if markets[0].Synthetic.Version != "nifty-syn-v1" {
+		t.Fatalf("legacy NIFTY synthetic should be preserved, got %q", markets[0].Synthetic.Version)
+	}
+}
+
+func TestDefaultMarketsUseExpectedIndexProviderKeys(t *testing.T) {
+	markets := DefaultMarkets()
+	want := map[string]string{
+		"NIFTY":      "NSE_INDEX|Nifty 50",
+		"BANKNIFTY":  "NSE_INDEX|Nifty Bank",
+		"MIDCPNIFTY": "NSE_INDEX|NIFTY MID SELECT",
+		"FINNIFTY":   "NSE_INDEX|Nifty Fin Service",
+		"SENSEX":     "BSE_INDEX|SENSEX",
+		"BANKEX":     "BSE_INDEX|BANKEX",
+	}
+	for _, market := range markets {
+		if got := market.Underlying.ProviderKey; got != want[market.Symbol] {
+			t.Fatalf("%s provider key=%q want %q", market.Symbol, got, want[market.Symbol])
+		}
 	}
 }

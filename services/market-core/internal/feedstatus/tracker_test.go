@@ -33,3 +33,19 @@ func TestTrackerObservesProviderInstrumentAndSyntheticStatus(t *testing.T) {
 		t.Fatal("synthetic status missing")
 	}
 }
+
+
+func TestTrackerReportsMultipleSyntheticStatuses(t *testing.T) {
+	tracker := New()
+	tracker.SetSyntheticStatusFor("QNEXT:NIFTY-SYN", func() any {
+		return map[string]any{"atm": 25100.0}
+	})
+	tracker.SetSyntheticStatusFor("QNEXT:BANKNIFTY-SYN", func() any {
+		return map[string]any{"atm": 55100.0}
+	})
+
+	snapshot := tracker.Snapshot()
+	if len(snapshot.Synthetics) != 2 {
+		t.Fatalf("expected two synthetic statuses, got %+v", snapshot.Synthetics)
+	}
+}

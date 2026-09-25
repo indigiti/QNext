@@ -53,3 +53,41 @@ func TestMarketSinkUsesSamePipelineForDirectAndSyntheticTicks(t *testing.T) {
 		t.Fatalf("unexpected pipeline order: %+v", pipeline.ticks)
 	}
 }
+
+
+func TestMarketSinkFansOutToMultipleSyntheticAssemblers(t *testing.T) {
+	pipeline := &fakePipeline{}
+	sink := &MarketSink{
+		Pipeline: pipeline,
+		Synthetics: []SyntheticAssembler{
+			fakeAssembler{tick: domain.Tick{
+				InstrumentID: "QNEXT:NIFTY-SYN",
+				Price:        25101,
+				EventTime:    time.Now().UTC(),
+			}},
+			fakeAssembler{tick: domain.Tick{
+				InstrumentID: "QNEXT:BANKNIFTY-SYN",
+				Price:        55101,
+				EventTime:    time.Now().UTC(),
+			}},
+		},
+		DirectInstruments: map[string]bool{
+			"NSE:NIFTY50": true,
+		},
+	}
+
+	if err := sink.Handle(domain.Tick{
+		InstrumentID: "NSE:NIFTY50",
+		Price:        25100,
+		EventTime:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(pipeline.ticks) != 3 {
+		t.Fatalf("expected direct + two synthetic ticks, got %+v", pipeline.ticks)
+	}
+	if pipeline.ticks[1].InstrumentID != "QNEXT:NIFTY-SYN" ||
+		pipeline.ticks[2].InstrumentID != "QNEXT:BANKNIFTY-SYN" {
+		t.Fatalf("unexpected synthetic fanout: %+v", pipeline.ticks)
+	}
+}

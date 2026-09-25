@@ -97,12 +97,38 @@ export class QNextProvider {
 
   async listSymbols() {
     const symbols = await this.loadSymbols();
-    return symbols.map((symbol) => ({
-      ticker: symbol.ticker,
-      description: symbol.description,
-      type: symbol.type,
-      prefix: symbol.prefix,
-    }));
+    const order = new Map(
+      [
+        'NIFTY',
+        'NIFTY-SYN',
+        'BANKNIFTY',
+        'BANKNIFTY-SYN',
+        'MIDCPNIFTY',
+        'MIDCPNIFTY-SYN',
+        'FINNIFTY',
+        'FINNIFTY-SYN',
+        'SENSEX',
+        'SENSEX-SYN',
+        'BANKEX',
+        'BANKEX-SYN',
+      ].map((ticker, index) => [ticker, index]),
+    );
+
+    return [...symbols]
+      .sort((a, b) => {
+        const aRank = order.get(a.ticker.toUpperCase()) ?? Number.MAX_SAFE_INTEGER;
+        const bRank = order.get(b.ticker.toUpperCase()) ?? Number.MAX_SAFE_INTEGER;
+        if (aRank !== bRank) {
+          return aRank - bRank;
+        }
+        return a.ticker.localeCompare(b.ticker);
+      })
+      .map((symbol) => ({
+        ticker: symbol.ticker,
+        description: symbol.description,
+        type: symbol.type,
+        prefix: symbol.prefix,
+      }));
   }
 
   async getBars(

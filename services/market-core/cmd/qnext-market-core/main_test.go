@@ -2,20 +2,31 @@ package main
 
 import "testing"
 
-func TestBuildRegistryExposesWorkspaceCatalogWithoutLiveConfig(t *testing.T) {
+func TestBuildRegistryExposesSixIndexAndSyntheticPairsWithoutLiveConfig(t *testing.T) {
 	registry, err := buildRegistry(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	visible := registry.ListVisible()
-	if len(visible) != 2 {
-		t.Fatalf("expected NIFTY and NIFTY-SYN workspace symbols, got %+v", visible)
+	if len(visible) != 12 {
+		t.Fatalf("expected twelve visible workspace symbols, got %d: %+v", len(visible), visible)
 	}
-	if visible[0].Symbol != "NIFTY" || visible[0].CalendarID != "NSE_EQ" {
-		t.Fatalf("unexpected NIFTY catalog entry: %+v", visible[0])
+
+	seen := make(map[string]bool, len(visible))
+	for _, instrument := range visible {
+		seen[instrument.Symbol] = true
 	}
-	if visible[1].Symbol != "NIFTY-SYN" || !visible[1].Synthetic {
-		t.Fatalf("unexpected synthetic catalog entry: %+v", visible[1])
+	for _, symbol := range []string{
+		"NIFTY", "NIFTY-SYN",
+		"BANKNIFTY", "BANKNIFTY-SYN",
+		"MIDCPNIFTY", "MIDCPNIFTY-SYN",
+		"FINNIFTY", "FINNIFTY-SYN",
+		"SENSEX", "SENSEX-SYN",
+		"BANKEX", "BANKEX-SYN",
+	} {
+		if !seen[symbol] {
+			t.Fatalf("workspace catalog missing %s: %+v", symbol, visible)
+		}
 	}
 }

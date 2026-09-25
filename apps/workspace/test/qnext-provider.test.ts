@@ -53,6 +53,56 @@ describe('QNextProvider', () => {
     ]);
   });
 
+  it('orders index and synthetic pairs for the workspace picker', async () => {
+    const tickers = [
+      'BANKEX-SYN',
+      'SENSEX',
+      'MIDCPNIFTY-SYN',
+      'BANKNIFTY',
+      'NIFTY-SYN',
+      'FINNIFTY',
+      'BANKEX',
+      'NIFTY',
+      'SENSEX-SYN',
+      'MIDCPNIFTY',
+      'FINNIFTY-SYN',
+      'BANKNIFTY-SYN',
+    ];
+    const provider = new QNextProvider({
+      fetchImpl: jsonFetch({
+        '/api/v1/symbols/': {
+          symbols: tickers.map((ticker) => ({
+            instrument_id: `TEST:${ticker}`,
+            ticker,
+            description: ticker,
+            type: 'index',
+            prefix: ticker.endsWith('-SYN') ? 'QNEXT' : 'NSE',
+            currency: 'INR',
+            timezone: 'Asia/Kolkata',
+            calendar_id: 'NSE_EQ',
+            synthetic: ticker.endsWith('-SYN'),
+          })),
+        },
+      }),
+    });
+
+    const symbols = await provider.listSymbols();
+    expect(symbols.map((symbol) => symbol.ticker)).toEqual([
+      'NIFTY',
+      'NIFTY-SYN',
+      'BANKNIFTY',
+      'BANKNIFTY-SYN',
+      'MIDCPNIFTY',
+      'MIDCPNIFTY-SYN',
+      'FINNIFTY',
+      'FINNIFTY-SYN',
+      'SENSEX',
+      'SENSEX-SYN',
+      'BANKEX',
+      'BANKEX-SYN',
+    ]);
+  });
+
   it('prefixes public API requests with the configured QNext base path', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {

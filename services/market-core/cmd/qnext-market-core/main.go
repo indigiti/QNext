@@ -101,17 +101,33 @@ func main() {
 		},
 		FeedStatus: func() any {
 			snapshot := feedTracker.Snapshot()
+			markets := marketconfig.DefaultMarkets()
+			if config != nil {
+				markets = config.EffectiveMarkets()
+			}
+
 			niftyID := "NSE:NIFTY50"
 			syntheticID := "QNEXT:NIFTY-SYN"
-			if config != nil {
-				niftyID = config.Nifty.InstrumentID
-				syntheticID = config.Synthetic.InstrumentID
+			marketStatus := make([]map[string]any, 0, len(markets))
+			for _, market := range markets {
+				marketStatus = append(marketStatus, map[string]any{
+					"symbol":                  market.Symbol,
+					"underlying_instrument_id": market.Underlying.InstrumentID,
+					"synthetic_instrument_id":  market.Synthetic.InstrumentID,
+					"exchange":                 market.Exchange,
+				})
+				if strings.EqualFold(market.Symbol, "NIFTY") {
+					niftyID = market.Underlying.InstrumentID
+					syntheticID = market.Synthetic.InstrumentID
+				}
 			}
+
 			return map[string]any{
 				"live_configured":         config != nil,
 				"resilience_configured":   resilienceConfig != nil,
 				"nifty_instrument_id":     niftyID,
 				"synthetic_instrument_id": syntheticID,
+				"markets":                 marketStatus,
 				"telemetry":               snapshot,
 				"resilience":              resilienceMetrics.Snapshot(),
 			}
@@ -170,75 +186,72 @@ func main() {
 
 func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 	registry := symbol.NewRegistry()
-	niftyID := "NSE:NIFTY50"
-	syntheticID := "QNEXT:NIFTY-SYN"
+	markets := marketconfig.DefaultMarkets()
 	if config != nil {
-		niftyID = config.Nifty.InstrumentID
-		syntheticID = config.Synthetic.InstrumentID
+		markets = config.EffectiveMarkets()
 	}
 
-	if err := registry.Register(symbol.Instrument{
-		ID:         niftyID,
-		Symbol:     "NIFTY",
-		Name:       "Nifty 50",
-		AssetClass: "INDEX",
-		Exchange:   "NSE",
-		Currency:   "INR",
-		Timezone:   "Asia/Kolkata",
-		CalendarID: "NSE_EQ",
-		Aliases:    []string{"NIFTY 50"},
-		Visible:    true,
-	}); err != nil {
-		return nil, err
-	}
-	if err := registry.Register(symbol.Instrument{
-		ID:         syntheticID,
-		Symbol:     "NIFTY-SYN",
-		Name:       "QNext Nifty Synthetic",
-		AssetClass: "INDEX",
-		Exchange:   "QNEXT",
-		Currency:   "INR",
-		Timezone:   "Asia/Kolkata",
-		CalendarID: "NSE_EQ",
-		Aliases:    []string{"NIFTY SYN", "SYNTHETIC NIFTY"},
-		Synthetic:  true,
-		Visible:    true,
-	}); err != nil {
-		return nil, err
-	}
-
-	if config == nil {
-		return registry, nil
-	}
-
-	if err := registry.RegisterProvider(symbol.ProviderInstrument{
-		Provider:     upstox.ProviderName,
-		InstrumentID: config.Nifty.InstrumentID,
-		ProviderKey:  config.Nifty.ProviderKey,
-	}); err != nil {
-		return nil, err
-	}
-
-	for _, leg := range config.Synthetic.Legs {
+	for _, market := range markets {
 		if err := registry.Register(symbol.Instrument{
-			ID:         leg.InstrumentID,
-			Symbol:     leg.InstrumentID,
-			Name:       leg.InstrumentID,
-			AssetClass: "OPTION",
-			Exchange:   "NSE",
+			ID:         market.Underlying.InstrumentID,
+			Symbol:     market.Symbol,
+			Name:       market.Name,
+			AssetClass: "INDEX",
+			Exchange:   market.Exchange,
 			Currency:   "INR",
 			Timezone:   "Asia/Kolkata",
-			CalendarID: "NSE_EQ",
-			Visible:    false,
+			CalendarID: market.CalendarID,
+			Aliases:    market.Aliases,
+			Visible:    true,
 		}); err != nil {
 			return nil, err
 		}
-		if err := registry.RegisterProvider(symbol.ProviderInstrument{
-			Provider:     upstox.ProviderName,
-			InstrumentID: leg.InstrumentID,
-			ProviderKey:  leg.ProviderKey,
+
+		if err := registry.Register(symbol.Instrument{
+			ID:         market.Synthetic.InstrumentID,
+			Symbol:     market.Symbol + "-SYN",
+			Name:       "QNext " + market.Name + " Synthetic",
+			AssetClass: "INDEX",
+			Exchange:   "QNEXT",
+			Currency:   "INR",
+			Timezone:   "Asia/Kolkata",
+			CalendarID: market.CalendarID,
+			Aliases:    []string{market.Symbol + " SYN", "SYNTHETIC " + market.Symbol},
+			Synthetic:  true,
+			Visible:    true,
 		}); err != nil {
 			return nil, err
+		}
+
+		if err := registry.RegisterProvider(symbol.ProviderInstrument{
+			Provider:     upstox.ProviderName,
+			InstrumentID: market.Underlying.InstrumentID,
+			ProviderKey:  market.Underlying.ProviderKey,
+		}); err != nil {
+			return nil, err
+		}
+
+		for _, leg := range market.Synthetic.Legs {
+			if err := registry.Register(symbol.Instrument{
+				ID:         leg.InstrumentID,
+				Symbol:     leg.InstrumentID,
+				Name:       leg.InstrumentID,
+				AssetClass: "OPTION",
+				Exchange:   market.Exchange,
+				Currency:   "INR",
+				Timezone:   "Asia/Kolkata",
+				CalendarID: market.CalendarID,
+				Visible:    false,
+			}); err != nil {
+				return nil, err
+			}
+			if err := registry.RegisterProvider(symbol.ProviderInstrument{
+				Provider:     upstox.ProviderName,
+				InstrumentID: leg.InstrumentID,
+				ProviderKey:  leg.ProviderKey,
+			}); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -277,44 +290,64 @@ func runMarket(
 		return syntheticSequence.Add(1)
 	}
 
-	var syntheticEngine qruntime.SyntheticAssembler
-	if config.AutoLegsEnabled() {
-		auto := config.Synthetic.Auto
-		manager, managerErr := autolegs.New(autolegs.Config{
-			UnderlyingInstrumentID: config.Nifty.InstrumentID,
-			SyntheticInstrumentID:  config.Synthetic.InstrumentID,
-			Version:                config.Synthetic.Version,
-			StrikeInterval:         auto.StrikeInterval,
-			ActiveStrikes:          auto.ActiveStrikes,
-			WarmStrikes:            auto.WarmStrikes,
-			HysteresisPoints:       auto.ATMHysteresisPoints,
-			Confirmation:           time.Duration(auto.ATMConfirmationMS) * time.Millisecond,
-			MinimumValidCandidates: config.Synthetic.MinimumValidCandidates,
-			MaxLegAge:              time.Duration(config.Synthetic.MaxLegAgeMS) * time.Millisecond,
-			MaxLegTimeSkew:         time.Duration(config.Synthetic.MaxLegTimeSkewMS) * time.Millisecond,
-		}, upstox.OptionLegResolver{
-			Client:        upstox.OptionContractsClient{},
-			AccessToken:   accessToken,
-			UnderlyingKey: config.Nifty.ProviderKey,
-			Registry:      registry,
-		}, subscriptions, nextSyntheticSequence, func(err error) {
-			log.Printf("NIFTY-SYN auto-leg manager: %v", err)
-		})
-		if managerErr != nil {
-			return managerErr
-		}
-		syntheticEngine = manager
-		if feedTracker != nil {
-			feedTracker.SetSyntheticStatus(func() any { return manager.Status() })
-		}
-		go func() {
-			if runErr := manager.Run(ctx); runErr != nil && ctx.Err() == nil {
-				log.Printf("NIFTY-SYN auto-leg manager stopped: %v", runErr)
+	markets := config.EffectiveMarkets()
+	syntheticEngines := make([]qruntime.SyntheticAssembler, 0, len(markets))
+	directInstruments := make(map[string]bool, len(markets))
+
+	for index, market := range markets {
+		directInstruments[market.Underlying.InstrumentID] = true
+		syntheticConfig := market.Synthetic
+
+		if syntheticConfig.Auto != nil {
+			auto := syntheticConfig.Auto
+			manager, managerErr := autolegs.New(autolegs.Config{
+				UnderlyingInstrumentID: market.Underlying.InstrumentID,
+				SyntheticInstrumentID:  syntheticConfig.InstrumentID,
+				Version:                syntheticConfig.Version,
+				StrikeInterval:         auto.StrikeInterval,
+				ActiveStrikes:          auto.ActiveStrikes,
+				WarmStrikes:            auto.WarmStrikes,
+				HysteresisPoints:       auto.ATMHysteresisPoints,
+				Confirmation:           time.Duration(auto.ATMConfirmationMS) * time.Millisecond,
+				MinimumValidCandidates: syntheticConfig.MinimumValidCandidates,
+				MaxLegAge:              time.Duration(syntheticConfig.MaxLegAgeMS) * time.Millisecond,
+				MaxLegTimeSkew:         time.Duration(syntheticConfig.MaxLegTimeSkewMS) * time.Millisecond,
+			}, upstox.OptionLegResolver{
+				Client:        upstox.OptionContractsClient{},
+				AccessToken:   accessToken,
+				UnderlyingKey: market.Underlying.ProviderKey,
+				Registry:      registry,
+			}, subscriptions, nextSyntheticSequence, func(err error) {
+				log.Printf("%s auto-leg manager: %v", syntheticConfig.InstrumentID, err)
+			})
+			if managerErr != nil {
+				return managerErr
 			}
-		}()
-	} else {
-		legs := make([]synthetic.LegBinding, 0, len(config.Synthetic.Legs))
-		for _, leg := range config.Synthetic.Legs {
+			syntheticEngines = append(syntheticEngines, manager)
+
+			if feedTracker != nil {
+				managerRef := manager
+				feedTracker.SetSyntheticStatusFor(
+					syntheticConfig.InstrumentID,
+					func() any { return managerRef.Status() },
+				)
+				if index == 0 || strings.EqualFold(market.Symbol, "NIFTY") {
+					feedTracker.SetSyntheticStatus(func() any { return managerRef.Status() })
+				}
+			}
+
+			managerRef := manager
+			syntheticID := syntheticConfig.InstrumentID
+			go func() {
+				if runErr := managerRef.Run(ctx); runErr != nil && ctx.Err() == nil {
+					log.Printf("%s auto-leg manager stopped: %v", syntheticID, runErr)
+				}
+			}()
+			continue
+		}
+
+		legs := make([]synthetic.LegBinding, 0, len(syntheticConfig.Legs))
+		for _, leg := range syntheticConfig.Legs {
 			side := synthetic.LegCall
 			if strings.EqualFold(leg.Side, "PUT") {
 				side = synthetic.LegPut
@@ -326,26 +359,24 @@ func runMarket(
 			})
 		}
 		assembler, assemblerErr := synthetic.NewAssembler(synthetic.Definition{
-			ID:                     config.Synthetic.InstrumentID,
-			Version:                config.Synthetic.Version,
-			MinimumValidCandidates: config.Synthetic.MinimumValidCandidates,
-			MaxLegAge:              time.Duration(config.Synthetic.MaxLegAgeMS) * time.Millisecond,
-			MaxLegTimeSkew:         time.Duration(config.Synthetic.MaxLegTimeSkewMS) * time.Millisecond,
+			ID:                     syntheticConfig.InstrumentID,
+			Version:                syntheticConfig.Version,
+			MinimumValidCandidates: syntheticConfig.MinimumValidCandidates,
+			MaxLegAge:              time.Duration(syntheticConfig.MaxLegAgeMS) * time.Millisecond,
+			MaxLegTimeSkew:         time.Duration(syntheticConfig.MaxLegTimeSkewMS) * time.Millisecond,
 		}, legs, nextSyntheticSequence)
 		if assemblerErr != nil {
 			return assemblerErr
 		}
-		syntheticEngine = assembler
+		syntheticEngines = append(syntheticEngines, assembler)
 	}
 
 	marketSink := &qruntime.MarketSink{
-		Pipeline:  canonicalPipeline,
-		Synthetic: syntheticEngine,
-		Publisher: broker,
-		DirectInstruments: map[string]bool{
-			config.Nifty.InstrumentID: true,
-		},
-		Observer: feedTracker.Observe,
+		Pipeline:          canonicalPipeline,
+		Synthetics:        syntheticEngines,
+		Publisher:         broker,
+		DirectInstruments: directInstruments,
+		Observer:          feedTracker.Observe,
 	}
 	dedupe := integrity.NewDedupeSink(8192, marketSink.Handle)
 
@@ -374,7 +405,7 @@ func runMarket(
 		Registry:      registry,
 		History:       store,
 		Timeframes:    config.RecoverableTimeframes(),
-		InstrumentIDs: map[string]bool{config.Nifty.InstrumentID: true},
+		InstrumentIDs: directInstruments,
 	}
 
 	request := subscriptions.Snapshot()
