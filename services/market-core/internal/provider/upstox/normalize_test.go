@@ -68,6 +68,9 @@ func TestNormalizeLTPCEnvelope(t *testing.T) {
 	if tick.Price != 219.3 {
 		t.Fatalf("unexpected price: %+v", tick)
 	}
+	if tick.Quantity != 75 {
+		t.Fatalf("unexpected last-traded quantity: %+v", tick)
+	}
 	if tick.Sequence != 41 {
 		t.Fatalf("unexpected sequence: %d", tick.Sequence)
 	}
