@@ -35,6 +35,7 @@ SECRETS_FILE="$PRIVATE_ROOT/secrets/qnext.env"
 CONTROL_REQUEST="$PRIVATE_ROOT/run/control-request"
 DESIRED_STATE="$PRIVATE_ROOT/run/desired-state"
 CRON_HEARTBEAT="$PRIVATE_ROOT/run/cron-heartbeat"
+LOCK_DIR="$PRIVATE_ROOT/run/supervisor.lock"
 MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:8080}"
 
 mkdir -p "$PRIVATE_ROOT/run" "$PRIVATE_ROOT/logs" "$PRIVATE_ROOT/storage" "$PRIVATE_ROOT/config" "$PRIVATE_ROOT/secrets"
@@ -49,10 +50,63 @@ read_pid() {
   fi
 }
 
+find_existing_pid() {
+  local proc pid cmdline
+  for proc in /proc/[0-9]*; do
+    [[ -r "$proc/cmdline" ]] || continue
+    pid="${proc##*/}"
+    [[ "$pid" != "$" ]] || continue
+    cmdline="$(tr '\0' ' ' < "$proc/cmdline" 2>/dev/null || true)"
+    case "$cmdline" in
+      "$BINARY"|"$BINARY "*)
+        printf '%s\n' "$pid"
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 is_running() {
   local pid
   pid="$(read_pid || true)"
-  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  rm -f "$PID_FILE"
+  pid="$(find_existing_pid || true)"
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    printf '%s\n' "$pid" > "$PID_FILE"
+    return 0
+  fi
+
+  return 1
+}
+
+acquire_lock() {
+  local owner attempts=0
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    owner=""
+    if [[ -s "$LOCK_DIR/pid" ]]; then
+      owner="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$owner" ]] || ! kill -0 "$owner" 2>/dev/null; then
+      rm -rf "$LOCK_DIR" 2>/dev/null || true
+      continue
+    fi
+
+    attempts=$((attempts + 1))
+    if (( attempts >= 50 )); then
+      echo "QNext supervisor is busy" >&2
+      return 5
+    fi
+    sleep 0.1
+  done
+
+  printf '%s\n' "$" > "$LOCK_DIR/pid"
+  trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
 }
 
 status() {
@@ -213,19 +267,23 @@ case "$action" in
     status
     ;;
   start)
+    acquire_lock
     set_desired "running"
     start_service
     ;;
   stop)
+    acquire_lock
     set_desired "stopped"
     stop_service
     ;;
   restart)
+    acquire_lock
     set_desired "running"
     stop_service >/dev/null
     start_service
     ;;
   reconcile)
+    acquire_lock
     reconcile
     ;;
   smoke)
