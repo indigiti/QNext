@@ -63,3 +63,67 @@ func TestHistoryClientAggregatesThreeMinuteBars(t *testing.T) {
 		t.Fatalf("bar=%+v", r)
 	}
 }
+
+
+func TestOptionChainClientResolvesSecurityIDs(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("access-token") != "token" || r.Header.Get("client-id") != "client" {
+			t.Fatal("missing Dhan option-chain auth headers")
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["UnderlyingSeg"] != "IDX_I" || body["Expiry"] != "2026-09-29" {
+			t.Fatalf("unexpected option-chain request: %+v", body)
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"last_price":25110,"oc":{"25100.000000":{"ce":{"security_id":42529},"pe":{"security_id":42530}}}}}`))
+	}))
+	defer srv.Close()
+
+	client := OptionChainClient{URL: srv.URL, HTTPClient: srv.Client()}
+	legs, err := client.Chain(
+		context.Background(),
+		"token",
+		"client",
+		InstrumentKey{ExchangeSegment: "IDX_I", SecurityID: 13, Instrument: "INDEX"},
+		"2026-09-29",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(legs) != 2 {
+		t.Fatalf("expected CE+PE option-chain legs, got %+v", legs)
+	}
+	seen := map[string]int64{}
+	for _, leg := range legs {
+		seen[leg.Side] = leg.SecurityID
+		if leg.Strike != 25100 {
+			t.Fatalf("unexpected strike: %+v", leg)
+		}
+	}
+	if seen["CE"] != 42529 || seen["PE"] != 42530 {
+		t.Fatalf("unexpected security ids: %+v", seen)
+	}
+}
+
+func TestKeyRegistryExpandsDeterministically(t *testing.T) {
+	registry := NewKeyRegistry([]InstrumentKey{
+		{ExchangeSegment: "IDX_I", SecurityID: 13, Instrument: "INDEX"},
+	})
+	registry.Ensure(
+		InstrumentKey{ExchangeSegment: "NSE_FNO", SecurityID: 42530, Instrument: "OPTIDX"},
+		InstrumentKey{ExchangeSegment: "NSE_FNO", SecurityID: 42529, Instrument: "OPTIDX"},
+		InstrumentKey{ExchangeSegment: "NSE_FNO", SecurityID: 42529, Instrument: "OPTIDX"},
+	)
+
+	keys := registry.Snapshot()
+	if len(keys) != 3 {
+		t.Fatalf("expected deduplicated dynamic keys, got %+v", keys)
+	}
+	for i := 1; i < len(keys); i++ {
+		if keys[i-1].String() >= keys[i].String() {
+			t.Fatalf("key snapshot must be deterministic and sorted: %+v", keys)
+		}
+	}
+}
