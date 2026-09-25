@@ -15,6 +15,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/autolegs"
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/capture"
+	"github.com/indigiti/QNext/services/market-core/internal/feedstatus"
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 	"github.com/indigiti/QNext/services/market-core/internal/httpapi"
 	"github.com/indigiti/QNext/services/market-core/internal/integrity"
@@ -87,6 +88,7 @@ func main() {
 
 	store := history.New(storageRoot)
 	broker := stream.NewBroker(1024, 128)
+	feedTracker := feedstatus.New()
 	handler := httpapi.New(store, httpapi.Options{
 		Version:       version,
 		Commit:        commit,
@@ -96,6 +98,23 @@ func main() {
 		Calendars:     calendars,
 		ResilienceStatus: func() any {
 			return resilienceMetrics.Snapshot()
+		},
+		FeedStatus: func() any {
+			snapshot := feedTracker.Snapshot()
+			niftyID := "NSE:NIFTY50"
+			syntheticID := "QNEXT:NIFTY-SYN"
+			if config != nil {
+				niftyID = config.Nifty.InstrumentID
+				syntheticID = config.Synthetic.InstrumentID
+			}
+			return map[string]any{
+				"live_configured":       config != nil,
+				"resilience_configured": resilienceConfig != nil,
+				"nifty_instrument_id":   niftyID,
+				"synthetic_instrument_id": syntheticID,
+				"telemetry":             snapshot,
+				"resilience":            resilienceMetrics.Snapshot(),
+			}
 		},
 	})
 
@@ -126,6 +145,7 @@ func main() {
 				dhanClientID,
 				dhanAccessToken,
 				resilienceMetrics,
+				feedTracker,
 			); err != nil && ctx.Err() == nil {
 				errCh <- err
 			}
@@ -236,6 +256,7 @@ func runMarket(
 	dhanClientID string,
 	dhanAccessToken string,
 	resilienceMetrics *resilience.Metrics,
+	feedTracker *feedstatus.Tracker,
 ) error {
 	canonicalPipeline, err := pipeline.New(candle.New("candle-v1"), store, config.Timeframes)
 	if err != nil {
@@ -283,6 +304,9 @@ func runMarket(
 			return managerErr
 		}
 		syntheticEngine = manager
+		if feedTracker != nil {
+			feedTracker.SetSyntheticStatus(func() any { return manager.Status() })
+		}
 		go func() {
 			if runErr := manager.Run(ctx); runErr != nil && ctx.Err() == nil {
 				log.Printf("NIFTY-SYN auto-leg manager stopped: %v", runErr)
@@ -321,6 +345,7 @@ func runMarket(
 		DirectInstruments: map[string]bool{
 			config.Nifty.InstrumentID: true,
 		},
+		Observer: feedTracker.Observe,
 	}
 	dedupe := integrity.NewDedupeSink(8192, marketSink.Handle)
 
