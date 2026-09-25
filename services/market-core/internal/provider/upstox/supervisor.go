@@ -3,7 +3,7 @@ package upstox
 import (
 	"context"
 	"errors"
-		"time"
+	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
