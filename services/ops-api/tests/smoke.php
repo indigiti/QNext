@@ -140,6 +140,22 @@ expect(
     'empty market config should be replaced with packaged default'
 );
 
+$activation = $flatController->marketActivation();
+expect(
+    ($activation['active'] ?? []) === ['NIFTY', 'BANKNIFTY', 'MIDCPNIFTY', 'FINNIFTY', 'SENSEX', 'BANKEX'],
+    'all markets should default active when active_markets is absent'
+);
+$savedActivation = $flatController->saveActiveMarkets(['active' => ['NIFTY', 'SENSEX']]);
+expect(
+    ($savedActivation['active'] ?? []) === ['NIFTY', 'SENSEX'],
+    'active market selection should be saved'
+);
+$activeConfig = json_decode(file_get_contents($flatConfig->configPath()) ?: '{}', true);
+expect(
+    ($activeConfig['active_markets'] ?? []) === ['NIFTY', 'SENSEX'],
+    'active market selection should persist in q1-market.json'
+);
+
 mkdir($flatRoot . '/logs', 0750, true);
 mkdir($flatRoot . '/bin', 0750, true);
 file_put_contents($flatRoot . '/bin/qnext-market-core', 'legacy-binary');
