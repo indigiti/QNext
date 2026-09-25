@@ -194,7 +194,7 @@ func TestDynamicDhanMapperRegistersOptionAuthorityAndCachesChain(t *testing.T) {
 
 	now := time.Date(2026, 9, 25, 3, 45, 0, 0, time.UTC)
 	if err := resolver.UpdateState(callID, upstox.ProviderName, authority.ProviderState{
-		Healthy: true, Entitled: true, LastEventTime: now.Add(-2 * time.Second),
+		Healthy: true, Entitled: true, LastEventTime: now.Add(-3 * time.Second),
 	}); err != nil {
 		t.Fatal(err)
 	}
