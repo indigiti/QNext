@@ -36,7 +36,7 @@ CONTROL_REQUEST="$PRIVATE_ROOT/run/control-request"
 DESIRED_STATE="$PRIVATE_ROOT/run/desired-state"
 CRON_HEARTBEAT="$PRIVATE_ROOT/run/cron-heartbeat"
 LOCK_DIR="$PRIVATE_ROOT/run/supervisor.lock"
-MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:8080}"
+MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:18080}"
 
 mkdir -p "$PRIVATE_ROOT/run" "$PRIVATE_ROOT/logs" "$PRIVATE_ROOT/storage" "$PRIVATE_ROOT/config" "$PRIVATE_ROOT/secrets"
 
@@ -120,7 +120,7 @@ status() {
 }
 
 load_runtime_environment() {
-  export QNEXT_HTTP_ADDR="127.0.0.1:8080"
+  export QNEXT_HTTP_ADDR="127.0.0.1:18080"
   export QNEXT_STORAGE_ROOT="$PRIVATE_ROOT/storage"
   export QNEXT_RAW_CAPTURE="1"
 
@@ -142,10 +142,19 @@ load_runtime_environment() {
   fi
 }
 
+market_healthy() {
+  curl --fail --silent --show-error --max-time 2 "$MARKET_URL/health" >/dev/null 2>&1
+}
+
 start_service() {
   if is_running; then
-    echo "active"
-    return 0
+    if market_healthy; then
+      echo "active"
+      return 0
+    fi
+
+    echo "QNext Market Core process exists but is not serving $MARKET_URL; replacing stale runtime" >>"$LOG_FILE"
+    stop_service >/dev/null || true
   fi
 
   if [[ ! -f "$BINARY" ]]; then
