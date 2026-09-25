@@ -94,3 +94,26 @@ func TestLatestBarReturnsMostRecentPublishedUpdate(t *testing.T) {
 		t.Fatal("unexpected bar for unknown stream")
 	}
 }
+
+func TestBrokerPublishesResyncControlWithoutReplacingLatestBar(t *testing.T) {
+	broker := NewBroker(8, 8)
+	at := time.Date(2026, 9, 25, 8, 30, 0, 0, time.UTC)
+	broker.PublishBar(bar("NSE:NIFTY50", "1m", at, 23120))
+
+	sub, err := broker.Subscribe("NSE:NIFTY50", "1m", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Cancel()
+
+	broker.PublishResync("NSE:NIFTY50", "1m", "provider_gap_recovered")
+	event := <-sub.Events
+	if !event.ResyncRequired || event.Reason != "provider_gap_recovered" {
+		t.Fatalf("unexpected resync event: %+v", event)
+	}
+
+	latest, ok := broker.LatestBar("NSE:NIFTY50", "1m")
+	if !ok || latest.Close != 23120 {
+		t.Fatalf("resync control must not replace latest bar: %+v ok=%v", latest, ok)
+	}
+}

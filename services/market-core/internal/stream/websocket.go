@@ -200,6 +200,16 @@ func forwardSubscription(
 			if !ok {
 				return
 			}
+			if event.ResyncRequired {
+				if err := write(serverMessage{
+					Op:       "resync_required",
+					StreamID: event.StreamID,
+					Reason:   event.Reason,
+				}); err != nil {
+					return
+				}
+				continue
+			}
 			if err := write(updateMessage(event)); err != nil {
 				return
 			}

@@ -141,3 +141,43 @@ func TestSameOriginRejectsUnrelatedForwardedHost(t *testing.T) {
 		t.Fatal("expected unrelated origin to be rejected")
 	}
 }
+
+func TestWebSocketForwardsProviderGapResync(t *testing.T) {
+	broker := NewBroker(8, 8)
+	server := httptest.NewServer(NewWebSocketHandler(broker))
+	defer server.Close()
+
+	connection, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+
+	var message serverMessage
+	if err := connection.ReadJSON(&message); err != nil {
+		t.Fatal(err)
+	}
+	if message.Op != "hello" {
+		t.Fatalf("expected hello, got %+v", message)
+	}
+
+	if err := connection.WriteJSON(clientMessage{
+		Op: "subscribe", Channel: "bars", Symbol: "NSE:NIFTY50", Timeframe: "1m",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.ReadJSON(&message); err != nil {
+		t.Fatal(err)
+	}
+	if message.Op != "subscribed" {
+		t.Fatalf("expected subscribed, got %+v", message)
+	}
+
+	broker.PublishResync("NSE:NIFTY50", "1m", "provider_gap_recovered")
+	if err := connection.ReadJSON(&message); err != nil {
+		t.Fatal(err)
+	}
+	if message.Op != "resync_required" || message.Reason != "provider_gap_recovered" {
+		t.Fatalf("unexpected resync control: %+v", message)
+	}
+}

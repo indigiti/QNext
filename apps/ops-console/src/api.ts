@@ -92,6 +92,20 @@ export interface FeedStatusBody {
     authority_states?: Record<string, string>;
     providers?: Record<string, FeedProviderSnapshot>;
   };
+  gap_recovery?: {
+    attempts?: number;
+    successes?: number;
+    failures?: number;
+    recovered_bars?: number;
+    last_recovered_bars?: number;
+    last_from_ms?: number;
+    last_to_ms?: number;
+    last_cause?: string;
+    last_error?: string;
+    exact_tick_replay?: boolean;
+    recovered_timeframes?: string[];
+    non_exact_timeframes?: string[];
+  };
 }
 
 export interface FeedStatusResponse {

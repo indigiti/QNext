@@ -18,6 +18,10 @@ type RecoveredHistoryWriter interface {
 	AppendBar(domain.Bar) error
 }
 
+type RecoveryResyncPublisher interface {
+	PublishResync(instrumentID, timeframe, reason string)
+}
+
 type IntradayRecovery struct {
 	Client        IntradayFetcher
 	AccessToken   string
@@ -25,9 +29,17 @@ type IntradayRecovery struct {
 	History       RecoveredHistoryWriter
 	Timeframes    []string
 	InstrumentIDs map[string]bool
+	Resync        RecoveryResyncPublisher
+	Status        *GapRecoveryTracker
 }
 
-func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest) error {
+func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest) (err error) {
+	var recoveredBars uint64
+	defer func() {
+		if r.Status != nil {
+			r.Status.Observe(request, recoveredBars, err)
+		}
+	}()
 	if request.Provider != ProviderName {
 		return fmt.Errorf("unsupported recovery provider %q", request.Provider)
 	}
@@ -52,12 +64,21 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 			continue
 		}
 
+		from := request.From
+		if cursor := request.FromByInstrumentID[instrument.ID]; !cursor.IsZero() {
+			from = cursor
+		}
+		if from.IsZero() || !from.Before(request.To) {
+			continue
+		}
+
 		for _, timeframe := range timeframes {
 			interval, err := minuteInterval(timeframe)
 			if err != nil {
 				return err
 			}
 			duration := time.Duration(interval) * time.Minute
+			recoveredForStream := uint64(0)
 
 			candles, err := r.Client.Fetch(ctx, r.AccessToken, providerKey, timeframe)
 			if err != nil {
@@ -65,7 +86,7 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 			}
 			for _, candle := range candles {
 				closeTime := candle.OpenTime.Add(duration)
-				if !closeTime.After(request.From) || closeTime.After(request.To) {
+				if !closeTime.After(from) || closeTime.After(request.To) {
 					continue
 				}
 				bar := domain.Bar{
@@ -88,6 +109,11 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 				if err := r.History.AppendBar(bar); err != nil {
 					return fmt.Errorf("persist recovered %s bar: %w", timeframe, err)
 				}
+				recoveredBars++
+				recoveredForStream++
+			}
+			if recoveredForStream > 0 && r.Resync != nil {
+				r.Resync.PublishResync(instrument.ID, timeframe, "provider_gap_recovered")
 			}
 		}
 	}

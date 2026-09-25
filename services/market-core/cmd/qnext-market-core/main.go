@@ -57,6 +57,16 @@ func main() {
 		}
 	}
 
+	var gapRecoveryTracker *upstox.GapRecoveryTracker
+	if config != nil {
+		gapRecoveryTracker = upstox.NewGapRecoveryTracker(
+			config.RecoverableTimeframes(),
+			nonExactRecoveryTimeframes(config.Timeframes),
+		)
+	} else {
+		gapRecoveryTracker = upstox.NewGapRecoveryTracker(nil, nil)
+	}
+
 	registry, err := buildRegistry(config)
 	if err != nil {
 		log.Fatalf("build symbol registry: %v", err)
@@ -131,6 +141,7 @@ func main() {
 				"markets":                 marketStatus,
 				"telemetry":               snapshot,
 				"resilience":              resilienceMetrics.Snapshot(),
+				"gap_recovery":            gapRecoveryTracker.Snapshot(),
 			}
 		},
 	})
@@ -163,6 +174,7 @@ func main() {
 				dhanAccessToken,
 				resilienceMetrics,
 				feedTracker,
+				gapRecoveryTracker,
 			); err != nil && ctx.Err() == nil {
 				errCh <- err
 			}
@@ -271,6 +283,7 @@ func runMarket(
 	dhanAccessToken string,
 	resilienceMetrics *resilience.Metrics,
 	feedTracker *feedstatus.Tracker,
+	gapRecoveryTracker *upstox.GapRecoveryTracker,
 ) error {
 	canonicalPipeline, err := pipeline.New(candle.New("candle-v1"), store, config.Timeframes)
 	if err != nil {
@@ -410,6 +423,8 @@ func runMarket(
 		History:       store,
 		Timeframes:    config.RecoverableTimeframes(),
 		InstrumentIDs: directInstruments,
+		Resync:        broker,
+		Status:        gapRecoveryTracker,
 	}
 
 	request := subscriptions.Snapshot()
@@ -438,6 +453,17 @@ func runMarket(
 		dedupe.Handle,
 		resilienceMetrics,
 	)
+}
+
+func nonExactRecoveryTimeframes(timeframes []string) []string {
+	recoverable := map[string]bool{"1m": true, "3m": true, "5m": true}
+	result := make([]string, 0, len(timeframes))
+	for _, timeframe := range timeframes {
+		if !recoverable[timeframe] {
+			result = append(result, timeframe)
+		}
+	}
+	return result
 }
 
 func regularMarketSessionActive(at time.Time) bool {
