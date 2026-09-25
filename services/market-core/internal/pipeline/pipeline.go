@@ -78,6 +78,9 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 			if errors.Is(err, candle.ErrOutsideSession) {
 				return nil, nil
 			}
+			if errors.Is(err, candle.ErrLateTick) {
+				continue
+			}
 			return nil, fmt.Errorf("apply %s candle: %w", timeframe, err)
 		}
 		if timeframe == "1m" {
