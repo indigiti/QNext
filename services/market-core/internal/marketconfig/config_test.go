@@ -34,8 +34,8 @@ func TestConfigValidatesFiveStrikeSynthetic(t *testing.T) {
 		t.Fatalf("expected 16 provider keys across six markets, got %d", len(keys))
 	}
 	recoverable := config.RecoverableTimeframes()
-	if len(recoverable) != 3 {
-		t.Fatalf("expected 3 recoverable timeframes, got %+v", recoverable)
+	if len(recoverable) != 1 || recoverable[0] != "1m" {
+		t.Fatalf("expected canonical 1m recovery only, got %+v", recoverable)
 	}
 }
 
@@ -81,6 +81,28 @@ func TestDefaultMarketsUseExpectedIndexProviderKeys(t *testing.T) {
 	for _, market := range markets {
 		if got := market.Underlying.ProviderKey; got != want[market.Symbol] {
 			t.Fatalf("%s provider key=%q want %q", market.Symbol, got, want[market.Symbol])
+		}
+	}
+}
+
+
+func TestConfigRequiresCanonicalOneMinute(t *testing.T) {
+	config := validConfig()
+	config.Timeframes = []string{"15s", "30s", "3m", "5m"}
+	if err := config.Validate(); err == nil {
+		t.Fatal("expected configuration without 1m to fail")
+	}
+}
+
+func TestDefaultEnabledTimeframesMatchOpsDefaults(t *testing.T) {
+	got := DefaultEnabledTimeframes()
+	want := []string{"15s", "30s", "1m", "2m", "3m", "5m", "15m", "30m", "1h", "1D"}
+	if len(got) != len(want) {
+		t.Fatalf("defaults=%+v want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("defaults=%+v want %+v", got, want)
 		}
 	}
 }
