@@ -31,9 +31,9 @@ type Snapshot struct {
 }
 
 type Tracker struct {
-	mu              sync.RWMutex
-	providers       map[string]ProviderSnapshot
-	instruments     map[string]InstrumentSnapshot
+	mu                sync.RWMutex
+	providers         map[string]ProviderSnapshot
+	instruments       map[string]InstrumentSnapshot
 	syntheticStatus   func() any
 	syntheticStatuses map[string]func() any
 }
@@ -132,10 +132,10 @@ func (t *Tracker) Snapshot() Snapshot {
 		synthetics[key] = statusFn()
 	}
 	return Snapshot{
-		Providers: providers,
+		Providers:   providers,
 		Instruments: instruments,
-		Synthetic: synthetic,
-		Synthetics: synthetics,
+		Synthetic:   synthetic,
+		Synthetics:  synthetics,
 	}
 }
 

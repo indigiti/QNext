@@ -101,7 +101,6 @@ func TestOptionLegResolverSkipsIncompleteNearestExpiry(t *testing.T) {
 	}
 }
 
-
 func TestOptionLegResolverPreservesBSEExchangeMetadata(t *testing.T) {
 	var contracts []OptionContract
 	for _, strike := range []float64{80000, 80100, 80200} {

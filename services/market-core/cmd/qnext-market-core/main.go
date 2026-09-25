@@ -111,7 +111,7 @@ func main() {
 			marketStatus := make([]map[string]any, 0, len(markets))
 			for _, market := range markets {
 				marketStatus = append(marketStatus, map[string]any{
-					"symbol":                  market.Symbol,
+					"symbol":                   market.Symbol,
 					"underlying_instrument_id": market.Underlying.InstrumentID,
 					"synthetic_instrument_id":  market.Synthetic.InstrumentID,
 					"exchange":                 market.Exchange,
