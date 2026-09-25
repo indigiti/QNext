@@ -114,6 +114,22 @@ final class OpsController
             throw new RuntimeException('stored market configuration must be an object');
         }
 
+        if ($decoded === []) {
+            $this->seedDefaultConfig($path);
+            $contents = file_get_contents($path);
+            if ($contents === false) {
+                throw new RuntimeException('cannot read seeded market configuration');
+            }
+            try {
+                $decoded = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException $error) {
+                throw new RuntimeException('seeded market configuration is invalid JSON', 0, $error);
+            }
+            if (!is_array($decoded)) {
+                throw new RuntimeException('seeded market configuration must be an object');
+            }
+        }
+
         return $decoded;
     }
 
