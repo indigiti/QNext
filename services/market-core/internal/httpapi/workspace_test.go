@@ -57,8 +57,9 @@ func TestWorkspaceSymbolsAndCalendarEndpoints(t *testing.T) {
 	}
 
 	handler := New(nil, Options{
-		Symbols:   registry,
-		Calendars: marketcalendar.DefaultRegistry(),
+		Symbols:           registry,
+		Calendars:         marketcalendar.DefaultRegistry(),
+		EnabledTimeframes: []string{"15s", "30s", "1m", "2m", "3m", "5m", "15m", "30m", "1h", "1D"},
 	})
 
 	symbolRequest := httptest.NewRequest(http.MethodGet, "/api/v1/symbols", nil)
@@ -77,6 +78,20 @@ func TestWorkspaceSymbolsAndCalendarEndpoints(t *testing.T) {
 	}
 	if symbols.Symbols[0].Ticker != "NIFTY" || symbols.Symbols[1].Ticker != "NIFTY-SYN" {
 		t.Fatalf("unexpected symbol ordering: %+v", symbols.Symbols)
+	}
+
+	timeframeRequest := httptest.NewRequest(http.MethodGet, "/api/v1/timeframes", nil)
+	timeframeRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(timeframeRecorder, timeframeRequest)
+	if timeframeRecorder.Code != http.StatusOK {
+		t.Fatalf("unexpected timeframes status %d: %s", timeframeRecorder.Code, timeframeRecorder.Body.String())
+	}
+	var timeframes timeframesResponse
+	if err := json.Unmarshal(timeframeRecorder.Body.Bytes(), &timeframes); err != nil {
+		t.Fatal(err)
+	}
+	if len(timeframes.Timeframes) != 10 || timeframes.Timeframes[2] != "1m" || timeframes.Timeframes[9] != "1D" {
+		t.Fatalf("unexpected enabled timeframes: %+v", timeframes.Timeframes)
 	}
 
 	from := time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC)
