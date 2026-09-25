@@ -76,32 +76,20 @@ func TestSlowSubscriberIsEvictedWithoutAffectingHealthySubscriber(t *testing.T) 
 	defer healthy.Cancel()
 
 	const eventCount = 8
-	received := make(chan []uint64, 1)
-	go func() {
-		sequences := make([]uint64, 0, eventCount)
-		for len(sequences) < eventCount {
-			event, ok := <-healthy.Events
-			if !ok {
-				received <- sequences
-				return
-			}
-			sequences = append(sequences, event.Seq)
-		}
-		received <- sequences
-	}()
-
 	base := time.Date(2026, 9, 25, 3, 45, 0, 0, time.UTC)
 	for i := 0; i < eventCount; i++ {
 		broker.PublishBar(bar("NSE:NIFTY50", "15s", base.Add(time.Duration(i)*time.Second), 25100+float64(i)))
-	}
-
-	select {
-	case sequences := <-received:
-		if len(sequences) != eventCount || sequences[eventCount-1] != eventCount {
-			t.Fatalf("healthy subscriber lost fan-out events: %+v", sequences)
+		select {
+		case event, ok := <-healthy.Events:
+			if !ok {
+				t.Fatalf("healthy subscriber was evicted at publish %d", i+1)
+			}
+			if event.Seq != uint64(i+1) {
+				t.Fatalf("healthy subscriber seq=%d want=%d", event.Seq, i+1)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("healthy subscriber stalled behind slow subscriber at publish %d", i+1)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("healthy subscriber stalled behind slow subscriber")
 	}
 
 	if got := broker.Snapshot().Subscribers; got != 1 {
