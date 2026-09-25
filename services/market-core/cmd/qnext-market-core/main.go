@@ -116,11 +116,17 @@ func main() {
 		}
 	}
 
+	enabledTimeframes := marketconfig.DefaultEnabledTimeframes()
+	if config != nil {
+		enabledTimeframes = append([]string(nil), config.Timeframes...)
+	}
+
 	handler := httpapi.New(store, httpapi.Options{
-		Version:       version,
-		Commit:        commit,
-		StartedAt:     started,
-		StreamHandler: stream.NewWebSocketHandler(broker),
+		Version:           version,
+		Commit:            commit,
+		StartedAt:         started,
+		StreamHandler:     stream.NewWebSocketHandler(broker),
+		EnabledTimeframes: enabledTimeframes,
 		LiveBars:      broker,
 		Symbols:       registry,
 		Calendars:     calendars,
