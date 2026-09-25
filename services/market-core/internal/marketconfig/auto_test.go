@@ -16,8 +16,21 @@ func TestAutoSyntheticConfigValidatesWithoutFixedLegs(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := config.ProviderKeys()
-	if len(keys) != 1 || keys[0] != "NSE_INDEX|Nifty 50" {
-		t.Fatalf("auto mode should bootstrap only the NIFTY provider key, got %+v", keys)
+	want := []string{
+		"BSE_INDEX|BANKEX",
+		"BSE_INDEX|SENSEX",
+		"NSE_INDEX|NIFTY MID SELECT",
+		"NSE_INDEX|Nifty 50",
+		"NSE_INDEX|Nifty Bank",
+		"NSE_INDEX|Nifty Fin Service",
+	}
+	if len(keys) != len(want) {
+		t.Fatalf("auto mode should bootstrap six index provider keys, got %+v", keys)
+	}
+	for i := range want {
+		if keys[i] != want[i] {
+			t.Fatalf("provider key %d=%q want %q; all keys=%+v", i, keys[i], want[i], keys)
+		}
 	}
 	if !config.AutoLegsEnabled() {
 		t.Fatal("expected auto-leg mode")
