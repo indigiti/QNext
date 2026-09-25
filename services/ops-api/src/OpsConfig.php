@@ -24,7 +24,7 @@ final class OpsConfig
             self::required('QNEXT_PUBLIC_ROOT'),
             rtrim(getenv('QNEXT_MARKET_CORE_URL') ?: 'http://127.0.0.1:8080', '/'),
             self::required('QNEXT_OPS_ADMIN_TOKEN'),
-            getenv('QNEXT_OPS_HELPER') ?: '/usr/local/libexec/qnext-ops-helper',
+            getenv('QNEXT_OPS_HELPER') ?: '/usr/local/bin/qnext-ops-web',
         );
     }
 
