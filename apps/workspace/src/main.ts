@@ -14,7 +14,7 @@ declare global {
 }
 
 const runtime = window.__QNEXT_CONFIG__ ?? {};
-const defaultApiBase = import.meta.env.BASE_URL.replace(/\/+$/, '');
+const defaultApiBase = window.location.pathname.replace(/\/+$/, '');
 
 const workspace = new VelaWorkspace('#app', {
   layout: false,
