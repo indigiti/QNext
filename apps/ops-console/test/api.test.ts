@@ -51,6 +51,33 @@ describe('OpsAPI', () => {
     expect(calls).toEqual([{ url: '/qnext/admin/api/index.php?route=%2Fstatus', token: 'secret' }]);
   });
 
+  it('loads authenticated runtime diagnostics', async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify({
+        desiredState: 'running',
+        pid: 123,
+        pidAlive: true,
+        pidPath: '/private/run/market-core.pid',
+        binaryPath: '/private/bin/qnext-market-core',
+        binaryFound: true,
+        logPath: '/private/logs/market-core.log',
+        logLines: ['market-core started'],
+        cronHeartbeatAt: '2026-09-25T07:00:00Z',
+        cronHeartbeatAgeSeconds: 10,
+        controlMode: 'cron',
+        helperPath: '/private/deploy/qnext-ops-user',
+      }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ token: 'secret', fetcher });
+    const diagnostics = await api.diagnostics();
+
+    expect(diagnostics.pidAlive).toBe(true);
+    expect(calls).toEqual(['/qnext/admin/api/index.php?route=%2Fdiagnostics']);
+  });
+
   it('surfaces API errors', async () => {
     const fetcher: typeof fetch = async () =>
       new Response(JSON.stringify({ error: 'denied' }), { status: 403 });
