@@ -13,18 +13,106 @@ final class ServiceControl
     public function __construct(
         private readonly string $helperPath,
         private readonly array $environment = [],
+        private readonly string $controlRequestPath = '',
+        private readonly string $desiredStatePath = '',
+        private readonly string $cronHeartbeatPath = '',
     ) {
     }
 
-    public function available(): bool
+    public function helperAvailable(): bool
+    {
+        return is_file($this->helperPath) && is_executable($this->helperPath);
+    }
+
+    public function processControlAvailable(): bool
     {
         return function_exists('proc_open')
             && function_exists('proc_close')
-            && is_file($this->helperPath)
-            && is_executable($this->helperPath);
+            && $this->helperAvailable();
+    }
+
+    public function cronControlAvailable(): bool
+    {
+        if (!$this->helperAvailable() || $this->cronHeartbeatPath === '' || !is_file($this->cronHeartbeatPath)) {
+            return false;
+        }
+
+        $modified = filemtime($this->cronHeartbeatPath);
+        return is_int($modified) && (time() - $modified) <= 150;
+    }
+
+    public function controlMode(): string
+    {
+        if ($this->processControlAvailable()) {
+            return 'direct';
+        }
+        if ($this->cronControlAvailable()) {
+            return 'cron';
+        }
+        return 'setup';
+    }
+
+    public function cronCommand(): string
+    {
+        if (!$this->helperAvailable()) {
+            return '';
+        }
+
+        return '* * * * * ' . $this->helperPath . ' reconcile >/dev/null 2>&1';
+    }
+
+    public function desiredState(): string
+    {
+        if ($this->desiredStatePath === '' || !is_file($this->desiredStatePath)) {
+            return 'stopped';
+        }
+
+        $value = trim((string) file_get_contents($this->desiredStatePath));
+        return $value === 'running' ? 'running' : 'stopped';
     }
 
     public function run(string $action, ?string $argument = null): array
+    {
+        $this->validateAction($action, $argument);
+
+        if ($this->processControlAvailable()) {
+            return $this->runDirect($action, $argument);
+        }
+
+        if (in_array($action, ['start', 'stop', 'restart'], true)) {
+            if (!$this->cronControlAvailable()) {
+                throw new RuntimeException(
+                    'Cloudways cron supervisor is not active; add the cron entry shown in QNext Operations'
+                );
+            }
+
+            $desired = $action === 'stop' ? 'stopped' : 'running';
+            $this->atomicWrite($this->desiredStatePath, $desired . PHP_EOL, 0640);
+            $this->atomicWrite($this->controlRequestPath, $action . PHP_EOL, 0640);
+
+            return [
+                'ok' => true,
+                'action' => $action,
+                'exitCode' => 0,
+                'output' => 'queued for Cloudways cron supervisor',
+                'error' => '',
+            ];
+        }
+
+        if ($action === 'status') {
+            return [
+                'ok' => true,
+                'action' => 'status',
+                'exitCode' => 0,
+                'output' => $this->desiredState(),
+                'error' => '',
+            ];
+        }
+
+        throw new RuntimeException('QNext direct process control is unavailable for this action');
+    }
+
+    private function validateAction(string $action, ?string $argument): void
     {
         if (!in_array($action, self::ACTIONS, true)) {
             throw new RuntimeException('unsupported service action');
@@ -36,16 +124,10 @@ final class ServiceControl
         } elseif ($argument !== null) {
             throw new RuntimeException('unexpected service action argument');
         }
+    }
 
-        if (!function_exists('proc_open') || !function_exists('proc_close')) {
-            throw new RuntimeException(
-                'Cloudways PHP process control is disabled; enable proc_open and proc_close for this application'
-            );
-        }
-        if (!is_file($this->helperPath) || !is_executable($this->helperPath)) {
-            throw new RuntimeException('QNext service helper is unavailable: ' . $this->helperPath);
-        }
-
+    private function runDirect(string $action, ?string $argument): array
+    {
         $command = [$this->helperPath, $action];
         if ($argument !== null) {
             $command[] = $argument;
@@ -90,5 +172,36 @@ final class ServiceControl
             'output' => trim($stdout),
             'error' => trim($stderr),
         ];
+    }
+
+    private function atomicWrite(string $path, string $contents, int $mode): void
+    {
+        if ($path === '') {
+            throw new RuntimeException('QNext control state path is not configured');
+        }
+
+        $directory = dirname($path);
+        if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+            throw new RuntimeException('cannot create QNext runtime state directory');
+        }
+
+        $temporary = tempnam($directory, '.qnext-control-');
+        if ($temporary === false) {
+            throw new RuntimeException('cannot allocate QNext control state');
+        }
+
+        try {
+            if (file_put_contents($temporary, $contents, LOCK_EX) === false) {
+                throw new RuntimeException('cannot write QNext control state');
+            }
+            @chmod($temporary, $mode);
+            if (!rename($temporary, $path)) {
+                throw new RuntimeException('cannot publish QNext control state');
+            }
+        } finally {
+            if (is_file($temporary)) {
+                @unlink($temporary);
+            }
+        }
     }
 }
