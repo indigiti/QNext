@@ -91,6 +91,9 @@ try {
     if ($method === 'GET' && $path === '/diagnostics') {
         respond(200, $controller->diagnostics());
     }
+    if ($method === 'GET' && $path === '/feed-status') {
+        respond(200, $controller->feedStatus());
+    }
     if ($method === 'PUT' && $path === '/config') {
         respond(200, $controller->saveConfig(request_body()));
     }
