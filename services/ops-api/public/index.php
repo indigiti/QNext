@@ -44,10 +44,19 @@ try {
 
     $controller = new OpsController($config);
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
-    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-    $prefix = '/qnext/admin/api';
-    if (str_starts_with($path, $prefix)) {
-        $path = substr($path, strlen($prefix)) ?: '/';
+
+    $route = $_GET['route'] ?? null;
+    if (is_string($route) && str_starts_with($route, '/')) {
+        $path = $route;
+    } else {
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+        $prefix = '/qnext/admin/api';
+        if (str_starts_with($path, $prefix)) {
+            $path = substr($path, strlen($prefix)) ?: '/';
+        }
+        if (str_starts_with($path, '/index.php')) {
+            $path = substr($path, strlen('/index.php')) ?: '/';
+        }
     }
 
     if ($method === 'GET' && $path === '/status') {
