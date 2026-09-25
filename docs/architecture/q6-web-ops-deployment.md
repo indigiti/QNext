@@ -120,10 +120,14 @@ Bootstrap responsibilities:
 4. install the narrow sudoers rules;
 5. install the Market Core systemd unit;
 6. ensure PHP execution is enabled under `/qnext/admin/api/index.php`; no rewrite rule is required;
-7. set the PHP environment values including a staging admin token;
-8. stage the first `digiops-release`.
+7. set the PHP environment values including a one-time `QNEXT_OPS_BOOTSTRAP_TOKEN` of at least 16 characters;
+8. stage the first `digiops-release`;
+9. open the Ops Console, choose the persistent admin token, and provide the one-time bootstrap token when prompted;
+10. remove `QNEXT_OPS_BOOTSTRAP_TOKEN` from the PHP environment after successful initialization.
 
 The packaged public bridge discovers either the direct DigiOps private layout (`private_html/qnext/ops-api`) or the versioned release layout (`private_html/qnext/current/private/ops-api`).
+
+The `/setup` endpoint fails closed when the bootstrap token is absent or incorrect and becomes permanently unavailable once the hashed admin token exists. The browser never stores the bootstrap token.
 
 After that, normal deploy/restart/configuration/rollback work is performed from the browser.
 
