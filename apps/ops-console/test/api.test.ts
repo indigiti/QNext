@@ -3,6 +3,23 @@ import { describe, expect, it } from 'vitest';
 import { OpsAPI } from '../src/api';
 
 describe('OpsAPI', () => {
+  it('checks setup status without sending a token', async () => {
+    const calls: Array<{ url: string; token: string | null }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({ url: String(input), token: headers.get('X-QNext-Ops-Token') });
+      return new Response(JSON.stringify({ initialized: false }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ token: 'secret', fetcher });
+    const status = await api.setupStatus();
+
+    expect(status.initialized).toBe(false);
+    expect(calls).toEqual([
+      { url: '/qnext/admin/api/index.php?route=%2Fsetup-status', token: null },
+    ]);
+  });
+
   it('sends the staging token and parses status', async () => {
     const calls: Array<{ url: string; token: string | null }> = [];
     const fetcher: typeof fetch = async (input, init) => {
