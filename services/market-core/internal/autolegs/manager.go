@@ -258,10 +258,16 @@ func (m *Manager) consider(ctx context.Context, obs observation) error {
 	if m.candidateATM != target {
 		m.candidateATM = target
 		m.candidateSince = obs.at
+		if m.cfg.Confirmation == 0 {
+			m.candidateATM = 0
+			m.candidateSince = time.Time{}
+			m.mu.Unlock()
+			return m.prepare(ctx, target, obs.at)
+		}
 		m.mu.Unlock()
 		return nil
 	}
-	if m.cfg.Confirmation > 0 && obs.at.Sub(m.candidateSince) < m.cfg.Confirmation {
+	if obs.at.Sub(m.candidateSince) < m.cfg.Confirmation {
 		m.mu.Unlock()
 		return nil
 	}
