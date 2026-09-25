@@ -21,6 +21,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--storage-root", required=True)
     parser.add_argument("--lookback", type=int, default=20)
     parser.add_argument("--horizon-bars", type=int, default=3)
+    parser.add_argument("--calendar-version", default="UNSPECIFIED")
+    parser.add_argument("--session", default="UNSPECIFIED")
+    parser.add_argument("--strategy-version", default="UNSPECIFIED")
+    parser.add_argument("--configuration-hash", default="UNSPECIFIED")
     return parser
 
 
@@ -41,6 +45,9 @@ def run(args: argparse.Namespace) -> dict:
         bars,
         as_of_time_ms=as_of_time_ms,
         lookback=args.lookback,
+        calendar_version=getattr(args, "calendar_version", "UNSPECIFIED"),
+        session=getattr(args, "session", "UNSPECIFIED"),
+        configuration_hash=getattr(args, "configuration_hash", "UNSPECIFIED"),
     )
     manifest = baseline_manifest(features.feature_set_version, as_of_time_ms)
     prediction = predict(
@@ -49,6 +56,7 @@ def run(args: argparse.Namespace) -> dict:
         baseline_probabilities,
         horizon_bars=args.horizon_bars,
         regime=classify_regime(features),
+        strategy_version=getattr(args, "strategy_version", "UNSPECIFIED"),
     )
 
     root = Path(args.storage_root)
