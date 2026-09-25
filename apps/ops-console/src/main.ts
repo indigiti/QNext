@@ -133,6 +133,23 @@ root.innerHTML = `
         </div>
       </section>
 
+      <section class="card span-3" id="candle-timeframes-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Candles</p>
+            <h2>Enabled timeframes</h2>
+            <p class="muted">15s and 30s are tick-built. 1m is the protected canonical source. Higher intraday/day intervals are rolled up from 1m; disabled intervals are not continuously built or stored.</p>
+          </div>
+          <button id="reload-candle-timeframes" class="secondary">Reload</button>
+        </div>
+        <div id="candle-timeframes-grid" class="market-toggle-grid"></div>
+        <div class="actions">
+          <button id="candle-defaults" class="secondary">Use defaults</button>
+          <button id="save-candle-timeframes">Save & restart</button>
+          <span class="muted">1m is locked ON for automatic Upstox recovery and local rollups.</span>
+        </div>
+      </section>
+
       <section class="card span-3" id="historical-repair-card">
         <div class="card-head">
           <div>
@@ -495,6 +512,68 @@ function selectedActiveMarkets() {
   ).map((input) => input.value);
 }
 
+function renderCandleTimeframes(
+  available: string[],
+  enabled: string[],
+  protectedTimeframes: string[],
+  defaults: string[],
+) {
+  const grid = document.querySelector<HTMLDivElement>('#candle-timeframes-grid')!;
+  const enabledSet = new Set(enabled);
+  const protectedSet = new Set(protectedTimeframes);
+  const defaultSet = new Set(defaults);
+
+  grid.dataset.defaults = JSON.stringify(defaults);
+  grid.innerHTML = available.map((timeframe) => {
+    const locked = protectedSet.has(timeframe);
+    const checked = enabledSet.has(timeframe) || locked;
+    const detail = locked
+      ? 'CORE / PROTECTED'
+      : checked
+        ? (defaultSet.has(timeframe) ? 'ENABLED / DEFAULT' : 'ENABLED')
+        : 'DISABLED';
+    return `
+      <label class="market-toggle">
+        <input
+          type="checkbox"
+          name="candle-timeframe"
+          value="${timeframe}"
+          ${checked ? 'checked' : ''}
+          ${locked ? 'disabled data-protected="true"' : ''}
+        />
+        <span>
+          <strong>${timeframe}</strong>
+          <small>${detail}</small>
+        </span>
+      </label>
+    `;
+  }).join('');
+
+  grid.querySelectorAll<HTMLInputElement>('input[name="candle-timeframe"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const small = input.closest<HTMLLabelElement>('.market-toggle')?.querySelector('small');
+      if (small) small.textContent = input.checked ? 'ENABLED' : 'DISABLED';
+    });
+  });
+}
+
+async function loadCandleTimeframes() {
+  try {
+    const state = await api.candleTimeframes();
+    renderCandleTimeframes(state.available, state.enabled, state.protected, state.defaults);
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
+function selectedCandleTimeframes() {
+  const selected = Array.from(
+    document.querySelectorAll<HTMLInputElement>('input[name="candle-timeframe"]:checked'),
+  ).map((input) => input.value);
+  if (!selected.includes('1m')) selected.push('1m');
+  return selected;
+}
+
 function renderHistoricalRepairStatus(response: HistoricalRepairStatusResponse) {
   const status = document.querySelector<HTMLDivElement>('#historical-repair-status')!;
   if (!response.ok || !response.body) {
@@ -585,6 +664,7 @@ tokenButton.addEventListener('click', async () => {
     await refresh();
     await loadConfig();
     await loadActiveMarkets();
+    await loadCandleTimeframes();
     await loadHistoricalRepairStatus();
   } catch (error) {
     toast((error as Error).message, true);
@@ -633,6 +713,37 @@ document.querySelector('#copy-diagnostics')!.addEventListener('click', async () 
 });
 document.querySelector('#load-config')!.addEventListener('click', () => void loadConfig());
 document.querySelector('#reload-active-markets')!.addEventListener('click', () => void loadActiveMarkets());
+document.querySelector('#reload-candle-timeframes')!.addEventListener('click', () => void loadCandleTimeframes());
+document.querySelector('#candle-defaults')!.addEventListener('click', () => {
+  const grid = document.querySelector<HTMLDivElement>('#candle-timeframes-grid')!;
+  const defaults = new Set<string>(JSON.parse(grid.dataset.defaults ?? '[]'));
+  defaults.add('1m');
+  grid.querySelectorAll<HTMLInputElement>('input[name="candle-timeframe"]').forEach((input) => {
+    input.checked = defaults.has(input.value) || input.dataset.protected === 'true';
+    const small = input.closest<HTMLLabelElement>('.market-toggle')?.querySelector('small');
+    if (small) {
+      small.textContent = input.dataset.protected === 'true'
+        ? 'CORE / PROTECTED'
+        : input.checked
+          ? 'ENABLED / DEFAULT'
+          : 'DISABLED';
+    }
+  });
+});
+document.querySelector('#save-candle-timeframes')!.addEventListener('click', async () => {
+  try {
+    const saved = await api.saveCandleTimeframes(selectedCandleTimeframes());
+    const result = await api.service('restart');
+    const queued = result.output.toLowerCase().includes('queued');
+    toast(
+      `Candle timeframes saved: ${saved.enabled.join(', ')}. Restart ${queued ? 'queued' : 'completed'}.`,
+    );
+    await loadCandleTimeframes();
+    await refresh();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+});
 document.querySelector('#refresh-history-repair')!.addEventListener('click', () => void loadHistoricalRepairStatus());
 document.querySelectorAll<HTMLButtonElement>('[data-history-days]').forEach((button) => {
   button.addEventListener('click', async () => {
