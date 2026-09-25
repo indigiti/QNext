@@ -101,17 +101,33 @@ func main() {
 		},
 		FeedStatus: func() any {
 			snapshot := feedTracker.Snapshot()
+			markets := marketconfig.DefaultMarkets()
+			if config != nil {
+				markets = config.EffectiveMarkets()
+			}
+
 			niftyID := "NSE:NIFTY50"
 			syntheticID := "QNEXT:NIFTY-SYN"
-			if config != nil {
-				niftyID = config.Nifty.InstrumentID
-				syntheticID = config.Synthetic.InstrumentID
+			marketStatus := make([]map[string]any, 0, len(markets))
+			for _, market := range markets {
+				marketStatus = append(marketStatus, map[string]any{
+					"symbol":                  market.Symbol,
+					"underlying_instrument_id": market.Underlying.InstrumentID,
+					"synthetic_instrument_id":  market.Synthetic.InstrumentID,
+					"exchange":                 market.Exchange,
+				})
+				if strings.EqualFold(market.Symbol, "NIFTY") {
+					niftyID = market.Underlying.InstrumentID
+					syntheticID = market.Synthetic.InstrumentID
+				}
 			}
+
 			return map[string]any{
 				"live_configured":         config != nil,
 				"resilience_configured":   resilienceConfig != nil,
 				"nifty_instrument_id":     niftyID,
 				"synthetic_instrument_id": syntheticID,
+				"markets":                 marketStatus,
 				"telemetry":               snapshot,
 				"resilience":              resilienceMetrics.Snapshot(),
 			}
