@@ -48,7 +48,6 @@ func TestNSECalendarFailsClosedOutsideCertifiedYear(t *testing.T) {
 	}
 }
 
-
 func TestWindowAtUsesCertifiedSessionAndFailsClosed(t *testing.T) {
 	registry := DefaultRegistry()
 	ist, err := time.LoadLocation("Asia/Kolkata")
