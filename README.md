@@ -13,9 +13,10 @@ QNext is a market-intelligence platform built around clear runtime ownership bou
 QNext intentionally starts with a lean deployment model:
 
 - **No production Node.js server**
-- **No application database in the initial architecture**
+- **No application database during initial live validation**
 - TypeScript/Node tooling may be used during build time only.
-- Durable state and market history use structured file-based persistence.
+- Durable state and market history use structured, versioned file-based persistence.
+- MariaDB is the planned relational migration target only after at least 30 consecutive days of stable live operation and an explicit migration-readiness review.
 - Redis, if introduced, is optional and ephemeral; it is not authoritative storage.
 
 ## Production request paths
@@ -36,21 +37,13 @@ PHP is not placed in the realtime market-data path.
 
 ## Current phase
 
-**Q0 — Foundation**
+**Q1-Q5 plan closure before Q6 Production.**
 
-Q0 freezes contracts and engineering boundaries before provider, UI, strategy, or AI implementation.
+The consolidated Q1-Q5 CI baseline is green. Remaining detailed-plan closure items are tracked before Q6 production certification.
 
-### Q0 exit gate
+Persistence remains file-backed/no-DB during this closure and through initial live validation. See ADR-0009 for the later MariaDB migration gate.
 
-- QNext naming is canonical.
-- Runtime stack and deployment constraints are frozen.
-- Cross-language market contracts are versioned.
-- REST/WebSocket contracts are specified.
-- Core architecture decisions are recorded as ADRs.
-- Certification gates and fixture conventions exist.
-- CI validates repository structure and contract files.
-
-## First vertical slice after Q0
+## Certified vertical slice
 
 ```text
 Provider

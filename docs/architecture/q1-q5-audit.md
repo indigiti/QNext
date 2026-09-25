@@ -40,3 +40,9 @@ Q6 may start only after the **Q1-Q5 Audit** workflow passes all four jobs:
 4. Q4 Strategy Lab certification
 
 The terminal gate emits `Q1_Q5_AUDIT_PASS`.
+
+## Persistence policy for Q6
+
+QNext remains file-backed with no application database through initial live validation. MariaDB is the planned first relational migration target, but a migration review may begin only after at least 30 consecutive days of stable live operation and the parity/backup/rollback gates in ADR-0009 are satisfied.
+
+Q6 must therefore preserve storage abstractions and canonical record identities so MariaDB can be introduced later without changing market-truth, replay, strategy, or intelligence semantics.

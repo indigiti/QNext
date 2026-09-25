@@ -31,4 +31,4 @@ This preserves the existing deployment model, keeps the critical market path ins
 - Browser realtime market data connects to the Go WebSocket service.
 - File formats and directory layouts become versioned persistence contracts.
 - File locking, atomic writes, compaction, retention, backup, and corruption recovery must be designed explicitly.
-- A future database migration requires a separate ADR and migration plan; it is not assumed by the current architecture.
+- Database adoption is governed by ADR-0009. File-backed persistence remains authoritative through initial live validation; MariaDB is the planned first relational migration target only after the defined live-observation and migration-readiness gates pass.
