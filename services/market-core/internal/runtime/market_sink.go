@@ -17,6 +17,7 @@ type BarPublisher interface {
 type MarketSink struct {
 	Pipeline          TickPipeline
 	Synthetic         SyntheticAssembler
+	Synthetics        []SyntheticAssembler
 	Publisher         BarPublisher
 	DirectInstruments map[string]bool
 	Observer          func(domain.Tick)
@@ -38,20 +39,33 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 	}
 
 	if s.Synthetic != nil {
-		syntheticTick, emitted, err := s.Synthetic.Apply(tick)
-		if err != nil {
+		if err := s.applySynthetic(s.Synthetic, tick); err != nil {
 			return err
 		}
-		if emitted {
-			if s.Observer != nil {
-				s.Observer(syntheticTick)
-			}
-			if err := s.applyCanonical(syntheticTick); err != nil {
-				return err
-			}
+	}
+	for _, synthetic := range s.Synthetics {
+		if synthetic == nil {
+			continue
+		}
+		if err := s.applySynthetic(synthetic, tick); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func (s *MarketSink) applySynthetic(assembler SyntheticAssembler, tick domain.Tick) error {
+	syntheticTick, emitted, err := assembler.Apply(tick)
+	if err != nil {
+		return err
+	}
+	if !emitted {
+		return nil
+	}
+	if s.Observer != nil {
+		s.Observer(syntheticTick)
+	}
+	return s.applyCanonical(syntheticTick)
 }
 
 func (s *MarketSink) applyCanonical(tick domain.Tick) error {
