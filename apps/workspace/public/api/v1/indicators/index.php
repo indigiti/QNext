@@ -88,7 +88,13 @@ foreach (($catalog['indicators'] ?? []) as $indicator) {
 
     if ($kind === 'pine-v6') {
         $script = $indicator['script'] ?? null;
-        if (!is_string($script) || trim($script) === '') {
+        if (
+            !is_string($script)
+            || trim($script) === ''
+            || strlen($script) > 262144
+            || !preg_match('/^\\s*\\/\\/@version=6\\b/m', $script)
+            || !preg_match('/\\b(indicator|strategy)\\s*\\(/', $script)
+        ) {
             continue;
         }
 
