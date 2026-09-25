@@ -129,6 +129,27 @@ func (c HistoricalRangeClient) FetchRange(
 	return result, nil
 }
 
+func (c HistoricalRangeClient) FetchWeeklyRange(
+	ctx context.Context,
+	accessToken string,
+	instrumentKey string,
+	from time.Time,
+	to time.Time,
+) ([]ProviderCandle, error) {
+	if from.IsZero() || to.IsZero() || !from.Before(to) {
+		return nil, errors.New("invalid weekly historical range")
+	}
+	return c.fetchHistoricalUnit(
+		ctx,
+		accessToken,
+		instrumentKey,
+		"weeks",
+		1,
+		from.Format("2006-01-02"),
+		to.Format("2006-01-02"),
+	)
+}
+
 func (c HistoricalRangeClient) FetchMonthlyRange(
 	ctx context.Context,
 	accessToken string,
