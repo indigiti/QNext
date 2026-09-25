@@ -204,3 +204,29 @@ func TestPipelineIgnoresOutOfSessionTick(t *testing.T) {
 		t.Fatalf("out-of-session tick must not create candles: %+v", updates)
 	}
 }
+
+
+func TestLateTickSkipsClosedShortFrameButUpdatesOpenLongFrame(t *testing.T) {
+	pipe, err := New(candle.New("candle-v3-clock"), nil, []string{"30s", "1m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pipe.ApplyTick(pipelineTick("2026-09-24T03:45:00Z", 25100, 1)); err != nil {
+		t.Fatal(err)
+	}
+	shortClose, _ := time.Parse(time.RFC3339, "2026-09-24T03:45:30Z")
+	if _, err := pipe.FinalizeDue(shortClose); err != nil {
+		t.Fatal(err)
+	}
+
+	updates, err := pipe.ApplyTick(pipelineTick("2026-09-24T03:45:20Z", 25110, 2))
+	if err != nil {
+		t.Fatalf("late short-frame tick must not stop ingestion: %v", err)
+	}
+	if len(updates) != 1 {
+		t.Fatalf("expected only the still-open 1m update, got %+v", updates)
+	}
+	if updates[0].Timeframe != "1m" || updates[0].Close != 25110 || updates[0].Final {
+		t.Fatalf("unexpected longer-frame update: %+v", updates[0])
+	}
+}
