@@ -500,6 +500,9 @@ func runMarket(
 			Runner:          wire,
 			Recovery:        recovery,
 			RequestSnapshot: subscriptions.Snapshot,
+			OnRecoveryError: func(err error) {
+				log.Printf("Upstox gap recovery failed; keeping Market Core online and retrying stream: %v", err)
+			},
 		}
 		return supervisor.Run(ctx, accessToken, request, dedupe.Handle)
 	}
