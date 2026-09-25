@@ -49,6 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           php -l apps/ops-console/public/api/index.php
+          php -l apps/workspace/public/api/v1/feed-status/index.php
           php -l services/ops-api/public/index.php
           php -l services/ops-api/src/Auth.php
           php -l services/ops-api/src/OpsConfig.php
@@ -169,6 +170,7 @@ jobs:
             "private_prefix": "private",
             "routes": {
               "workspace": "/qnext/",
+              "public_feed_status": "/qnext/api/v1/feed-status/",
               "ops_console": "/qnext/admin/",
               "ops_api": "/qnext/admin/api/index.php"
             }
@@ -178,6 +180,8 @@ jobs:
           cp release/release-manifest.json release/public/qnext-release.json
 
           test -s release/public/index.html
+          test -f release/public/api/v1/feed-status/index.php
+          php -l release/public/api/v1/feed-status/index.php
           test -s release/public/admin/index.html
           test -f release/public/admin/api/index.php
           php -l release/public/admin/api/index.php
