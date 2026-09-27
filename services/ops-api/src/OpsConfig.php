@@ -97,6 +97,11 @@ final class OpsConfig
         return $this->privateRoot . '/secrets/ops-auth.json';
     }
 
+    public function accessStorePath(): string
+    {
+        return $this->privateRoot . '/access/invite-approval.json';
+    }
+
     public function releasesRoot(): string
     {
         return $this->privateRoot . '/releases';
