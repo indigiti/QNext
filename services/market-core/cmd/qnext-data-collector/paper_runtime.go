@@ -27,16 +27,11 @@ func superviseSynPlusPaperRuntime(ctx context.Context, storageRoot, marketSymbol
 	}
 
 	addr := env("QNEXT_SYN_PLUS_PAPER_ADDR", "127.0.0.1:18082")
-	pythonPath := moduleRoot
-	if current := strings.TrimSpace(os.Getenv("PYTHONPATH")); current != "" {
-		pythonPath += string(os.PathListSeparator) + current
-	}
-
 	for ctx.Err() == nil {
 		cmd := exec.CommandContext(ctx, pythonBin, "-m", "qnext_strategy_lab.syn_plus_runtime")
+		cmd.Dir = moduleRoot
 		cmd.Env = append(
 			os.Environ(),
-			"PYTHONPATH="+pythonPath,
 			"QNEXT_STORAGE_ROOT="+storageRoot,
 			"QNEXT_SYN_PLUS_PAPER_ADDR="+addr,
 		)
