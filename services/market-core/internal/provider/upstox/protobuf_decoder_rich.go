@@ -85,7 +85,7 @@ func parseMarketFullFeed(payload []byte) (MarketState, error) {
 		case 4:
 			value, rest, err := consumeBytesField("MarketFullFeed.marketOHLC", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			_ = value
 			payload = rest
@@ -99,7 +99,7 @@ func parseMarketFullFeed(payload []byte) (MarketState, error) {
 		case 6:
 			value, rest, err := consumeInt64Field("MarketFullFeed.vtt", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			state.VTT = value
 			payload = rest
@@ -113,7 +113,7 @@ func parseMarketFullFeed(payload []byte) (MarketState, error) {
 		case 8:
 			value, rest, err := consumeDoubleField("MarketFullFeed.iv", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			state.IV = value
 			payload = rest
@@ -127,7 +127,7 @@ func parseMarketFullFeed(payload []byte) (MarketState, error) {
 		case 10:
 			value, rest, err := consumeDoubleField("MarketFullFeed.tsq", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			state.TSQ = value
 			payload = rest
@@ -154,7 +154,7 @@ func parseIndexFullFeed(payload []byte) (MarketState, error) {
 		case 1:
 			value, rest, err := consumeBytesField("IndexFullFeed.ltpc", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			ltpc, err := parseLTPC(value)
 			if err != nil {
@@ -185,7 +185,7 @@ func parseFirstLevelWithGreeks(payload []byte) (MarketState, error) {
 		case 1:
 			value, rest, err := consumeBytesField("FirstLevelWithGreeks.ltpc", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			ltpc, err := parseLTPC(value)
 			if err != nil {
@@ -196,18 +196,18 @@ func parseFirstLevelWithGreeks(payload []byte) (MarketState, error) {
 		case 2:
 			value, rest, err := consumeBytesField("FirstLevelWithGreeks.firstDepth", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			quote, err := parseQuote(value)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			state.Depth = []Quote{quote}
 			payload = rest
 		case 3:
 			value, rest, err := consumeBytesField("FirstLevelWithGreeks.optionGreeks", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			greeks, err := parseOptionGreeks(value)
 			if err != nil {
@@ -232,7 +232,7 @@ func parseFirstLevelWithGreeks(payload []byte) (MarketState, error) {
 		case 6:
 			value, rest, err := consumeDoubleField("FirstLevelWithGreeks.iv", typ, payload)
 			if err != nil {
-					return MarketState{}, err
+				return MarketState{}, err
 			}
 			state.IV = value
 			payload = rest
@@ -398,14 +398,14 @@ func parseLTPC(payload []byte) (LTPC, error) {
 		case 4:
 			value, rest, err := consumeDoubleField("LTPC.cp", typ, payload)
 			if err != nil {
-					return LTPC{}, err
+				return LTPC{}, err
 			}
 			ltpc.CP = value
 			payload = rest
 		default:
 			rest, err := skipField(num, typ, payload)
 			if err != nil {
-					return LTPC{}, err
+				return LTPC{}, err
 			}
 			payload = rest
 		}
