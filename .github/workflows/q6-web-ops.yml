@@ -52,7 +52,11 @@ jobs:
           find services/ops-api -name '*.php' -print0 | xargs -0 -n1 php -l
           php -l apps/ops-console/public/api/index.php
       - name: PHP smoke
-        run: php services/ops-api/tests/smoke.php
+        shell: bash
+        run: |
+          set -euo pipefail
+          php services/ops-api/tests/smoke.php
+          php services/ops-api/tests/access_smoke.php
       - name: Helper syntax
         run: |
           bash -n deploy/qnext-ops-helper
