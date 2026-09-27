@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -150,7 +151,7 @@ func microState(price float64) upstox.MarketState {
 func envelope(at time.Time, spot, call, put float64) upstox.DecodedEnvelope {
 	return upstox.DecodedEnvelope{
 		Type:      "live_feed",
-		CurrentTS: strconvFormatInt(at.UnixMilli()),
+		CurrentTS: strconv.FormatInt(at.UnixMilli(), 10),
 		Feeds: map[string]upstox.Feed{
 			"NSE_INDEX|Nifty 50": {LTPC: &upstox.LTPC{LTP: spot}},
 			"CE": {FirstLevelWithGreeks: statePtr(microState(call))},
@@ -161,8 +162,4 @@ func envelope(at time.Time, spot, call, put float64) upstox.DecodedEnvelope {
 
 func statePtr(state upstox.MarketState) *upstox.MarketState {
 	return &state
-}
-
-func strconvFormatInt(value int64) string {
-	return strconv.FormatInt(value, 10)
 }
