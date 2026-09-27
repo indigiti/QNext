@@ -52,9 +52,37 @@ resolve_binary() {
   return 1
 }
 
+resolve_collector_binary() {
+  local pointer candidate
+  pointer="$PAYLOAD_PRIVATE/bin/qnext-data-collector.current"
+  if [[ -s "$pointer" ]]; then
+    candidate="$(tr -d '\r\n' < "$pointer")"
+    if [[ "$candidate" =~ ^qnext-data-collector-[A-Za-z0-9._-]+$ && -f "$PAYLOAD_PRIVATE/bin/$candidate" ]]; then
+      printf '%s\n' "$PAYLOAD_PRIVATE/bin/$candidate"
+      return 0
+    fi
+  fi
+
+  if [[ -f "$PAYLOAD_PRIVATE/bin/qnext-data-collector" ]]; then
+    printf '%s\n' "$PAYLOAD_PRIVATE/bin/qnext-data-collector"
+    return 0
+  fi
+
+  candidate="$(ls -1t "$PAYLOAD_PRIVATE"/bin/qnext-data-collector-* 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$candidate" && -f "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  return 1
+}
+
 BINARY="$(resolve_binary || true)"
+COLLECTOR_BINARY="$(resolve_collector_binary || true)"
 PID_FILE="$PRIVATE_ROOT/run/market-core.pid"
+COLLECTOR_PID_FILE="$PRIVATE_ROOT/run/data-collector.pid"
 LOG_FILE="$PRIVATE_ROOT/logs/market-core.log"
+COLLECTOR_LOG_FILE="$PRIVATE_ROOT/logs/data-collector.log"
 CONFIG_FILE="$PRIVATE_ROOT/config/q1-market.json"
 RESILIENCE_FILE="$PRIVATE_ROOT/config/q3-resilience.json"
 SECRETS_FILE="$PRIVATE_ROOT/secrets/qnext.env"
@@ -76,15 +104,38 @@ read_pid() {
   fi
 }
 
+read_collector_pid() {
+  if [[ -s "$COLLECTOR_PID_FILE" ]]; then
+    cat "$COLLECTOR_PID_FILE"
+  fi
+}
+
 find_existing_pid() {
   local proc pid exe
   for proc in /proc/[0-9]*; do
     [[ -e "$proc/exe" ]] || continue
     pid="${proc##*/}"
-    [[ "$pid" != "$" ]] || continue
+    [[ "$pid" != "$$" ]] || continue
     exe="$(readlink -f "$proc/exe" 2>/dev/null || true)"
     case "$exe" in
       "$PAYLOAD_PRIVATE/bin/qnext-market-core"|"$PAYLOAD_PRIVATE/bin/qnext-market-core-"*)
+        printf '%s\n' "$pid"
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+find_existing_collector_pid() {
+  local proc pid exe
+  for proc in /proc/[0-9]*; do
+    [[ -e "$proc/exe" ]] || continue
+    pid="${proc##*/}"
+    [[ "$pid" != "$$" ]] || continue
+    exe="$(readlink -f "$proc/exe" 2>/dev/null || true)"
+    case "$exe" in
+      "$PAYLOAD_PRIVATE/bin/qnext-data-collector"|"$PAYLOAD_PRIVATE/bin/qnext-data-collector-"*)
         printf '%s\n' "$pid"
         return 0
         ;;
@@ -110,6 +161,23 @@ is_running() {
   return 1
 }
 
+collector_running() {
+  local pid
+  pid="$(read_collector_pid || true)"
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  rm -f "$COLLECTOR_PID_FILE"
+  pid="$(find_existing_collector_pid || true)"
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    printf '%s\n' "$pid" > "$COLLECTOR_PID_FILE"
+    return 0
+  fi
+
+  return 1
+}
+
 runtime_binary_current() {
   local pid running_identity deployed_identity
   pid="$(read_pid || true)"
@@ -119,6 +187,18 @@ runtime_binary_current() {
 
   running_identity="$(stat -Lc '%d:%i' "/proc/$pid/exe" 2>/dev/null || true)"
   deployed_identity="$(stat -Lc '%d:%i' "$BINARY" 2>/dev/null || true)"
+  [[ -n "$running_identity" && "$running_identity" == "$deployed_identity" ]]
+}
+
+collector_binary_current() {
+  local pid running_identity deployed_identity
+  pid="$(read_collector_pid || true)"
+  [[ -n "$pid" ]] || return 1
+  [[ -e "/proc/$pid/exe" ]] || return 1
+  [[ -f "$COLLECTOR_BINARY" ]] || return 1
+
+  running_identity="$(stat -Lc '%d:%i' "/proc/$pid/exe" 2>/dev/null || true)"
+  deployed_identity="$(stat -Lc '%d:%i' "$COLLECTOR_BINARY" 2>/dev/null || true)"
   [[ -n "$running_identity" && "$running_identity" == "$deployed_identity" ]]
 }
 
@@ -143,7 +223,7 @@ acquire_lock() {
     sleep 0.1
   done
 
-  printf '%s\n' "$" > "$LOCK_DIR/pid"
+  printf '%s\n' "$$" > "$LOCK_DIR/pid"
   trap 'rm -rf "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
 }
 
@@ -153,6 +233,16 @@ status() {
     return 0
   fi
   rm -f "$PID_FILE"
+  echo "stopped"
+  return 0
+}
+
+research_status() {
+  if collector_running; then
+    echo "active"
+    return 0
+  fi
+  rm -f "$COLLECTOR_PID_FILE"
   echo "stopped"
   return 0
 }
@@ -169,6 +259,13 @@ load_runtime_environment() {
     set +a
   fi
 
+  export QNEXT_DATA_COLLECTOR_MARKET="${QNEXT_DATA_COLLECTOR_MARKET:-NIFTY}"
+  export QNEXT_DATA_COLLECTOR_WING_STRIKES="${QNEXT_DATA_COLLECTOR_WING_STRIKES:-20}"
+  export QNEXT_DATA_COLLECTOR_FULL_WING_STRIKES="${QNEXT_DATA_COLLECTOR_FULL_WING_STRIKES:-5}"
+  export QNEXT_DATA_COLLECTOR_RAW_CAPTURE="${QNEXT_DATA_COLLECTOR_RAW_CAPTURE:-0}"
+  export QNEXT_SYN_PLUS_INSTRUMENT_ID="${QNEXT_SYN_PLUS_INSTRUMENT_ID:-QNEXT:NIFTY-SYN+}"
+  export QNEXT_SYN_PLUS_VERSION="${QNEXT_SYN_PLUS_VERSION:-nifty-syn-plus-v1}"
+
   unset QNEXT_MARKET_CONFIG QNEXT_RESILIENCE_CONFIG
 
   if [[ -s "$CONFIG_FILE" && -n "${UPSTOX_ACCESS_TOKEN:-}" ]]; then
@@ -184,14 +281,51 @@ market_healthy() {
   curl --fail --silent --show-error --max-time 2 "$MARKET_URL/health" >/dev/null 2>&1
 }
 
+start_collector() {
+  COLLECTOR_BINARY="$(resolve_collector_binary || true)"
+  if [[ -z "$COLLECTOR_BINARY" || ! -f "$COLLECTOR_BINARY" ]]; then
+    return 0
+  fi
+  if [[ -z "${UPSTOX_ACCESS_TOKEN:-}" ]]; then
+    return 0
+  fi
+
+  if collector_running; then
+    if collector_binary_current; then
+      return 0
+    fi
+    stop_collector >/dev/null || true
+  fi
+
+  if [[ ! -x "$COLLECTOR_BINARY" ]]; then
+    chmod 0750 "$COLLECTOR_BINARY" || return 2
+  fi
+
+  nohup "$COLLECTOR_BINARY" >>"$COLLECTOR_LOG_FILE" 2>&1 </dev/null &
+  collector_pid=$!
+  printf '%s\n' "$collector_pid" > "$COLLECTOR_PID_FILE"
+
+  sleep 1
+  if ! kill -0 "$collector_pid" 2>/dev/null; then
+    rm -f "$COLLECTOR_PID_FILE"
+    echo "QNext Data Collector exited during startup" >>"$COLLECTOR_LOG_FILE"
+    return 4
+  fi
+  return 0
+}
+
 start_service() {
   BINARY="$(resolve_binary || true)"
+  load_runtime_environment
 
   if is_running; then
     if ! runtime_binary_current; then
       echo "QNext Market Core binary changed after deployment; restarting runtime" >>"$LOG_FILE"
       stop_service >/dev/null || true
     elif market_healthy; then
+      if ! start_collector; then
+        echo "QNext Data Collector is unavailable; Market Core remains active" >>"$COLLECTOR_LOG_FILE"
+      fi
       echo "active"
       return 0
     else
@@ -211,8 +345,6 @@ start_service() {
     }
   fi
 
-  load_runtime_environment
-
   nohup "$BINARY" >>"$LOG_FILE" 2>&1 </dev/null &
   pid=$!
   printf '%s\n' "$pid" > "$PID_FILE"
@@ -227,6 +359,9 @@ start_service() {
     return 4
   fi
 
+  if ! start_collector; then
+    echo "QNext Data Collector is unavailable; Market Core remains active" >>"$COLLECTOR_LOG_FILE"
+  fi
   prune_old_binaries
   echo "active"
 }
@@ -238,9 +373,35 @@ prune_old_binaries() {
     [[ "$candidate" == "$BINARY" ]] && continue
     rm -f "$candidate" 2>/dev/null || true
   done
+  for candidate in "$PAYLOAD_PRIVATE"/bin/qnext-data-collector-*; do
+    [[ -e "$candidate" ]] || continue
+    [[ "$candidate" == "$COLLECTOR_BINARY" ]] && continue
+    rm -f "$candidate" 2>/dev/null || true
+  done
+}
+
+stop_collector() {
+  if ! collector_running; then
+    rm -f "$COLLECTOR_PID_FILE"
+    return 0
+  fi
+
+  collector_pid="$(read_collector_pid)"
+  kill -TERM "$collector_pid" 2>/dev/null || true
+  for _ in {1..30}; do
+    if ! kill -0 "$collector_pid" 2>/dev/null; then
+      rm -f "$COLLECTOR_PID_FILE"
+      return 0
+    fi
+    sleep 0.2
+  done
+  kill -KILL "$collector_pid" 2>/dev/null || true
+  rm -f "$COLLECTOR_PID_FILE"
 }
 
 stop_service() {
+  stop_collector >/dev/null || true
+
   if ! is_running; then
     rm -f "$PID_FILE"
     echo "stopped"
@@ -327,6 +488,9 @@ action="${1:-}"
 case "$action" in
   status)
     status
+    ;;
+  research-status)
+    research_status
     ;;
   start)
     acquire_lock

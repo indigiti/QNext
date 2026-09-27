@@ -30,7 +30,17 @@ func main() {
 		log.Fatal(err)
 	}
 	storageRoot := env("QNEXT_STORAGE_ROOT", "./storage")
-	collector, err := research.NewOptionsCollector(storageRoot)
+	store, err := research.NewJSONLStore(storageRoot)
+	if err != nil {
+		log.Fatalf("create research storage: %v", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("close research storage: %v", err)
+		}
+	}()
+
+	collector, err := research.NewOptionsCollectorWithStore(store)
 	if err != nil {
 		log.Fatalf("create research collector: %v", err)
 	}
@@ -40,7 +50,7 @@ func main() {
 		}
 	}()
 
-	synPlus, err := research.NewSynPlusCollector(storageRoot, research.SynPlusConfig{
+	synPlus, err := research.NewSynPlusCollectorWithStore(store, research.SynPlusConfig{
 		InstrumentID:           env("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:"+market.Symbol+"-SYN+"),
 		Version:                env("QNEXT_SYN_PLUS_VERSION", strings.ToLower(market.Symbol)+"-syn-plus-v1"),
 		MinimumValidCandidates: market.Synthetic.MinimumValidCandidates,
@@ -80,8 +90,8 @@ func main() {
 		runner.FullWingStrikes,
 		env("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:"+market.Symbol+"-SYN+"),
 	)
-	sinks := research.MultiSink{collector, synPlus}
-	if err := runner.Run(ctx, accessToken, market.Underlying.ProviderKey, sinks); err != nil && !errors.Is(err, context.Canceled) {
+	hub := research.NewResearchStateHub(collector, synPlus)
+	if err := runner.Run(ctx, accessToken, market.Underlying.ProviderKey, hub); err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatalf("qnext-data-collector stopped: %v", err)
 	}
 }

@@ -4,12 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -65,8 +62,9 @@ type synPlusLeg struct {
 }
 
 type SynPlusCollector struct {
-	root string
-	cfg  SynPlusConfig
+	store     *JSONLStore
+	ownsStore bool
+	cfg       SynPlusConfig
 
 	mu         sync.Mutex
 	legs       map[string]synPlusLeg
@@ -77,8 +75,25 @@ type SynPlusCollector struct {
 }
 
 func NewSynPlusCollector(root string, cfg SynPlusConfig) (*SynPlusCollector, error) {
-	if strings.TrimSpace(root) == "" {
-		return nil, errors.New("SYN+ storage root is required")
+	store, err := NewJSONLStore(root)
+	if err != nil {
+		return nil, err
+	}
+	collector, err := newSynPlusCollector(store, true, cfg)
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	return collector, nil
+}
+
+func NewSynPlusCollectorWithStore(store *JSONLStore, cfg SynPlusConfig) (*SynPlusCollector, error) {
+	return newSynPlusCollector(store, false, cfg)
+}
+
+func newSynPlusCollector(store *JSONLStore, ownsStore bool, cfg SynPlusConfig) (*SynPlusCollector, error) {
+	if store == nil {
+		return nil, errors.New("SYN+ storage is required")
 	}
 	if strings.TrimSpace(cfg.InstrumentID) == "" {
 		return nil, errors.New("SYN+ instrument id is required")
@@ -96,28 +111,27 @@ func NewSynPlusCollector(root string, cfg SynPlusConfig) (*SynPlusCollector, err
 		cfg.MaxLegTimeSkew = time.Second
 	}
 	return &SynPlusCollector{
-		root: root,
-		cfg:  cfg,
-		legs: make(map[string]synPlusLeg),
+		store:     store,
+		ownsStore: ownsStore,
+		cfg:       cfg,
+		legs:      make(map[string]synPlusLeg),
 	}, nil
 }
 
+// Observe is retained for direct/test callers. Production uses one shared
+// ResearchStateHub so rich feed normalization is performed only once.
 func (c *SynPlusCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.ResearchPlan) error {
+	return NewResearchStateHub(c).Observe(envelope, plan)
+}
+
+func (c *SynPlusCollector) ObserveState(update ResearchStateUpdate) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
 		return errors.New("SYN+ collector is closed")
 	}
 
-	sourceMS, err := strconv.ParseInt(envelope.CurrentTS, 10, 64)
-	if err != nil || sourceMS <= 0 {
-		if envelope.Type == "market_info" {
-			return nil
-		}
-		return errors.New("SYN+ envelope has invalid currentTs")
-	}
-	sourceTime := time.UnixMilli(sourceMS).UTC()
-
+	plan := update.Plan
 	for key := range c.legs {
 		contract, selected := plan.Contracts[key]
 		if !selected || contract.Expiry != plan.CurrentExpiry {
@@ -125,7 +139,7 @@ func (c *SynPlusCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.
 		}
 	}
 
-	bucket := sourceTime.Truncate(time.Second)
+	bucket := update.SourceTime.Truncate(time.Second)
 	if c.lastBucket.IsZero() {
 		c.lastBucket = bucket
 	} else if bucket.After(c.lastBucket) {
@@ -136,34 +150,31 @@ func (c *SynPlusCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.
 		c.lastBucket = bucket
 	}
 
-	if feed, ok := envelope.Feeds[plan.UnderlyingKey]; ok && feed.LTPC != nil && feed.LTPC.LTP > 0 {
-		c.spot = feed.LTPC.LTP
+	if update.SpotUpdated && update.Spot > 0 {
+		c.spot = update.Spot
 	}
-	for key, contract := range plan.Contracts {
-		if contract.Expiry != plan.CurrentExpiry {
+	for key, entry := range update.Updates {
+		contract, selected := plan.Contracts[key]
+		if !selected || contract.Expiry != plan.CurrentExpiry {
 			continue
 		}
-		feed, ok := envelope.Feeds[key]
-		if !ok {
-			continue
-		}
-		state, ok := feed.ResearchState()
-		if !ok {
-			continue
-		}
-		c.legs[key] = synPlusLeg{state: state, updatedAt: sourceTime}
+		c.legs[key] = synPlusLeg{state: entry.State, updatedAt: entry.UpdatedAt}
 	}
-	c.lastSource = sourceMS
+	c.lastSource = update.SourceMS
 	return nil
 }
 
 func (c *SynPlusCollector) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return nil
 	}
 	c.closed = true
+	c.mu.Unlock()
+	if c.ownsStore {
+		return c.store.Close()
+	}
 	return nil
 }
 
@@ -320,7 +331,6 @@ func (c *SynPlusCollector) persist(snapshot SynPlusSnapshot) error {
 	}
 	at := time.UnixMilli(snapshot.SnapshotAtMS).UTC()
 	path := filepath.Join(
-		c.root,
 		"research",
 		"synthetic",
 		"1s",
@@ -328,20 +338,5 @@ func (c *SynPlusCollector) persist(snapshot SynPlusSnapshot) error {
 		at.Format("01"),
 		at.Format("2006-01-02")+".jsonl",
 	)
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	written, err := io.Copy(file, &buffer)
-	if err != nil {
-		return err
-	}
-	if written <= 0 {
-		return io.ErrShortWrite
-	}
-	return file.Sync()
+	return c.store.Append(path, buffer.Bytes())
 }
