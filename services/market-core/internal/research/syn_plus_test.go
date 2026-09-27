@@ -13,25 +13,19 @@ import (
 )
 
 func TestSynPlusFairPricePreference(t *testing.T) {
-	micro, source, ok := synPlusFairPrice(upstox.MarketState{
-		LTPC:  &upstox.LTPC{LTP: 99},
-		Depth: []upstox.Quote{{BidP: 100, AskP: 102, BidQ: 3, AskQ: 1}},
-	})
+	micro, source, ok := synPlusFairPrice(marketState(100, 102, 3, 1, 99))
 	if !ok || source != "MICROPRICE" || micro != 101.5 {
-		t.Fatalf("microprice = %v %q %v, want 101.5 MICROPRICE true", micro, source, ok)
+		t.Fatalf("microprice = %v %q %v", micro, source, ok)
 	}
 
-	mid, source, ok := synPlusFairPrice(upstox.MarketState{
-		LTPC:  &upstox.LTPC{LTP: 99},
-		Depth: []upstox.Quote{{BidP: 100, AskP: 102}},
-	})
+	mid, source, ok := synPlusFairPrice(marketState(100, 102, 0, 0, 99))
 	if !ok || source != "MID" || mid != 101 {
-		t.Fatalf("mid = %v %q %v, want 101 MID true", mid, source, ok)
+		t.Fatalf("mid = %v %q %v", mid, source, ok)
 	}
 
 	ltp, source, ok := synPlusFairPrice(upstox.MarketState{LTPC: &upstox.LTPC{LTP: 99}})
 	if !ok || source != "LTP" || ltp != 99 {
-		t.Fatalf("ltp = %v %q %v, want 99 LTP true", ltp, source, ok)
+		t.Fatalf("ltp = %v %q %v", ltp, source, ok)
 	}
 }
 
@@ -48,44 +42,22 @@ func TestSynPlusEvaluateUsesCurrentExpiryMedian(t *testing.T) {
 		spot: 25014,
 		legs: make(map[string]synPlusLeg),
 	}
-	plan := upstox.ResearchPlan{
-		UnderlyingKey: "NSE_INDEX|Nifty 50",
-		Spot:          25000,
-		ATM:           25000,
-		CurrentExpiry: "2026-10-01",
-		NextExpiry:    "2026-10-08",
-		Contracts:     make(map[string]upstox.OptionContract),
-	}
+	plan := testPlan()
 
-	addPair := func(prefix string, strike, callPrice, putPrice float64, expiry string) {
-		callKey := prefix + "-CE"
-		putKey := prefix + "-PE"
-		plan.Contracts[callKey] = upstox.OptionContract{InstrumentKey: callKey, Expiry: expiry, StrikePrice: strike, InstrumentType: "CE"}
-		plan.Contracts[putKey] = upstox.OptionContract{InstrumentKey: putKey, Expiry: expiry, StrikePrice: strike, InstrumentType: "PE"}
-		collector.legs[callKey] = synPlusLeg{state: microState(callPrice), updatedAt: at.Add(-100 * time.Millisecond)}
-		collector.legs[putKey] = synPlusLeg{state: microState(putPrice), updatedAt: at.Add(-100 * time.Millisecond)}
-	}
-
-	addPair("a", 25000, 110, 95, plan.CurrentExpiry)
-	addPair("b", 25050, 85, 120, plan.CurrentExpiry)
-	addPair("c", 25100, 60, 145, plan.CurrentExpiry)
-	addPair("next", 25000, 500, 1, plan.NextExpiry)
+	addPair(collector, &plan, at, "a", 25000, 110, 95, plan.CurrentExpiry)
+	addPair(collector, &plan, at, "b", 25050, 85, 120, plan.CurrentExpiry)
+	addPair(collector, &plan, at, "c", 25100, 60, 145, plan.CurrentExpiry)
+	addPair(collector, &plan, at, "next", 25000, 500, 1, plan.NextExpiry)
 
 	snapshot := collector.evaluate(plan, at, at.UnixMilli())
-	if snapshot.Quality != "GOOD" {
-		t.Fatalf("quality = %q, want GOOD", snapshot.Quality)
-	}
-	if snapshot.Value != 25015 {
-		t.Fatalf("value = %v, want 25015", snapshot.Value)
+	if snapshot.Quality != "GOOD" || snapshot.Value != 25015 {
+		t.Fatalf("snapshot quality/value = %s/%v", snapshot.Quality, snapshot.Value)
 	}
 	if snapshot.Spot != 25014 || snapshot.BasisToSpot != 1 {
-		t.Fatalf("spot/basis = %v/%v, want 25014/1", snapshot.Spot, snapshot.BasisToSpot)
+		t.Fatalf("spot/basis = %v/%v", snapshot.Spot, snapshot.BasisToSpot)
 	}
-	if snapshot.ValidCandidates != 3 {
-		t.Fatalf("valid candidates = %d, want 3", snapshot.ValidCandidates)
-	}
-	if snapshot.MicropriceLegs != 6 {
-		t.Fatalf("microprice legs = %d, want 6", snapshot.MicropriceLegs)
+	if snapshot.ValidCandidates != 3 || snapshot.MicropriceLegs != 6 {
+		t.Fatalf("valid/micro legs = %d/%d", snapshot.ValidCandidates, snapshot.MicropriceLegs)
 	}
 }
 
@@ -100,22 +72,16 @@ func TestSynPlusObservePersistsShadowSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan := upstox.ResearchPlan{
-		UnderlyingKey: "NSE_INDEX|Nifty 50",
-		Spot:          25000,
-		ATM:           25000,
-		CurrentExpiry: "2026-10-01",
-		Contracts: map[string]upstox.OptionContract{
-			"CE": {InstrumentKey: "CE", Expiry: "2026-10-01", StrikePrice: 25000, InstrumentType: "CE"},
-			"PE": {InstrumentKey: "PE", Expiry: "2026-10-01", StrikePrice: 25000, InstrumentType: "PE"},
-		},
-	}
-	first := time.Date(2026, 9, 28, 4, 0, 0, 200_000_000, time.UTC)
-	if err := collector.Observe(envelope(first, 25010, 110, 100), plan); err != nil {
+	plan := testPlan()
+	plan.NextExpiry = ""
+	plan.Contracts = make(map[string]upstox.OptionContract)
+	now := time.Date(2026, 9, 28, 4, 0, 0, 200_000_000, time.UTC)
+	addContractPair(&plan, "p", 25000, plan.CurrentExpiry)
+
+	if err := collector.Observe(testEnvelope(now, 25010, 110, 100), plan); err != nil {
 		t.Fatal(err)
 	}
-	second := first.Add(time.Second)
-	if err := collector.Observe(envelope(second, 25012, 111, 99), plan); err != nil {
+	if err := collector.Observe(testEnvelope(now.Add(time.Second), 25012, 111, 99), plan); err != nil {
 		t.Fatal(err)
 	}
 
@@ -128,34 +94,55 @@ func TestSynPlusObservePersistsShadowSnapshot(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(string(data))), &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.InstrumentID != "QNEXT:NIFTY-SYN+" || snapshot.Value != 25010 {
-		t.Fatalf("snapshot = %+v, want NIFTY-SYN+ value 25010", snapshot)
+	if snapshot.InstrumentID != "QNEXT:NIFTY-SYN+" || snapshot.Value != 25010 || snapshot.Spot != 25010 {
+		t.Fatalf("unexpected persisted snapshot: %+v", snapshot)
 	}
-	if snapshot.Spot != 25010 {
-		t.Fatalf("snapshot spot = %v, want live spot 25010", snapshot.Spot)
+}
+
+func testPlan() upstox.ResearchPlan {
+	return upstox.ResearchPlan{
+		UnderlyingKey: "NSE_INDEX|Nifty 50",
+		Spot:          25000,
+		ATM:           25000,
+		CurrentExpiry: "2026-10-01",
+		NextExpiry:    "2026-10-08",
+		Contracts:     make(map[string]upstox.OptionContract),
 	}
+}
+
+func addPair(collector *SynPlusCollector, plan *upstox.ResearchPlan, at time.Time, prefix string, strike, callPrice, putPrice float64, expiry string) {
+	callKey, putKey := addContractPair(plan, prefix, strike, expiry)
+	collector.legs[callKey] = synPlusLeg{state: microState(callPrice), updatedAt: at.Add(-100 * time.Millisecond)}
+	collector.legs[putKey] = synPlusLeg{state: microState(putPrice), updatedAt: at.Add(-100 * time.Millisecond)}
+}
+
+func addContractPair(plan *upstox.ResearchPlan, prefix string, strike float64, expiry string) (string, string) {
+	callKey := prefix + "-CE"
+	putKey := prefix + "-PE"
+	plan.Contracts[callKey] = upstox.OptionContract{InstrumentKey: callKey, Expiry: expiry, StrikePrice: strike, InstrumentType: "CE"}
+	plan.Contracts[putKey] = upstox.OptionContract{InstrumentKey: putKey, Expiry: expiry, StrikePrice: strike, InstrumentType: "PE"}
+	return callKey, putKey
 }
 
 func microState(price float64) upstox.MarketState {
+	return marketState(price-1, price+1, 1, 1, price)
+}
+
+func marketState(bid, ask float64, bidQty, askQty int64, ltp float64) upstox.MarketState {
 	return upstox.MarketState{
-		LTPC: &upstox.LTPC{LTP: price},
-		Depth: []upstox.Quote{{
-			BidP: price - 1,
-			AskP: price + 1,
-			BidQ: 1,
-			AskQ: 1,
-		}},
+		LTPC:  &upstox.LTPC{LTP: ltp},
+		Depth: []upstox.Quote{{BidP: bid, AskP: ask, BidQ: bidQty, AskQ: askQty}},
 	}
 }
 
-func envelope(at time.Time, spot, call, put float64) upstox.DecodedEnvelope {
+func testEnvelope(at time.Time, spot, call, put float64) upstox.DecodedEnvelope {
 	return upstox.DecodedEnvelope{
 		Type:      "live_feed",
 		CurrentTS: strconv.FormatInt(at.UnixMilli(), 10),
 		Feeds: map[string]upstox.Feed{
 			"NSE_INDEX|Nifty 50": {LTPC: &upstox.LTPC{LTP: spot}},
-			"CE":                  {FirstLevelWithGreeks: statePtr(microState(call))},
-			"PE":                  {FirstLevelWithGreeks: statePtr(microState(put))},
+			"p-CE":               {FirstLevelWithGreeks: statePtr(microState(call))},
+			"p-PE":               {FirstLevelWithGreeks: statePtr(microState(put))},
 		},
 	}
 }
