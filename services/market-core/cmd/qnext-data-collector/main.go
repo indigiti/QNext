@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/capture"
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
@@ -39,6 +40,22 @@ func main() {
 		}
 	}()
 
+	synPlus, err := research.NewSynPlusCollector(storageRoot, research.SynPlusConfig{
+		InstrumentID:           env("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:"+market.Symbol+"-SYN+"),
+		Version:                env("QNEXT_SYN_PLUS_VERSION", strings.ToLower(market.Symbol)+"-syn-plus-v1"),
+		MinimumValidCandidates: market.Synthetic.MinimumValidCandidates,
+		MaxLegAge:              time.Duration(market.Synthetic.MaxLegAgeMS) * time.Millisecond,
+		MaxLegTimeSkew:         time.Duration(market.Synthetic.MaxLegTimeSkewMS) * time.Millisecond,
+	})
+	if err != nil {
+		log.Fatalf("create SYN+ collector: %v", err)
+	}
+	defer func() {
+		if err := synPlus.Close(); err != nil {
+			log.Printf("close SYN+ collector: %v", err)
+		}
+	}()
+
 	runner := &upstox.ResearchRunner{
 		Authorizer:      upstox.Authorizer{},
 		Dialer:          upstox.GorillaDialer{},
@@ -56,13 +73,15 @@ func main() {
 	}
 
 	log.Printf(
-		"qnext-data-collector starting market=%s underlying=%s wing=%d full_wing=%d",
+		"qnext-data-collector starting market=%s underlying=%s wing=%d full_wing=%d syn_plus=%s",
 		market.Symbol,
 		market.Underlying.ProviderKey,
 		runner.WingStrikes,
 		runner.FullWingStrikes,
+		env("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:"+market.Symbol+"-SYN+"),
 	)
-	if err := runner.Run(ctx, accessToken, market.Underlying.ProviderKey, collector); err != nil && !errors.Is(err, context.Canceled) {
+	sinks := research.MultiSink{collector, synPlus}
+	if err := runner.Run(ctx, accessToken, market.Underlying.ProviderKey, sinks); err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatalf("qnext-data-collector stopped: %v", err)
 	}
 }
