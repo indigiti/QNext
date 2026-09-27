@@ -51,6 +51,9 @@ jobs:
       - name: Build market core
         run: go build ./cmd/qnext-market-core
 
+      - name: Build data collector
+        run: go build ./cmd/qnext-data-collector
+
       - name: Capture module lockfile
         if: always()
         uses: actions/upload-artifact@v4
