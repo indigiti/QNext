@@ -1,20 +1,45 @@
 package stream
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/feedstatus"
+	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
+	"github.com/indigiti/QNext/services/market-core/internal/research"
 )
+
+const researchBridgeTokenHeader = "X-QNext-Research-Token"
 
 type WebSocketHandler struct {
 	Broker        *Broker
 	AllowedOrigin func(*http.Request) bool
+	shadow        *synPlusShadowBridge
+}
+
+type synPlusShadowBridge struct {
+	broker       *Broker
+	engine       *candle.Engine
+	instrumentID string
+	timeframes   []string
+	sequence     atomic.Uint64
+
+	mu         sync.RWMutex
+	latest     research.SynPlusSnapshot
+	receivedAt time.Time
 }
 
 type clientMessage struct {
@@ -53,12 +78,50 @@ type wireBar struct {
 }
 
 func NewWebSocketHandler(broker *Broker) http.Handler {
-	return &WebSocketHandler{Broker: broker}
+	handler := &WebSocketHandler{
+		Broker: broker,
+		shadow: newSynPlusShadowBridge(broker),
+	}
+	if handler.shadow != nil {
+		feedstatus.SetDefaultSyntheticStatusFor(handler.shadow.instrumentID, handler.shadow.status)
+	}
+	return handler
+}
+
+func newSynPlusShadowBridge(broker *Broker) *synPlusShadowBridge {
+	if broker == nil {
+		return nil
+	}
+	instrumentID := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID"))
+	if instrumentID == "" {
+		instrumentID = "QNEXT:NIFTY-SYN+"
+	}
+	timeframes := marketconfig.DefaultChartTimeframes()
+	if path := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG")); path != "" {
+		if config, err := marketconfig.Load(path); err == nil {
+			timeframes = config.EffectiveChartTimeframes()
+		}
+	}
+	return &synPlusShadowBridge{
+		broker:       broker,
+		engine:       candle.New("candle-v2-session-aligned-shadow"),
+		instrumentID: instrumentID,
+		timeframes:   append([]string(nil), timeframes...),
+	}
 }
 
 func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.Broker == nil {
 		http.Error(w, "stream broker unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if r.Method == http.MethodPost {
+		h.serveSynPlusSnapshot(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET, POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -178,6 +241,120 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_ = write(protocolError("UNKNOWN_OPERATION", "unsupported stream operation"))
 		}
 	}
+}
+
+func (h *WebSocketHandler) serveSynPlusSnapshot(w http.ResponseWriter, r *http.Request) {
+	if h.shadow == nil {
+		http.Error(w, "SYN+ shadow bridge unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	expected := researchBridgeToken()
+	provided := strings.TrimSpace(r.Header.Get(researchBridgeTokenHeader))
+	if expected == "" || provided == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(provided)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var snapshot research.SynPlusSnapshot
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err := decoder.Decode(&snapshot); err != nil {
+		http.Error(w, "invalid SYN+ snapshot", http.StatusBadRequest)
+		return
+	}
+	if snapshot.Schema != research.SynPlusSnapshotSchema ||
+		!strings.EqualFold(strings.TrimSpace(snapshot.InstrumentID), h.shadow.instrumentID) ||
+		snapshot.SnapshotAtMS <= 0 {
+		http.Error(w, "invalid SYN+ snapshot", http.StatusUnprocessableEntity)
+		return
+	}
+
+	if err := h.shadow.observe(snapshot); err != nil {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	_ = json.NewEncoder(w).Encode(map[string]any{"accepted": true, "mode": "SHADOW"})
+}
+
+func (b *synPlusShadowBridge) observe(snapshot research.SynPlusSnapshot) error {
+	b.mu.Lock()
+	b.latest = snapshot
+	b.receivedAt = time.Now().UTC()
+	b.mu.Unlock()
+
+	if snapshot.Value <= 0 {
+		return nil
+	}
+	quality := domain.QualityDegraded
+	if strings.EqualFold(snapshot.Quality, string(domain.QualityGood)) {
+		quality = domain.QualityGood
+	}
+	tick := domain.Tick{
+		InstrumentID:     b.instrumentID,
+		Provider:         "qnext-syn-plus-shadow",
+		Price:            snapshot.Value,
+		EventTime:        time.UnixMilli(snapshot.SnapshotAtMS).UTC(),
+		ReceivedTime:     time.Now().UTC(),
+		Sequence:         b.sequence.Add(1),
+		Quality:          quality,
+		SyntheticVersion: snapshot.Version,
+	}
+	feedstatus.ObserveDefault(tick)
+	if quality != domain.QualityGood {
+		return nil
+	}
+
+	for _, timeframe := range b.timeframes {
+		bars, err := b.engine.Apply(tick, timeframe)
+		if err != nil {
+			return err
+		}
+		for _, bar := range bars {
+			b.broker.PublishBar(bar)
+		}
+	}
+	return nil
+}
+
+func (b *synPlusShadowBridge) status() any {
+	b.mu.RLock()
+	latest := b.latest
+	receivedAt := b.receivedAt
+	b.mu.RUnlock()
+
+	return map[string]any{
+		"mode":                      "SHADOW",
+		"authority":                 false,
+		"chart_visible":             true,
+		"instrument_id":             b.instrumentID,
+		"version":                   latest.Version,
+		"snapshot_at_ms":            latest.SnapshotAtMS,
+		"source_current_ts_ms":      latest.SourceCurrentTSMS,
+		"received_at_ms":            receivedAt.UnixMilli(),
+		"expiry":                    latest.Expiry,
+		"atm":                       latest.ATM,
+		"spot":                      latest.Spot,
+		"value":                     latest.Value,
+		"basis_to_spot":             latest.BasisToSpot,
+		"quality":                   latest.Quality,
+		"valid_candidates":          latest.ValidCandidates,
+		"rejected_candidates":       latest.RejectedCandidates,
+		"microprice_legs":           latest.MicropriceLegs,
+		"mid_legs":                  latest.MidLegs,
+		"ltp_legs":                  latest.LTPLegs,
+		"median_absolute_deviation": latest.MedianAbsoluteDeviation,
+		"chart_timeframes":          append([]string(nil), b.timeframes...),
+	}
+}
+
+func researchBridgeToken() string {
+	accessToken := strings.TrimSpace(os.Getenv("UPSTOX_ACCESS_TOKEN"))
+	if accessToken == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("qnext-syn-plus-shadow:" + accessToken))
+	return hex.EncodeToString(sum[:])
 }
 
 func replaceSubscription(subscriptions map[string]*Subscription, subscription *Subscription) {
