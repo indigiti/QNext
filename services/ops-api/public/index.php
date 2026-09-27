@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use QNext\Ops\AccessGovernance;
 use QNext\Ops\Auth;
+use QNext\Ops\FeatureEntitlements;
 use QNext\Ops\InviteApprovalStore;
 use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
@@ -66,7 +67,9 @@ function admin_actor(): string
 try {
     $config = OpsConfig::fromEnvironment();
     $auth = new Auth($config->authPath(), $config->adminToken);
-    $access = new AccessGovernance(new InviteApprovalStore($config->accessStorePath()));
+    $accessStore = new InviteApprovalStore($config->accessStorePath());
+    $access = new AccessGovernance($accessStore);
+    $entitlements = new FeatureEntitlements($accessStore);
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
     $path = request_path();
 
@@ -126,6 +129,19 @@ try {
             (string) ($body['role'] ?? 'USER'),
             admin_actor(),
         ));
+    }
+    if ($method === 'GET' && preg_match('#^/access/users/([A-Za-z0-9._:@+-]{1,128})/entitlements$#', $path, $matches)) {
+        respond(200, [
+            'configured' => $entitlements->forUser($matches[1]),
+            'effective' => $entitlements->effectiveForUser($matches[1]),
+        ]);
+    }
+    if ($method === 'PUT' && preg_match('#^/access/users/([A-Za-z0-9._:@+-]{1,128})/entitlements$#', $path, $matches)) {
+        $configured = $entitlements->setForUser($matches[1], request_body(), admin_actor());
+        respond(200, [
+            'configured' => $configured,
+            'effective' => $entitlements->effectiveForUser($matches[1]),
+        ]);
     }
     if ($method === 'GET' && preg_match('#^/access/registrations/([A-Za-z0-9._-]{1,128})$#', $path, $matches)) {
         respond(200, $access->registrationSnapshot($matches[1]));
