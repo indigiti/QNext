@@ -51,12 +51,13 @@ jobs:
           set -euo pipefail
           find services/ops-api -name '*.php' -print0 | xargs -0 -n1 php -l
           php -l apps/ops-console/public/api/index.php
-      - name: PHP smoke
-        run: php services/ops-api/tests/smoke.php
       - name: Helper syntax
         run: |
           bash -n deploy/qnext-ops-helper
           bash -n deploy/qnext-ops-web
+          bash -n deploy/qnext-ops-user
+      - name: PHP smoke
+        run: php services/ops-api/tests/smoke.php
       - name: Reject generic shell execution surface
         shell: bash
         run: |
@@ -73,9 +74,13 @@ jobs:
           set -euo pipefail
           grep -q 'name: digiops-release' .github/workflows/qnext-release.yml
           grep -q 'release/private/bin/qnext-market-core' .github/workflows/qnext-release.yml
+          grep -q 'release/private/bin/qnext-data-collector' .github/workflows/qnext-release.yml
+          grep -q 'qnext-data-collector.current' .github/workflows/qnext-release.yml
+          grep -q './cmd/qnext-data-collector' .github/workflows/qnext-release.yml
           grep -q 'release/public/admin' .github/workflows/qnext-release.yml
           grep -q 'release/public/admin/api/index.php' .github/workflows/qnext-release.yml
           grep -q 'services/ops-api' .github/workflows/qnext-release.yml
           grep -q 'QNEXT.RELEASE/1' .github/workflows/qnext-release.yml
           test -x deploy/qnext-ops-helper
           test -x deploy/qnext-ops-web
+          test -x deploy/qnext-ops-user
