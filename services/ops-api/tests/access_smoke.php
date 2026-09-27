@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 
 use QNext\Ops\AccessGovernance;
 use QNext\Ops\AccessPolicy;
+use QNext\Ops\FeatureEntitlements;
 use QNext\Ops\InviteApprovalStore;
 
 function assertSameValue(mixed $expected, mixed $actual, string $label): void
@@ -57,6 +58,7 @@ assertThrows(static function () use ($policy, $registration): void {
 $tmp = sys_get_temp_dir() . '/qnext-access-' . bin2hex(random_bytes(6)) . '.json';
 $store = new InviteApprovalStore($tmp);
 $governance = new AccessGovernance($store);
+$entitlements = new FeatureEntitlements($store);
 
 $updatedPolicy = $governance->updatePolicy([
     'user_quorum' => 3,
@@ -87,6 +89,21 @@ assertThrows(static fn () => $governance->redeemInvite([
     'applicant_user_id' => 'another-user',
 ]), 'used invite redemption rejected');
 
+// Entitlements may be configured before activation but must not become effective yet.
+$configured = $entitlements->setForUser('user-new', [
+    'charts' => [
+        'synthetic' => true,
+        'intervals' => ['15s' => true, '30s' => true],
+    ],
+    'custom_indicators' => true,
+    'backtesting' => true,
+], 'admin-1');
+assertSameValue(true, $configured['charts']['synthetic'], 'synthetic entitlement configured');
+assertSameValue(true, $configured['charts']['intervals']['15s'], '15s entitlement configured');
+$effective = $entitlements->effectiveForUser('user-new');
+assertSameValue(false, $effective['access_active'], 'pending user cannot consume entitlements');
+assertSameValue(false, $effective['entitlements']['charts']['synthetic'], 'synthetic remains blocked before activation');
+
 foreach (['u1', 'u2', 'u3'] as $approver) {
     $governance->setApprover($approver, true, 'USER', 'admin-1');
 }
@@ -102,15 +119,24 @@ assertSameValue(AccessPolicy::STATUS_ACCOUNT_REQUIRED, $snapshot['registration']
 
 $snapshot = $governance->setAccountGate($registrationId, true, 'admin-1');
 assertSameValue(AccessPolicy::STATUS_ACTIVE, $snapshot['registration']['status'], 'active account plus quorum activates user');
+$effective = $entitlements->effectiveForUser('user-new');
+assertSameValue(true, $effective['access_active'], 'active registration enables entitlements');
+assertSameValue(true, $effective['entitlements']['charts']['synthetic'], 'synthetic entitlement effective');
+assertSameValue(true, $effective['entitlements']['charts']['intervals']['15s'], '15s entitlement effective');
+assertSameValue(true, $effective['entitlements']['charts']['intervals']['30s'], '30s entitlement effective');
 
 $snapshot = $governance->recordDecision($registrationId, 'u3', 'USER', 'REVOKED', 'approval withdrawn');
 assertSameValue(AccessPolicy::STATUS_PENDING_APPROVAL, $snapshot['registration']['status'], 'revocation deactivates registration when quorum is lost');
+$effective = $entitlements->effectiveForUser('user-new');
+assertSameValue(false, $effective['access_active'], 'lost quorum disables feature access');
 
 $snapshot = $governance->recordDecision($registrationId, 'admin-1', 'ADMIN', 'APPROVED', 'admin override');
 assertSameValue(AccessPolicy::STATUS_ACTIVE, $snapshot['registration']['status'], 'admin override restores active state');
+assertSameValue(true, $entitlements->effectiveForUser('user-new')['access_active'], 'admin override restores entitlement access');
 
 $snapshot = $governance->recordDecision($registrationId, 'admin-1', 'ADMIN', 'REJECTED', 'admin rejection');
 assertSameValue(AccessPolicy::STATUS_REJECTED, $snapshot['registration']['status'], 'admin rejection overrides approvals');
+assertSameValue(false, $entitlements->effectiveForUser('user-new')['access_active'], 'rejection disables feature access');
 
 $admin = $governance->adminSnapshot();
 assertSameValue(1, count($admin['invites']), 'admin snapshot includes invite');
