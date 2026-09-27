@@ -44,6 +44,12 @@ jobs:
           npm test
           npm run build
 
+      - name: Validate Strategy Lab paper runtime
+        working-directory: services/strategy-lab
+        run: |
+          PYTHONPATH=. python3 -m compileall -q qnext_strategy_lab tests
+          PYTHONPATH=. python3 -m unittest discover -s tests -v
+
       - name: Validate Ops PHP control plane
         shell: bash
         run: |
@@ -60,6 +66,7 @@ jobs:
           php -l services/ops-api/src/OpsConfig.php
           php -l services/ops-api/src/ReleaseCatalog.php
           php -l services/ops-api/src/ServiceControl.php
+          php -l services/ops-api/src/PaperProxy.php
           php -l services/ops-api/src/OpsController.php
           bash -n deploy/qnext-ops-user
           php services/ops-api/tests/smoke.php
@@ -108,6 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           go mod download
+          go test ./...
           mkdir -p ../../build
           version="${GITHUB_SHA:0:12}"
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
@@ -155,7 +163,7 @@ jobs:
           set -euo pipefail
           rm -rf release
           mkdir -p release/public/admin
-          mkdir -p release/private/bin release/private/config release/private/deploy
+          mkdir -p release/private/bin release/private/config release/private/deploy release/private/strategy-lab
 
           cp -a apps/workspace/dist/. release/public/
           cp apps/workspace/public/.htaccess release/public/.htaccess
@@ -167,6 +175,7 @@ jobs:
           printf '%s\n' "${binary_name}" > release/private/bin/qnext-market-core.current
           install -m 0750 build/qnext-data-collector "release/private/bin/${collector_binary_name}"
           printf '%s\n' "${collector_binary_name}" > release/private/bin/qnext-data-collector.current
+          cp -a services/strategy-lab/qnext_strategy_lab release/private/strategy-lab/
           cp -a services/ops-api release/private/ops-api
 
           cp config/q1-market.example.json release/private/config/q1-market.example.json
@@ -195,7 +204,8 @@ jobs:
             "private_prefix": "private",
             "services": {
               "market_core": "${binary_name}",
-              "data_collector": "${collector_binary_name}"
+              "data_collector": "${collector_binary_name}",
+              "syn_plus_paper": "strategy-lab/qnext_strategy_lab/syn_plus_runtime.py"
             },
             "routes": {
               "workspace": "/qnext/",
@@ -239,7 +249,10 @@ jobs:
           test -s "release/private/bin/qnext-data-collector-${version}"
           test "$(cat release/private/bin/qnext-market-core.current)" = "qnext-market-core-${version}"
           test "$(cat release/private/bin/qnext-data-collector.current)" = "qnext-data-collector-${version}"
+          test -f release/private/strategy-lab/qnext_strategy_lab/syn_plus_runtime.py
+          PYTHONPATH=release/private/strategy-lab python3 -m compileall -q release/private/strategy-lab/qnext_strategy_lab
           test -f release/private/ops-api/public/index.php
+          test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
           test -x release/private/deploy/qnext-ops-user
           test -s release/release-manifest.json
