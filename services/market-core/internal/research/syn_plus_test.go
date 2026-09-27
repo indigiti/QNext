@@ -154,8 +154,8 @@ func envelope(at time.Time, spot, call, put float64) upstox.DecodedEnvelope {
 		CurrentTS: strconv.FormatInt(at.UnixMilli(), 10),
 		Feeds: map[string]upstox.Feed{
 			"NSE_INDEX|Nifty 50": {LTPC: &upstox.LTPC{LTP: spot}},
-			"CE": {FirstLevelWithGreeks: statePtr(microState(call))},
-			"PE": {FirstLevelWithGreeks: statePtr(microState(put))},
+			"CE":                  {FirstLevelWithGreeks: statePtr(microState(call))},
+			"PE":                  {FirstLevelWithGreeks: statePtr(microState(put))},
 		},
 	}
 }
