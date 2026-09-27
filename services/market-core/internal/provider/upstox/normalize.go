@@ -19,8 +19,71 @@ type LTPC struct {
 	CP  float64 `json:"cp,omitempty"`
 }
 
+type Quote struct {
+	BidQ int64   `json:"bid_q"`
+	BidP float64 `json:"bid_p"`
+	AskQ int64   `json:"ask_q"`
+	AskP float64 `json:"ask_p"`
+}
+
+type OptionGreeks struct {
+	Delta float64 `json:"delta"`
+	Theta float64 `json:"theta"`
+	Gamma float64 `json:"gamma"`
+	Vega  float64 `json:"vega"`
+	Rho   float64 `json:"rho"`
+}
+
+type MarketState struct {
+	LTPC         *LTPC         `json:"ltpc,omitempty"`
+	Depth        []Quote       `json:"depth,omitempty"`
+	OptionGreeks *OptionGreeks `json:"option_greeks,omitempty"`
+	ATP          float64       `json:"atp,omitempty"`
+	VTT          int64         `json:"vtt,omitempty"`
+	OI           float64       `json:"oi,omitempty"`
+	IV           float64       `json:"iv,omitempty"`
+	TBQ          float64       `json:"tbq,omitempty"`
+	TSQ          float64       `json:"tsq,omitempty"`
+}
+
 type Feed struct {
-	LTPC *LTPC `json:"ltpc,omitempty"`
+	LTPC                 *LTPC            `json:"ltpc,omitempty"`
+	FullFeed             *MarketState     `json:"full_feed,omitempty"`
+	FirstLevelWithGreeks *MarketState     `json:"first_level_with_greeks,omitempty"`
+	RequestMode          SubscriptionMode `json:"request_mode,omitempty"`
+}
+
+func (f Feed) ResearchState() (MarketState, bool) {
+	if f.FullFeed != nil {
+		return cloneMarketState(*f.FullFeed), true
+	}
+	if f.FirstLevelWithGreeks != nil {
+		return cloneMarketState(*f.FirstLevelWithGreeks), true
+	}
+	if f.LTPC != nil {
+		return MarketState{LTPC: cloneLTPC(f.LTPC)}, true
+	}
+	return MarketState{}, false
+}
+
+func cloneMarketState(state MarketState) MarketState {
+	state.LTPC = cloneLTPC(state.LTPC)
+	if state.Depth != nil {
+		state.Depth = append([]Quote(nil), state.Depth...)
+	}
+	if state.OptionGreeks != nil {
+		copyGreeks := *state.OptionGreeks
+		state.OptionGreeks = &copyGreeks
+	}
+	return state
+}
+
+func cloneLTPC(ltpc *LTPC) *LTPC {
+	if ltpc == nil {
+		return nil
+	}
+	copyLTPC := *ltpc
+	return &copyLTPC
 }
 
 type DecodedEnvelope struct {
