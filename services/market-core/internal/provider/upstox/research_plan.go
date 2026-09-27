@@ -18,7 +18,7 @@ type ResearchPlan struct {
 	Spot          float64                   `json:"spot"`
 	ATM           float64                   `json:"atm"`
 	CurrentExpiry string                    `json:"current_expiry"`
-	NextExpiry    string                    `json:"next_expiry"`
+	NextExpiry    string                    `json:"next_expiry,omitempty"`
 	FullKeys      []string                  `json:"full_keys"`
 	GreekKeys     []string                  `json:"greek_keys"`
 	Contracts     map[string]OptionContract `json:"contracts"`
@@ -32,11 +32,53 @@ func BuildResearchPlan(
 	wingStrikes int,
 	fullWingStrikes int,
 ) (ResearchPlan, error) {
+	return buildResearchPlan(
+		contracts,
+		underlyingKey,
+		spot,
+		now,
+		wingStrikes,
+		fullWingStrikes,
+		2,
+	)
+}
+
+func BuildCurrentExpiryResearchPlan(
+	contracts []OptionContract,
+	underlyingKey string,
+	spot float64,
+	now time.Time,
+	wingStrikes int,
+	fullWingStrikes int,
+) (ResearchPlan, error) {
+	return buildResearchPlan(
+		contracts,
+		underlyingKey,
+		spot,
+		now,
+		wingStrikes,
+		fullWingStrikes,
+		1,
+	)
+}
+
+func buildResearchPlan(
+	contracts []OptionContract,
+	underlyingKey string,
+	spot float64,
+	now time.Time,
+	wingStrikes int,
+	fullWingStrikes int,
+	expiryCount int,
+) (ResearchPlan, error) {
 	if strings.TrimSpace(underlyingKey) == "" || spot <= 0 {
 		return ResearchPlan{}, errors.New("research plan requires underlying key and positive spot")
 	}
 	if wingStrikes < 1 || fullWingStrikes < 0 || fullWingStrikes > wingStrikes {
 		return ResearchPlan{}, errors.New("invalid research strike wings")
+	}
+	if expiryCount < 1 || expiryCount > 2 {
+		return ResearchPlan{}, errors.New("research plan expiry count must be one or two")
 	}
 
 	today := now.In(time.FixedZone("IST", 5*60*60+30*60)).Format("2006-01-02")
@@ -88,20 +130,27 @@ func BuildResearchPlan(
 		}
 	}
 	sort.Strings(expiries)
-	if len(expiries) < 2 {
+	if len(expiries) < expiryCount {
+		if expiryCount == 1 {
+			return ResearchPlan{}, errors.New("research plan requires a current option expiry")
+		}
 		return ResearchPlan{}, errors.New("research plan requires current and next option expiry")
 	}
 
+	selectedExpiries := expiries[:expiryCount]
 	plan := ResearchPlan{
 		UnderlyingKey: underlyingKey,
 		Spot:          spot,
-		CurrentExpiry: expiries[0],
-		NextExpiry:    expiries[1],
+		CurrentExpiry: selectedExpiries[0],
 		Contracts:     make(map[string]OptionContract),
 	}
+	if len(selectedExpiries) > 1 {
+		plan.NextExpiry = selectedExpiries[1]
+	}
+
 	fullSet := make(map[string]bool)
 	greekSet := make(map[string]bool)
-	for expiryIndex, expiry := range []string{plan.CurrentExpiry, plan.NextExpiry} {
+	for expiryIndex, expiry := range selectedExpiries {
 		strikes := researchCompleteStrikes(byExpiry[expiry])
 		if len(strikes) == 0 {
 			return ResearchPlan{}, errors.New("research expiry has no complete call/put strikes")
@@ -217,12 +266,14 @@ func researchMinInt(a, b int) int {
 	}
 	return b
 }
+
 func researchMaxInt(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
 }
+
 func researchAbsInt(v int) int {
 	if v < 0 {
 		return -v
