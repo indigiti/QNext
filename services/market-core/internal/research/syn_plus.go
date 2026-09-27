@@ -70,6 +70,7 @@ type SynPlusCollector struct {
 
 	mu         sync.Mutex
 	legs       map[string]synPlusLeg
+	spot       float64
 	lastBucket time.Time
 	lastSource int64
 	closed     bool
@@ -123,6 +124,21 @@ func (c *SynPlusCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.
 			delete(c.legs, key)
 		}
 	}
+
+	bucket := sourceTime.Truncate(time.Second)
+	if c.lastBucket.IsZero() {
+		c.lastBucket = bucket
+	} else if bucket.After(c.lastBucket) {
+		snapshot := c.evaluate(plan, c.lastBucket.Add(time.Second), c.lastSource)
+		if err := c.persist(snapshot); err != nil {
+			return err
+		}
+		c.lastBucket = bucket
+	}
+
+	if feed, ok := envelope.Feeds[plan.UnderlyingKey]; ok && feed.LTPC != nil && feed.LTPC.LTP > 0 {
+		c.spot = feed.LTPC.LTP
+	}
 	for key, contract := range plan.Contracts {
 		if contract.Expiry != plan.CurrentExpiry {
 			continue
@@ -138,21 +154,6 @@ func (c *SynPlusCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.
 		c.legs[key] = synPlusLeg{state: state, updatedAt: sourceTime}
 	}
 	c.lastSource = sourceMS
-
-	bucket := sourceTime.Truncate(time.Second)
-	if c.lastBucket.IsZero() {
-		c.lastBucket = bucket
-		return nil
-	}
-	if !bucket.After(c.lastBucket) {
-		return nil
-	}
-
-	snapshot := c.evaluate(plan, c.lastBucket.Add(time.Second), sourceMS)
-	if err := c.persist(snapshot); err != nil {
-		return err
-	}
-	c.lastBucket = bucket
 	return nil
 }
 
@@ -167,6 +168,10 @@ func (c *SynPlusCollector) Close() error {
 }
 
 func (c *SynPlusCollector) evaluate(plan upstox.ResearchPlan, at time.Time, sourceMS int64) SynPlusSnapshot {
+	spot := c.spot
+	if spot <= 0 {
+		spot = plan.Spot
+	}
 	snapshot := SynPlusSnapshot{
 		Schema:            SynPlusSnapshotSchema,
 		InstrumentID:      c.cfg.InstrumentID,
@@ -175,7 +180,7 @@ func (c *SynPlusCollector) evaluate(plan upstox.ResearchPlan, at time.Time, sour
 		SourceCurrentTSMS: sourceMS,
 		Expiry:            plan.CurrentExpiry,
 		ATM:               plan.ATM,
-		Spot:              plan.Spot,
+		Spot:              spot,
 		Quality:           "DEGRADED",
 	}
 
