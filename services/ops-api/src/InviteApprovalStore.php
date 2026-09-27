@@ -152,6 +152,32 @@ final class InviteApprovalStore
         ));
     }
 
+    /** @param array<string,mixed> $entitlements */
+    public function putEntitlements(string $userId, array $entitlements): void
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            throw new RuntimeException('entitlement user id is required');
+        }
+        $this->mutate(static function (array &$state) use ($userId, $entitlements): void {
+            $state['entitlements'][$userId] = $entitlements;
+        });
+    }
+
+    /** @return array<string,mixed> */
+    public function entitlements(string $userId): array
+    {
+        $row = $this->load()['entitlements'][$userId] ?? [];
+        return is_array($row) ? $row : [];
+    }
+
+    /** @return array<string,array<string,mixed>> */
+    public function allEntitlements(): array
+    {
+        $rows = $this->load()['entitlements'] ?? [];
+        return is_array($rows) ? $rows : [];
+    }
+
     /** @param array<string,mixed> $event */
     public function appendApprovalEvent(array $event): void
     {
@@ -198,6 +224,7 @@ final class InviteApprovalStore
             'invites' => [],
             'registrations' => [],
             'approvers' => [],
+            'entitlements' => [],
             'approval_events' => [],
         ];
     }
