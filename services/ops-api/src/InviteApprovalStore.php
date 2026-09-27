@@ -17,18 +17,7 @@ final class InviteApprovalStore
     public function load(): array
     {
         if (!is_file($this->path)) {
-            return [
-                'schema' => 'QNEXT.ACCESS/1',
-                'policy' => [
-                    'invite_only' => true,
-                    'user_quorum' => 3,
-                    'admin_override' => true,
-                    'require_active_account' => true,
-                ],
-                'invites' => [],
-                'registrations' => [],
-                'approval_events' => [],
-            ];
+            return $this->defaults();
         }
 
         $raw = file_get_contents($this->path);
@@ -46,15 +35,63 @@ final class InviteApprovalStore
             throw new RuntimeException('unsupported access store schema');
         }
 
-        return $payload;
+        return array_replace_recursive($this->defaults(), $payload);
+    }
+
+    /** @return array<string,mixed> */
+    public function policy(): array
+    {
+        return (array) ($this->load()['policy'] ?? []);
+    }
+
+    /** @param array<string,mixed> $policy */
+    public function putPolicy(array $policy): void
+    {
+        $this->mutate(static function (array &$state) use ($policy): void {
+            $state['policy'] = $policy;
+        });
     }
 
     /** @param array<string,mixed> $invite */
-    public function appendInvite(array $invite): void
+    public function putInvite(array $invite): void
     {
-        $this->mutate(function (array &$state) use ($invite): void {
+        $id = trim((string) ($invite['id'] ?? ''));
+        if ($id === '') {
+            throw new RuntimeException('invite id is required');
+        }
+
+        $this->mutate(static function (array &$state) use ($id, $invite): void {
+            foreach ($state['invites'] as $index => $existing) {
+                if (($existing['id'] ?? null) === $id) {
+                    $state['invites'][$index] = $invite;
+                    return;
+                }
+            }
             $state['invites'][] = $invite;
         });
+    }
+
+    /** @return array<string,mixed>|null */
+    public function inviteById(string $id): ?array
+    {
+        foreach ($this->load()['invites'] ?? [] as $invite) {
+            if (($invite['id'] ?? null) === $id) {
+                return is_array($invite) ? $invite : null;
+            }
+        }
+        return null;
+    }
+
+    /** @return array<string,mixed>|null */
+    public function inviteByTokenHash(string $tokenHash): ?array
+    {
+        foreach ($this->load()['invites'] ?? [] as $invite) {
+            $stored = (string) ($invite['token_hash'] ?? '');
+            if ($stored !== '' && hash_equals($stored, $tokenHash)) {
+                return is_array($invite) ? $invite : null;
+            }
+        }
+        return null;
     }
 
     /** @param array<string,mixed> $registration */
@@ -65,9 +102,54 @@ final class InviteApprovalStore
             throw new RuntimeException('registration id is required');
         }
 
-        $this->mutate(function (array &$state) use ($id, $registration): void {
+        $this->mutate(static function (array &$state) use ($id, $registration): void {
             $state['registrations'][$id] = $registration;
         });
+    }
+
+    /** @return array<string,mixed>|null */
+    public function registration(string $id): ?array
+    {
+        $registration = $this->load()['registrations'][$id] ?? null;
+        return is_array($registration) ? $registration : null;
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function registrations(): array
+    {
+        return array_values(array_filter(
+            $this->load()['registrations'] ?? [],
+            static fn (mixed $row): bool => is_array($row),
+        ));
+    }
+
+    /** @param array<string,mixed> $approver */
+    public function putApprover(array $approver): void
+    {
+        $userId = trim((string) ($approver['user_id'] ?? ''));
+        if ($userId === '') {
+            throw new RuntimeException('approver user id is required');
+        }
+
+        $this->mutate(static function (array &$state) use ($userId, $approver): void {
+            $state['approvers'][$userId] = $approver;
+        });
+    }
+
+    /** @return array<string,mixed>|null */
+    public function approver(string $userId): ?array
+    {
+        $approver = $this->load()['approvers'][$userId] ?? null;
+        return is_array($approver) ? $approver : null;
+    }
+
+    /** @return list<array<string,mixed>> */
+    public function approvers(): array
+    {
+        return array_values(array_filter(
+            $this->load()['approvers'] ?? [],
+            static fn (mixed $row): bool => is_array($row),
+        ));
     }
 
     /** @param array<string,mixed> $event */
@@ -79,7 +161,7 @@ final class InviteApprovalStore
             }
         }
 
-        $this->mutate(function (array &$state) use ($event): void {
+        $this->mutate(static function (array &$state) use ($event): void {
             foreach ($state['approval_events'] as $existing) {
                 if (($existing['id'] ?? null) === $event['id']) {
                     throw new RuntimeException('duplicate approval event id');
@@ -92,14 +174,32 @@ final class InviteApprovalStore
     /** @return list<array<string,mixed>> */
     public function approvalEventsFor(string $registrationId): array
     {
-        $state = $this->load();
         $events = [];
-        foreach ($state['approval_events'] ?? [] as $event) {
-            if (($event['registration_id'] ?? null) === $registrationId) {
+        foreach ($this->load()['approval_events'] ?? [] as $event) {
+            if (is_array($event) && ($event['registration_id'] ?? null) === $registrationId) {
                 $events[] = $event;
             }
         }
         return $events;
+    }
+
+    /** @return array<string,mixed> */
+    private function defaults(): array
+    {
+        return [
+            'schema' => 'QNEXT.ACCESS/1',
+            'policy' => [
+                'invite_only' => true,
+                'user_quorum' => 3,
+                'admin_override' => true,
+                'require_active_account' => true,
+                'invite_ttl_hours' => 168,
+            ],
+            'invites' => [],
+            'registrations' => [],
+            'approvers' => [],
+            'approval_events' => [],
+        ];
     }
 
     /** @param callable(array<string,mixed>&):void $callback */
