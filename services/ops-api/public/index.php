@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use QNext\Ops\AccessGovernance;
 use QNext\Ops\Auth;
+use QNext\Ops\FeatureEntitlements;
+use QNext\Ops\InviteApprovalStore;
 use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
 
@@ -52,9 +55,21 @@ function request_path(): string
     return $path;
 }
 
+function admin_actor(): string
+{
+    $actor = trim((string) ($_SERVER['HTTP_X_QNEXT_ACTOR_ID'] ?? ''));
+    if ($actor === '' || strlen($actor) > 128 || preg_match('/^[A-Za-z0-9._:@+-]+$/', $actor) !== 1) {
+        throw new RuntimeException('X-QNEXT-ACTOR-ID is required for access-governance changes');
+    }
+    return $actor;
+}
+
 try {
     $config = OpsConfig::fromEnvironment();
     $auth = new Auth($config->authPath(), $config->adminToken);
+    $accessStore = new InviteApprovalStore($config->accessStorePath());
+    $access = new AccessGovernance($accessStore);
+    $entitlements = new FeatureEntitlements($accessStore);
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
     $path = request_path();
 
@@ -75,9 +90,78 @@ try {
         respond(201, ['initialized' => true]);
     }
 
+    // Invite-token endpoints intentionally sit outside ops-admin auth. They disclose only
+    // token-scoped registration state and never expose the stored token hash.
+    if ($method === 'POST' && $path === '/registration/invite-status') {
+        $body = request_body();
+        respond(200, $access->inspectInvite((string) ($body['invite_token'] ?? '')));
+    }
+    if ($method === 'POST' && $path === '/registration/redeem') {
+        respond(201, $access->redeemInvite(request_body()));
+    }
+
     $provided = $_SERVER['HTTP_X_QNEXT_OPS_TOKEN'] ?? null;
     if (!$auth->authorized(is_string($provided) ? $provided : null)) {
         respond(403, ['error' => 'forbidden']);
+    }
+
+    if ($method === 'GET' && $path === '/access') {
+        respond(200, $access->adminSnapshot());
+    }
+    if ($method === 'GET' && $path === '/access/policy') {
+        respond(200, $access->policy());
+    }
+    if ($method === 'PUT' && $path === '/access/policy') {
+        admin_actor();
+        respond(200, $access->updatePolicy(request_body()));
+    }
+    if ($method === 'POST' && $path === '/access/invites') {
+        respond(201, $access->issueInvite(request_body(), admin_actor()));
+    }
+    if ($method === 'PUT' && preg_match('#^/access/approvers/([A-Za-z0-9._:@+-]{1,128})$#', $path, $matches)) {
+        $body = request_body();
+        if (!array_key_exists('eligible', $body) || !is_bool($body['eligible'])) {
+            throw new RuntimeException('eligible boolean is required');
+        }
+        respond(200, $access->setApprover(
+            $matches[1],
+            $body['eligible'],
+            (string) ($body['role'] ?? 'USER'),
+            admin_actor(),
+        ));
+    }
+    if ($method === 'GET' && preg_match('#^/access/users/([A-Za-z0-9._:@+-]{1,128})/entitlements$#', $path, $matches)) {
+        respond(200, [
+            'configured' => $entitlements->forUser($matches[1]),
+            'effective' => $entitlements->effectiveForUser($matches[1]),
+        ]);
+    }
+    if ($method === 'PUT' && preg_match('#^/access/users/([A-Za-z0-9._:@+-]{1,128})/entitlements$#', $path, $matches)) {
+        $configured = $entitlements->setForUser($matches[1], request_body(), admin_actor());
+        respond(200, [
+            'configured' => $configured,
+            'effective' => $entitlements->effectiveForUser($matches[1]),
+        ]);
+    }
+    if ($method === 'GET' && preg_match('#^/access/registrations/([A-Za-z0-9._-]{1,128})$#', $path, $matches)) {
+        respond(200, $access->registrationSnapshot($matches[1]));
+    }
+    if ($method === 'POST' && preg_match('#^/access/registrations/([A-Za-z0-9._-]{1,128})/admin-decision$#', $path, $matches)) {
+        $body = request_body();
+        respond(200, $access->recordDecision(
+            $matches[1],
+            admin_actor(),
+            'ADMIN',
+            (string) ($body['decision'] ?? ''),
+            (string) ($body['comment'] ?? ''),
+        ));
+    }
+    if ($method === 'PUT' && preg_match('#^/access/registrations/([A-Za-z0-9._-]{1,128})/account-gate$#', $path, $matches)) {
+        $body = request_body();
+        if (!array_key_exists('active', $body) || !is_bool($body['active'])) {
+            throw new RuntimeException('active boolean is required');
+        }
+        respond(200, $access->setAccountGate($matches[1], $body['active'], admin_actor()));
     }
 
     $controller = new OpsController($config);
