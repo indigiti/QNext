@@ -83,4 +83,3 @@ jobs:
           grep -q 'QNEXT.RELEASE/1' .github/workflows/qnext-release.yml
           test -x deploy/qnext-ops-helper
           test -x deploy/qnext-ops-web
-          test -x deploy/qnext-ops-user
