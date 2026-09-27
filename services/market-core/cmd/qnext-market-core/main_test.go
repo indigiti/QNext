@@ -5,15 +5,15 @@ import (
 	"time"
 )
 
-func TestBuildRegistryExposesSixIndexAndSyntheticPairsWithoutLiveConfig(t *testing.T) {
+func TestBuildRegistryExposesSixIndexAndSyntheticPairsPlusNiftyShadowWithoutLiveConfig(t *testing.T) {
 	registry, err := buildRegistry(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	visible := registry.ListVisible()
-	if len(visible) != 12 {
-		t.Fatalf("expected twelve visible workspace symbols, got %d: %+v", len(visible), visible)
+	if len(visible) != 13 {
+		t.Fatalf("expected twelve production workspace symbols plus NIFTY-SYN+ shadow, got %d: %+v", len(visible), visible)
 	}
 
 	seen := make(map[string]bool, len(visible))
@@ -21,7 +21,7 @@ func TestBuildRegistryExposesSixIndexAndSyntheticPairsWithoutLiveConfig(t *testi
 		seen[instrument.Symbol] = true
 	}
 	for _, symbol := range []string{
-		"NIFTY", "NIFTY-SYN",
+		"NIFTY", "NIFTY-SYN", "NIFTY-SYN+",
 		"BANKNIFTY", "BANKNIFTY-SYN",
 		"MIDCPNIFTY", "MIDCPNIFTY-SYN",
 		"FINNIFTY", "FINNIFTY-SYN",
