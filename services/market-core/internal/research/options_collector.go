@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -59,8 +57,9 @@ type OptionSnapshot struct {
 }
 
 type OptionsCollector struct {
-	root string
-	mu   sync.Mutex
+	store     *JSONLStore
+	ownsStore bool
+	mu        sync.Mutex
 
 	spot       float64
 	state      map[string]OptionSnapshot
@@ -70,12 +69,30 @@ type OptionsCollector struct {
 }
 
 func NewOptionsCollector(root string) (*OptionsCollector, error) {
-	if strings.TrimSpace(root) == "" {
-		return nil, errors.New("research storage root is required")
+	store, err := NewJSONLStore(root)
+	if err != nil {
+		return nil, err
+	}
+	collector, err := newOptionsCollector(store, true)
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	return collector, nil
+}
+
+func NewOptionsCollectorWithStore(store *JSONLStore) (*OptionsCollector, error) {
+	return newOptionsCollector(store, false)
+}
+
+func newOptionsCollector(store *JSONLStore, ownsStore bool) (*OptionsCollector, error) {
+	if store == nil {
+		return nil, errors.New("research storage is required")
 	}
 	return &OptionsCollector{
-		root:  root,
-		state: make(map[string]OptionSnapshot),
+		store:     store,
+		ownsStore: ownsStore,
+		state:     make(map[string]OptionSnapshot),
 		buckets: map[time.Duration]time.Time{
 			time.Second:      {},
 			15 * time.Second: {},
@@ -83,47 +100,41 @@ func NewOptionsCollector(root string) (*OptionsCollector, error) {
 	}, nil
 }
 
+// Observe is retained for direct/test callers. Production uses one shared
+// ResearchStateHub so rich feed normalization is performed only once.
 func (c *OptionsCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.ResearchPlan) error {
+	return NewResearchStateHub(c).Observe(envelope, plan)
+}
+
+func (c *OptionsCollector) ObserveState(update ResearchStateUpdate) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
 		return errors.New("research collector is closed")
 	}
 
-	sourceMS, err := strconv.ParseInt(envelope.CurrentTS, 10, 64)
-	if err != nil || sourceMS <= 0 {
-		if envelope.Type == "market_info" {
-			return nil
-		}
-		return errors.New("research envelope has invalid currentTs")
-	}
-	sourceTime := time.UnixMilli(sourceMS).UTC()
-	if err := c.rollBuckets(sourceTime); err != nil {
+	if err := c.rollBuckets(update.SourceTime); err != nil {
 		return err
 	}
-	c.lastSource = sourceMS
+	c.lastSource = update.SourceMS
 
 	for key := range c.state {
-		if _, selected := plan.Contracts[key]; !selected {
+		if _, selected := update.Plan.Contracts[key]; !selected {
 			delete(c.state, key)
 		}
 	}
 
-	if feed, ok := envelope.Feeds[plan.UnderlyingKey]; ok && feed.LTPC != nil && feed.LTPC.LTP > 0 {
-		c.spot = feed.LTPC.LTP
+	if update.SpotUpdated && update.Spot > 0 {
+		c.spot = update.Spot
 		for key, snapshot := range c.state {
 			snapshot.UnderlyingPrice = c.spot
 			c.state[key] = snapshot
 		}
 	}
 
-	for providerKey, contract := range plan.Contracts {
-		feed, ok := envelope.Feeds[providerKey]
-		if !ok {
-			continue
-		}
-		market, ok := feed.ResearchState()
-		if !ok {
+	for providerKey, entry := range update.Updates {
+		contract, selected := update.Plan.Contracts[providerKey]
+		if !selected {
 			continue
 		}
 		snapshot := c.state[providerKey]
@@ -131,14 +142,14 @@ func (c *OptionsCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.
 		snapshot.Provider = upstox.ProviderName
 		snapshot.ProviderKey = providerKey
 		snapshot.Underlying = contract.UnderlyingSymbol
-		snapshot.UnderlyingKey = plan.UnderlyingKey
+		snapshot.UnderlyingKey = update.Plan.UnderlyingKey
 		snapshot.UnderlyingPrice = c.spot
 		snapshot.Expiry = contract.Expiry
 		snapshot.Strike = contract.StrikePrice
 		snapshot.Side = normalizeSide(contract.InstrumentType)
 		snapshot.TradingSymbol = contract.TradingSymbol
-		snapshot.SourceCurrentTSMS = sourceMS
-		applyMarketState(&snapshot, market)
+		snapshot.SourceCurrentTSMS = update.SourceMS
+		applyMarketState(&snapshot, entry.State)
 		c.state[providerKey] = snapshot
 	}
 	return nil
@@ -146,21 +157,28 @@ func (c *OptionsCollector) Observe(envelope upstox.DecodedEnvelope, plan upstox.
 
 func (c *OptionsCollector) Close() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return nil
 	}
 	c.closed = true
+
+	var result error
 	for _, interval := range []time.Duration{time.Second, 15 * time.Second} {
 		bucket := c.buckets[interval]
 		if bucket.IsZero() || len(c.state) == 0 {
 			continue
 		}
 		if err := c.flush(interval, bucket.Add(interval)); err != nil {
-			return err
+			result = errors.Join(result, err)
 		}
 	}
-	return nil
+	c.mu.Unlock()
+
+	if c.ownsStore {
+		result = errors.Join(result, c.store.Close())
+	}
+	return result
 }
 
 func (c *OptionsCollector) rollBuckets(sourceTime time.Time) error {
@@ -210,7 +228,6 @@ func (c *OptionsCollector) flush(interval time.Duration, snapshotAt time.Time) e
 	}
 
 	path := filepath.Join(
-		c.root,
 		"research",
 		"options",
 		intervalLabel(interval),
@@ -218,22 +235,7 @@ func (c *OptionsCollector) flush(interval time.Duration, snapshotAt time.Time) e
 		snapshotAt.Format("01"),
 		snapshotAt.Format("2006-01-02")+".jsonl",
 	)
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	written, err := io.Copy(file, &buffer)
-	if err != nil {
-		return err
-	}
-	if written <= 0 {
-		return io.ErrShortWrite
-	}
-	return file.Sync()
+	return c.store.Append(path, buffer.Bytes())
 }
 
 func applyMarketState(snapshot *OptionSnapshot, state upstox.MarketState) {
