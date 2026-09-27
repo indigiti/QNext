@@ -2,6 +2,7 @@ package symbol
 
 import (
 	"errors"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -96,8 +97,14 @@ func (r *Registry) RegisterProvider(mapping ProviderInstrument) error {
 func (r *Registry) Instrument(id string) (Instrument, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	instrument, ok := r.instruments[id]
-	return instrument, ok
+	if instrument, ok := r.instruments[id]; ok {
+		return instrument, true
+	}
+	shadow, ok := niftySynPlusInstrument(r.instruments)
+	if ok && strings.EqualFold(shadow.ID, id) {
+		return shadow, true
+	}
+	return Instrument{}, false
 }
 
 func (r *Registry) ResolveProviderKey(provider, providerKey string) (Instrument, bool) {
@@ -123,10 +130,15 @@ func (r *Registry) ListVisible() []Instrument {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]Instrument, 0, len(r.instruments))
+	result := make([]Instrument, 0, len(r.instruments)+1)
 	for _, instrument := range r.instruments {
 		if instrument.Visible {
 			result = append(result, instrument)
+		}
+	}
+	if shadow, ok := niftySynPlusInstrument(r.instruments); ok {
+		if _, explicitlyRegistered := r.instruments[shadow.ID]; !explicitlyRegistered {
+			result = append(result, shadow)
 		}
 	}
 	sort.Slice(result, func(a, b int) bool {
@@ -156,6 +168,11 @@ func (r *Registry) Search(query string) []Instrument {
 			result = append(result, instrument)
 		}
 	}
+	if shadow, ok := niftySynPlusInstrument(r.instruments); ok && matches(shadow, q) {
+		if _, explicitlyRegistered := r.instruments[shadow.ID]; !explicitlyRegistered {
+			result = append(result, shadow)
+		}
+	}
 	sort.Slice(result, func(a, b int) bool {
 		if result[a].Symbol == result[b].Symbol {
 			return result[a].ID < result[b].ID
@@ -163,6 +180,41 @@ func (r *Registry) Search(query string) []Instrument {
 		return result[a].Symbol < result[b].Symbol
 	})
 	return result
+}
+
+func niftySynPlusInstrument(instruments map[string]Instrument) (Instrument, bool) {
+	var base Instrument
+	for _, instrument := range instruments {
+		if instrument.Synthetic && strings.EqualFold(strings.TrimSpace(instrument.Symbol), "NIFTY-SYN") {
+			base = instrument
+			break
+		}
+	}
+	if base.ID == "" {
+		return Instrument{}, false
+	}
+
+	instrumentID := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID"))
+	if instrumentID == "" {
+		instrumentID = base.ID + "+"
+	}
+	return Instrument{
+		ID:         instrumentID,
+		Symbol:     "NIFTY-SYN+",
+		Name:       base.Name + "+ (Shadow)",
+		AssetClass: base.AssetClass,
+		Exchange:   base.Exchange,
+		Currency:   base.Currency,
+		Timezone:   base.Timezone,
+		CalendarID: base.CalendarID,
+		Aliases: []string{
+			"NIFTY SYN+",
+			"NIFTY SYN PLUS",
+			"SYNTHETIC+ NIFTY",
+		},
+		Synthetic: true,
+		Visible:   true,
+	}, true
 }
 
 func matches(instrument Instrument, query string) bool {

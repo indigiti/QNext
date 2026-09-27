@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"path/filepath"
 	"sort"
@@ -11,6 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/indigiti/QNext/services/market-core/internal/candle"
+	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/history"
+	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 )
 
@@ -22,6 +27,9 @@ type SynPlusConfig struct {
 	MinimumValidCandidates int
 	MaxLegAge              time.Duration
 	MaxLegTimeSkew         time.Duration
+	ChartTimeframes        []string
+	OnSnapshot             func(SynPlusSnapshot)
+	OnChartError           func(error)
 }
 
 type SynPlusCandidate struct {
@@ -65,13 +73,15 @@ type SynPlusCollector struct {
 	store     *JSONLStore
 	ownsStore bool
 	cfg       SynPlusConfig
+	chart     *pipeline.Pipeline
 
-	mu         sync.Mutex
-	legs       map[string]synPlusLeg
-	spot       float64
-	lastBucket time.Time
-	lastSource int64
-	closed     bool
+	mu            sync.Mutex
+	legs          map[string]synPlusLeg
+	spot          float64
+	lastBucket    time.Time
+	lastSource    int64
+	chartSequence uint64
+	closed        bool
 }
 
 func NewSynPlusCollector(root string, cfg SynPlusConfig) (*SynPlusCollector, error) {
@@ -110,10 +120,25 @@ func newSynPlusCollector(store *JSONLStore, ownsStore bool, cfg SynPlusConfig) (
 	if cfg.MaxLegTimeSkew <= 0 {
 		cfg.MaxLegTimeSkew = time.Second
 	}
+
+	var chart *pipeline.Pipeline
+	if len(cfg.ChartTimeframes) > 0 {
+		var err error
+		chart, err = pipeline.New(
+			candle.New("candle-v2-session-aligned-shadow"),
+			history.New(store.root),
+			cfg.ChartTimeframes,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create SYN+ chart pipeline: %w", err)
+		}
+	}
+
 	return &SynPlusCollector{
 		store:     store,
 		ownsStore: ownsStore,
 		cfg:       cfg,
+		chart:     chart,
 		legs:      make(map[string]synPlusLeg),
 	}, nil
 }
@@ -338,5 +363,29 @@ func (c *SynPlusCollector) persist(snapshot SynPlusSnapshot) error {
 		at.Format("01"),
 		at.Format("2006-01-02")+".jsonl",
 	)
-	return c.store.Append(path, buffer.Bytes())
+	if err := c.store.Append(path, buffer.Bytes()); err != nil {
+		return err
+	}
+
+	if c.chart != nil && snapshot.Value > 0 && strings.EqualFold(snapshot.Quality, string(domain.QualityGood)) {
+		c.chartSequence++
+		_, err := c.chart.ApplyTick(domain.Tick{
+			InstrumentID:     snapshot.InstrumentID,
+			Provider:         "qnext-syn-plus-shadow",
+			Price:            snapshot.Value,
+			EventTime:        at,
+			ReceivedTime:     at,
+			ProcessedTime:    time.Now().UTC(),
+			Sequence:         c.chartSequence,
+			Quality:          domain.QualityGood,
+			SyntheticVersion: snapshot.Version,
+		})
+		if err != nil && c.cfg.OnChartError != nil {
+			c.cfg.OnChartError(err)
+		}
+	}
+	if c.cfg.OnSnapshot != nil {
+		c.cfg.OnSnapshot(snapshot)
+	}
+	return nil
 }

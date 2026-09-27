@@ -27,10 +27,12 @@ func TestListVisibleReturnsOnlyWorkspaceSymbols(t *testing.T) {
 	}
 
 	visible := registry.ListVisible()
-	if len(visible) != 2 {
-		t.Fatalf("expected two visible instruments, got %+v", visible)
+	if len(visible) != 3 {
+		t.Fatalf("expected NIFTY, NIFTY-SYN and NIFTY-SYN+ to be visible, got %+v", visible)
 	}
-	if visible[0].ID != "NSE:NIFTY50" || visible[1].ID != "QNEXT:NIFTY-SYN" {
+	if visible[0].ID != "NSE:NIFTY50" ||
+		visible[1].ID != "QNEXT:NIFTY-SYN" ||
+		visible[2].ID != "QNEXT:NIFTY-SYN+" {
 		t.Fatalf("unexpected visible ordering: %+v", visible)
 	}
 }

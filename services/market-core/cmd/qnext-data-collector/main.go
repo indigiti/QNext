@@ -25,7 +25,7 @@ func main() {
 	if accessToken == "" {
 		log.Fatal("UPSTOX_ACCESS_TOKEN is required")
 	}
-	market, err := configuredMarket()
+	market, candleTimeframes, err := configuredMarket()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,12 +50,23 @@ func main() {
 		}
 	}()
 
+	shadowPublisher := newSynPlusShadowPublisher(
+		env("QNEXT_MARKET_CORE_URL", "http://127.0.0.1:18080"),
+		accessToken,
+	)
+	defer shadowPublisher.Close()
+
 	synPlus, err := research.NewSynPlusCollectorWithStore(store, research.SynPlusConfig{
 		InstrumentID:           env("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:"+market.Symbol+"-SYN+"),
 		Version:                env("QNEXT_SYN_PLUS_VERSION", strings.ToLower(market.Symbol)+"-syn-plus-v1"),
 		MinimumValidCandidates: market.Synthetic.MinimumValidCandidates,
 		MaxLegAge:              time.Duration(market.Synthetic.MaxLegAgeMS) * time.Millisecond,
 		MaxLegTimeSkew:         time.Duration(market.Synthetic.MaxLegTimeSkewMS) * time.Millisecond,
+		ChartTimeframes:        candleTimeframes,
+		OnSnapshot:             shadowPublisher.Publish,
+		OnChartError: func(err error) {
+			log.Printf("SYN+ chart persistence: %v", err)
+		},
 	})
 	if err != nil {
 		log.Fatalf("create SYN+ collector: %v", err)
@@ -83,12 +94,13 @@ func main() {
 	}
 
 	log.Printf(
-		"qnext-data-collector starting market=%s underlying=%s wing=%d full_wing=%d syn_plus=%s",
+		"qnext-data-collector starting market=%s underlying=%s wing=%d full_wing=%d syn_plus=%s chart_timeframes=%s",
 		market.Symbol,
 		market.Underlying.ProviderKey,
 		runner.WingStrikes,
 		runner.FullWingStrikes,
 		env("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:"+market.Symbol+"-SYN+"),
+		strings.Join(candleTimeframes, ","),
 	)
 	hub := research.NewResearchStateHub(collector, synPlus)
 	if err := runner.Run(ctx, accessToken, market.Underlying.ProviderKey, hub); err != nil && !errors.Is(err, context.Canceled) {
@@ -96,22 +108,24 @@ func main() {
 	}
 }
 
-func configuredMarket() (marketconfig.MarketConfig, error) {
+func configuredMarket() (marketconfig.MarketConfig, []string, error) {
 	markets := marketconfig.DefaultMarkets()
+	timeframes := marketconfig.DefaultEnabledTimeframes()
 	if path := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG")); path != "" {
 		config, err := marketconfig.Load(path)
 		if err != nil {
-			return marketconfig.MarketConfig{}, err
+			return marketconfig.MarketConfig{}, nil, err
 		}
 		markets = config.EffectiveMarkets()
+		timeframes = append([]string(nil), config.Timeframes...)
 	}
 	target := strings.ToUpper(strings.TrimSpace(env("QNEXT_DATA_COLLECTOR_MARKET", "NIFTY")))
 	for _, market := range markets {
 		if strings.ToUpper(strings.TrimSpace(market.Symbol)) == target {
-			return market, nil
+			return market, timeframes, nil
 		}
 	}
-	return marketconfig.MarketConfig{}, errors.New("QNEXT_DATA_COLLECTOR_MARKET is not configured")
+	return marketconfig.MarketConfig{}, nil, errors.New("QNEXT_DATA_COLLECTOR_MARKET is not configured")
 }
 
 func env(key, fallback string) string {

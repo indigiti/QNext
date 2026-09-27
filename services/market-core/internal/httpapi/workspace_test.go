@@ -73,10 +73,12 @@ func TestWorkspaceSymbolsAndCalendarEndpoints(t *testing.T) {
 	if err := json.Unmarshal(symbolRecorder.Body.Bytes(), &symbols); err != nil {
 		t.Fatal(err)
 	}
-	if len(symbols.Symbols) != 2 {
-		t.Fatalf("expected only two visible workspace symbols, got %+v", symbols.Symbols)
+	if len(symbols.Symbols) != 3 {
+		t.Fatalf("expected NIFTY, NIFTY-SYN and NIFTY-SYN+ workspace symbols, got %+v", symbols.Symbols)
 	}
-	if symbols.Symbols[0].Ticker != "NIFTY" || symbols.Symbols[1].Ticker != "NIFTY-SYN" {
+	if symbols.Symbols[0].Ticker != "NIFTY" ||
+		symbols.Symbols[1].Ticker != "NIFTY-SYN" ||
+		symbols.Symbols[2].Ticker != "NIFTY-SYN+" {
 		t.Fatalf("unexpected symbol ordering: %+v", symbols.Symbols)
 	}
 
