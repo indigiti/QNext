@@ -38,11 +38,38 @@ type Tracker struct {
 	syntheticStatuses map[string]func() any
 }
 
+var (
+	defaultTrackerMu sync.RWMutex
+	defaultTracker   *Tracker
+)
+
 func New() *Tracker {
-	return &Tracker{
+	tracker := &Tracker{
 		providers:         map[string]ProviderSnapshot{},
 		instruments:       map[string]InstrumentSnapshot{},
 		syntheticStatuses: map[string]func() any{},
+	}
+	defaultTrackerMu.Lock()
+	defaultTracker = tracker
+	defaultTrackerMu.Unlock()
+	return tracker
+}
+
+func ObserveDefault(tick domain.Tick) {
+	defaultTrackerMu.RLock()
+	tracker := defaultTracker
+	defaultTrackerMu.RUnlock()
+	if tracker != nil {
+		tracker.Observe(tick)
+	}
+}
+
+func SetDefaultSyntheticStatusFor(instrumentID string, status func() any) {
+	defaultTrackerMu.RLock()
+	tracker := defaultTracker
+	defaultTrackerMu.RUnlock()
+	if tracker != nil {
+		tracker.SetSyntheticStatusFor(instrumentID, status)
 	}
 }
 
