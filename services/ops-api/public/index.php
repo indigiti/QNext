@@ -5,6 +5,7 @@ declare(strict_types=1);
 use QNext\Ops\Auth;
 use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
+use QNext\Ops\PaperProxy;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 
@@ -81,6 +82,7 @@ try {
     }
 
     $controller = new OpsController($config);
+    $paper = new PaperProxy($config->paperRuntimeUrl);
 
     if ($method === 'GET' && $path === '/status') {
         respond(200, $controller->status());
@@ -93,6 +95,12 @@ try {
     }
     if ($method === 'GET' && $path === '/feed-status') {
         respond(200, $controller->feedStatus());
+    }
+    if ($method === 'GET' && $path === '/syn-plus-paper') {
+        respond(200, $paper->status());
+    }
+    if ($method === 'POST' && $path === '/syn-plus-paper') {
+        respond(200, $paper->control(request_body()));
     }
     if ($method === 'GET' && $path === '/active-markets') {
         respond(200, $controller->marketActivation());

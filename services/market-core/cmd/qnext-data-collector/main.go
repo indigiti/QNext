@@ -30,6 +30,8 @@ func main() {
 		log.Fatal(err)
 	}
 	storageRoot := env("QNEXT_STORAGE_ROOT", "./storage")
+	go superviseSynPlusPaperRuntime(ctx, storageRoot, market.Symbol)
+
 	store, err := research.NewJSONLStore(storageRoot)
 	if err != nil {
 		log.Fatalf("create research storage: %v", err)

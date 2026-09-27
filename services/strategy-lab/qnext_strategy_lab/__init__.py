@@ -5,6 +5,7 @@ from .execution import ExecutionConfig
 from .models import Bar, Signal
 from .paper import ChartMarker, PaperEngine, PaperSnapshot
 from .strategies import MovingAverageCross
+from .syn_plus_paper import SynPlusPaperConfig, SynPlusPaperSession
 
 __all__ = [
     "BacktestEngine",
@@ -16,4 +17,6 @@ __all__ = [
     "PaperSnapshot",
     "ChartMarker",
     "MovingAverageCross",
+    "SynPlusPaperConfig",
+    "SynPlusPaperSession",
 ]
