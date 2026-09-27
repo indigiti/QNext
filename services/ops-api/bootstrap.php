@@ -8,6 +8,7 @@ require_once __DIR__ . '/src/AtomicFile.php';
 require_once __DIR__ . '/src/AccessPolicy.php';
 require_once __DIR__ . '/src/InviteApprovalStore.php';
 require_once __DIR__ . '/src/AccessGovernance.php';
+require_once __DIR__ . '/src/FeatureEntitlements.php';
 require_once __DIR__ . '/src/ReleaseCatalog.php';
 require_once __DIR__ . '/src/ServiceControl.php';
 require_once __DIR__ . '/src/OpsController.php';
