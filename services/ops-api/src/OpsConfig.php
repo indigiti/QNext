@@ -14,6 +14,7 @@ final class OpsConfig
         public readonly string $marketCoreUrl,
         public readonly string $adminToken,
         public readonly string $helperPath,
+        public readonly string $paperRuntimeUrl = 'http://127.0.0.1:18082',
     ) {
     }
 
@@ -51,6 +52,7 @@ final class OpsConfig
             rtrim(self::value('QNEXT_MARKET_CORE_URL', 'http://127.0.0.1:18080'), '/'),
             self::value('QNEXT_OPS_ADMIN_TOKEN'),
             $helper,
+            rtrim(self::value('QNEXT_SYN_PLUS_PAPER_URL', 'http://127.0.0.1:18082'), '/'),
         );
     }
 
