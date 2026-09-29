@@ -13,6 +13,7 @@
   "dependencies": {
     "@luxalgo/vela": "0.7.7",
     "@luxalgo/vela-pinets": "0.2.13",
+    "lightweight-charts": "5.2.1",
     "pinets": "0.10.0"
   },
   "devDependencies": {
