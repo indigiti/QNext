@@ -2,7 +2,10 @@ import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 
 import { resolveChartEngine, type QNextChartEngine } from './charts/chart-engine';
-import { QNextLightweightChart } from './charts/lightweight-chart';
+import {
+  QNextLightweightWorkspace,
+  normalizeLightweightLayout,
+} from './charts/lightweight-workspace';
 import { QNextProvider } from './qnext-provider';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import './style.css';
@@ -15,9 +18,11 @@ declare global {
       chartEngine?: QNextChartEngine;
       symbol?: string;
       timeframe?: string;
+      lightweightLayout?: 1 | 2 | 4;
+      lightweightSync?: boolean;
     };
     __QNEXT_WORKSPACE__?: VelaWorkspace;
-    __QNEXT_LIGHTWEIGHT_CHART__?: QNextLightweightChart;
+    __QNEXT_LIGHTWEIGHT_WORKSPACE__?: QNextLightweightWorkspace;
   }
 }
 
@@ -85,16 +90,19 @@ function createProvider(): QNextProvider {
   });
 }
 
+function resolveInitialTimeframe(timeframes: string[]): string {
+  return runtime.timeframe && timeframes.includes(runtime.timeframe)
+    ? runtime.timeframe
+    : timeframes.includes('1m')
+      ? '1m'
+      : timeframes[0];
+}
+
 async function bootstrapVela(timeframes: string[]) {
   const workspace = new VelaWorkspace('#app', {
     layout: false,
     symbol: runtime.symbol ?? 'NSE:NIFTY',
-    timeframe:
-      runtime.timeframe && timeframes.includes(runtime.timeframe)
-        ? runtime.timeframe
-        : timeframes.includes('1m')
-          ? '1m'
-          : timeframes[0],
+    timeframe: resolveInitialTimeframe(timeframes),
     timeframes,
     live: true,
     theme: 'dark',
@@ -120,38 +128,45 @@ async function bootstrapLightweight(timeframes: string[]) {
   const app = document.querySelector<HTMLElement>('#app');
   if (!app) throw new Error('QNext workspace root #app not found');
 
-  app.replaceChildren();
-  app.dataset.chartEngine = 'lightweight';
+  const provider = createProvider();
+  const initialTicker = runtime.symbol ?? 'NSE:NIFTY';
+  const initialTimeframe = resolveInitialTimeframe(timeframes);
 
-  const shell = document.createElement('div');
-  shell.className = 'qnext-lightweight-shell';
+  let symbols: Awaited<ReturnType<QNextProvider['listSymbols']>>;
+  try {
+    symbols = await provider.listSymbols();
+  } catch (error) {
+    console.warn('QNext symbol catalog unavailable; using configured symbol', error);
+    symbols = [{
+      ticker: initialTicker,
+      description: initialTicker,
+      type: 'index',
+      prefix: 'NSE',
+    }];
+  }
 
-  const badge = document.createElement('div');
-  badge.className = 'qnext-lightweight-badge';
-  badge.textContent = 'QNext Lightweight';
+  const query = new URLSearchParams(window.location.search);
+  const layout = normalizeLightweightLayout(
+    query.get('layout') ?? runtime.lightweightLayout,
+  );
+  const querySync = query.get('sync');
+  const syncCharts = querySync === null
+    ? runtime.lightweightSync ?? true
+    : querySync !== '0' && querySync !== 'false';
 
-  const chartHost = document.createElement('div');
-  chartHost.className = 'qnext-lightweight-chart';
-
-  shell.append(badge, chartHost);
-  app.append(shell);
-
-  const timeframe =
-    runtime.timeframe && timeframes.includes(runtime.timeframe)
-      ? runtime.timeframe
-      : timeframes.includes('1m')
-        ? '1m'
-        : timeframes[0];
-
-  const chart = new QNextLightweightChart({
-    container: chartHost,
-    provider: createProvider(),
-    ticker: runtime.symbol ?? 'NSE:NIFTY',
-    timeframe,
+  const workspace = new QNextLightweightWorkspace({
+    container: app,
+    provider,
+    symbols,
+    timeframes,
+    initialTicker,
+    initialTimeframe,
+    initialLayout: layout,
+    syncCharts,
   });
 
-  await chart.mount();
-  window.__QNEXT_LIGHTWEIGHT_CHART__ = chart;
+  await workspace.mount();
+  window.__QNEXT_LIGHTWEIGHT_WORKSPACE__ = workspace;
 }
 
 async function bootstrap() {

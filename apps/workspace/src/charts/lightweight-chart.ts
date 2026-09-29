@@ -4,6 +4,8 @@ import {
   HistogramSeries,
   createChart,
   type IChartApi,
+  type ISeriesApi,
+  type Time,
 } from 'lightweight-charts';
 
 import { QNextProvider, type QNextBar } from '../qnext-provider';
@@ -17,13 +19,24 @@ export interface LightweightChartOptions {
   historyLimit?: number;
 }
 
+export interface LightweightCrosshairPoint {
+  time: Time;
+  price: number;
+}
+
+export interface LightweightVisibleTimeRange {
+  from: Time;
+  to: Time;
+}
+
 export class QNextLightweightChart {
   private readonly container: HTMLElement;
   private readonly provider: QNextProvider;
-  private readonly ticker: string;
-  private readonly timeframe: string;
+  readonly ticker: string;
+  readonly timeframe: string;
   private readonly historyLimit: number;
   private chart?: IChartApi;
+  private candleSeries?: ISeriesApi<'Candlestick'>;
   private unsubscribe?: () => void;
   private resizeObserver?: ResizeObserver;
 
@@ -79,6 +92,7 @@ export class QNextLightweightChart {
     });
 
     this.chart = chart;
+    this.candleSeries = candleSeries;
 
     const bars = await this.provider.getBars(this.ticker, this.timeframe, {
       limit: this.historyLimit,
@@ -106,6 +120,59 @@ export class QNextLightweightChart {
     this.resizeObserver.observe(this.container);
   }
 
+  subscribeCrosshair(
+    listener: (point: LightweightCrosshairPoint | null) => void,
+  ): () => void {
+    const chart = this.chart;
+    const series = this.candleSeries;
+    if (!chart || !series) return () => undefined;
+
+    const handler: Parameters<IChartApi['subscribeCrosshairMove']>[0] = (param) => {
+      if (!param.time) {
+        listener(null);
+        return;
+      }
+      const data = param.seriesData.get(series);
+      if (!data || !('close' in data) || typeof data.close !== 'number') {
+        listener(null);
+        return;
+      }
+      listener({ time: param.time, price: data.close });
+    };
+
+    chart.subscribeCrosshairMove(handler);
+    return () => chart.unsubscribeCrosshairMove(handler);
+  }
+
+  setCrosshair(point: LightweightCrosshairPoint | null): void {
+    const chart = this.chart;
+    const series = this.candleSeries;
+    if (!chart || !series) return;
+    if (!point) {
+      chart.clearCrosshairPosition();
+      return;
+    }
+    chart.setCrosshairPosition(point.price, point.time, series);
+  }
+
+  subscribeVisibleTimeRange(
+    listener: (range: LightweightVisibleTimeRange | null) => void,
+  ): () => void {
+    const chart = this.chart;
+    if (!chart) return () => undefined;
+    const timeScale = chart.timeScale();
+    const handler: Parameters<typeof timeScale.subscribeVisibleTimeRangeChange>[0] =
+      (range) => listener(range);
+    timeScale.subscribeVisibleTimeRangeChange(handler);
+    return () => timeScale.unsubscribeVisibleTimeRangeChange(handler);
+  }
+
+  setVisibleTimeRange(range: LightweightVisibleTimeRange | null): void {
+    const chart = this.chart;
+    if (!chart || !range) return;
+    chart.timeScale().setVisibleRange(range);
+  }
+
   destroy(): void {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
@@ -113,5 +180,6 @@ export class QNextLightweightChart {
     this.resizeObserver = undefined;
     this.chart?.remove();
     this.chart = undefined;
+    this.candleSeries = undefined;
   }
 }
