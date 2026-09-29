@@ -4,6 +4,10 @@ import {
   type LightweightCrosshairPoint,
   type LightweightVisibleTimeRange,
 } from './lightweight-chart';
+import {
+  QNextPaperMarkerClient,
+  type QNextPaperMarkerSnapshot,
+} from './paper-markers';
 
 export type LightweightLayout = 1 | 2 | 4;
 
@@ -22,12 +26,14 @@ export interface LightweightPaneConfig {
 export interface LightweightWorkspaceOptions {
   container: HTMLElement;
   provider: QNextProvider;
+  apiBase?: string;
   symbols: LightweightSymbol[];
   timeframes: string[];
   initialTicker: string;
   initialTimeframe: string;
   initialLayout?: LightweightLayout;
   syncCharts?: boolean;
+  markerPollIntervalMs?: number;
 }
 
 export function normalizeLightweightLayout(value: unknown): LightweightLayout {
@@ -52,9 +58,28 @@ export function buildLightweightPaneConfigs(
   return configs;
 }
 
+export function paperSnapshotMatchesChart(
+  snapshot: QNextPaperMarkerSnapshot,
+  ticker: string,
+  timeframe: string,
+): boolean {
+  if (!snapshot.available || !snapshot.instrumentId || !snapshot.timeframe) return false;
+  if (snapshot.timeframe !== timeframe) return false;
+
+  const requested = ticker.trim().toUpperCase();
+  const instrument = snapshot.instrumentId.trim().toUpperCase();
+  if (requested === instrument) return true;
+
+  const requestedBare = requested.includes(':') ? requested.slice(requested.indexOf(':') + 1) : requested;
+  const instrumentBare = instrument.includes(':') ? instrument.slice(instrument.indexOf(':') + 1) : instrument;
+  return requestedBare === instrumentBare;
+}
+
 export class QNextLightweightWorkspace {
   private readonly container: HTMLElement;
   private readonly provider: QNextProvider;
+  private readonly markerClient: QNextPaperMarkerClient;
+  private readonly markerPollIntervalMs: number;
   private readonly symbols: LightweightSymbol[];
   private readonly timeframes: string[];
   private readonly fallback: LightweightPaneConfig;
@@ -65,6 +90,9 @@ export class QNextLightweightWorkspace {
   private charts: QNextLightweightChart[] = [];
   private paneElements: HTMLElement[] = [];
   private syncDisposers: Array<() => void> = [];
+  private markerTimer?: ReturnType<typeof setTimeout>;
+  private markerPolling = false;
+  private markerSignature = '';
   private shell?: HTMLElement;
   private grid?: HTMLElement;
   private symbolSelect?: HTMLSelectElement;
@@ -75,6 +103,8 @@ export class QNextLightweightWorkspace {
   constructor(options: LightweightWorkspaceOptions) {
     this.container = options.container;
     this.provider = options.provider;
+    this.markerClient = new QNextPaperMarkerClient({ apiBase: options.apiBase });
+    this.markerPollIntervalMs = options.markerPollIntervalMs ?? 2_000;
     this.symbols = options.symbols.length > 0
       ? options.symbols
       : [{ ticker: options.initialTicker }];
@@ -96,9 +126,11 @@ export class QNextLightweightWorkspace {
   async mount(): Promise<void> {
     this.renderShell();
     await this.rebuildAllCharts();
+    this.startMarkerPolling();
   }
 
   destroy(): void {
+    this.stopMarkerPolling();
     this.unbindSync();
     for (const chart of this.charts) chart.destroy();
     this.charts = [];
@@ -251,6 +283,7 @@ export class QNextLightweightWorkspace {
     await Promise.all(this.charts.map((chart) => chart.mount()));
     this.activatePane(this.activePane);
     this.bindSync();
+    await this.refreshPaperMarkers(true);
   }
 
   private async rebuildPane(index: number): Promise<void> {
@@ -277,6 +310,7 @@ export class QNextLightweightWorkspace {
     await chart.mount();
     this.activatePane(index);
     this.bindSync();
+    await this.refreshPaperMarkers(true);
   }
 
   private createPaneElement(index: number): { wrapper: HTMLElement; host: HTMLElement } {
@@ -366,5 +400,56 @@ export class QNextLightweightWorkspace {
     for (const dispose of this.syncDisposers) dispose();
     this.syncDisposers = [];
     for (const chart of this.charts) chart.setCrosshair(null);
+  }
+
+  private startMarkerPolling(): void {
+    if (this.markerPolling) return;
+    this.markerPolling = true;
+
+    const poll = async () => {
+      if (!this.markerPolling) return;
+      try {
+        await this.refreshPaperMarkers();
+      } catch (error) {
+        console.warn('QNext paper marker refresh failed', error);
+      } finally {
+        if (this.markerPolling) {
+          this.markerTimer = setTimeout(poll, this.markerPollIntervalMs);
+        }
+      }
+    };
+
+    void poll();
+  }
+
+  private stopMarkerPolling(): void {
+    this.markerPolling = false;
+    if (this.markerTimer !== undefined) {
+      clearTimeout(this.markerTimer);
+      this.markerTimer = undefined;
+    }
+  }
+
+  private async refreshPaperMarkers(force = false): Promise<void> {
+    const snapshot = await this.markerClient.snapshot();
+    const signature = [
+      snapshot.available ? '1' : '0',
+      snapshot.enabled ? '1' : '0',
+      snapshot.instrumentId,
+      snapshot.timeframe,
+      snapshot.sessionId,
+      snapshot.markers.map((marker) => marker.id).join(','),
+    ].join('|');
+
+    if (!force && signature === this.markerSignature) return;
+    this.markerSignature = signature;
+
+    this.charts.forEach((chart) => {
+      chart.setPaperMarkers(
+        paperSnapshotMatchesChart(snapshot, chart.ticker, chart.timeframe)
+          ? snapshot.markers
+          : [],
+      );
+    });
   }
 }

@@ -95,6 +95,9 @@ jobs:
       - name: Build static workspace
         run: npm run build
 
+      - name: Validate paper marker endpoint syntax
+        run: php -l public/api/v1/paper-markers/index.php
+
       - name: Validate indicator deployment-root and Pine manifest
         shell: bash
         run: |

@@ -24,6 +24,7 @@ class ChartMarker:
     side: str
     price: float
     label: str
+    anchor_time_ms: int = 0
     order_id: str = ""
     fill_id: str = ""
 
@@ -117,6 +118,7 @@ class PaperEngine:
                 ChartMarker(
                     marker_id=f"{fill.fill_id}-MARK",
                     time_ms=fill.filled_at_ms,
+                    anchor_time_ms=bar.open_time_ms,
                     kind="FILL",
                     side=side,
                     price=fill.price,
@@ -149,6 +151,7 @@ class PaperEngine:
                     ChartMarker(
                         marker_id=f"{self.pending.order_id}-SIGNAL",
                         time_ms=bar.close_time_ms,
+                        anchor_time_ms=bar.open_time_ms,
                         kind="SIGNAL",
                         side=side,
                         price=bar.close,
