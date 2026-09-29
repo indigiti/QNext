@@ -100,7 +100,7 @@ foreach ($rawMarkers as $raw) {
         'kind' => $kind,
         'side' => $side,
         'price' => (float) $price,
-        'label' => mb_substr($label !== '' ? $label : ($side . ' ' . strtolower($kind)), 0, 120),
+        'label' => substr($label !== '' ? $label : ($side . ' ' . strtolower($kind)), 0, 120),
     ];
 }
 
