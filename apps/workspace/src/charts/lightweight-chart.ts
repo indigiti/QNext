@@ -3,6 +3,7 @@ import {
   ColorType,
   HistogramSeries,
   createChart,
+  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
   type Time,
@@ -10,6 +11,10 @@ import {
 
 import { QNextProvider, type QNextBar } from '../qnext-provider';
 import { toCandlestickData, toVolumeData } from './lightweight-adapter';
+import {
+  toLightweightPaperMarker,
+  type QNextPaperMarker,
+} from './paper-markers';
 
 export interface LightweightChartOptions {
   container: HTMLElement;
@@ -37,6 +42,7 @@ export class QNextLightweightChart {
   private readonly historyLimit: number;
   private chart?: IChartApi;
   private candleSeries?: ISeriesApi<'Candlestick'>;
+  private markerSetter?: (markers: QNextPaperMarker[]) => void;
   private unsubscribe?: () => void;
   private resizeObserver?: ResizeObserver;
 
@@ -82,6 +88,7 @@ export class QNextLightweightChart {
       wickUpColor: '#26a69a',
       wickDownColor: '#ef5350',
     });
+    const markerPrimitive = createSeriesMarkers(candleSeries, []);
 
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
@@ -93,6 +100,9 @@ export class QNextLightweightChart {
 
     this.chart = chart;
     this.candleSeries = candleSeries;
+    this.markerSetter = (markers) => {
+      markerPrimitive.setMarkers(markers.map(toLightweightPaperMarker));
+    };
 
     const bars = await this.provider.getBars(this.ticker, this.timeframe, {
       limit: this.historyLimit,
@@ -118,6 +128,10 @@ export class QNextLightweightChart {
       });
     });
     this.resizeObserver.observe(this.container);
+  }
+
+  setPaperMarkers(markers: QNextPaperMarker[]): void {
+    this.markerSetter?.(markers);
   }
 
   subscribeCrosshair(
@@ -178,6 +192,8 @@ export class QNextLightweightChart {
     this.unsubscribe = undefined;
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
+    this.markerSetter?.([]);
+    this.markerSetter = undefined;
     this.chart?.remove();
     this.chart = undefined;
     this.candleSeries = undefined;
