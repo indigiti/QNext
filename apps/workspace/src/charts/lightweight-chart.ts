@@ -4,8 +4,6 @@ import {
   HistogramSeries,
   createChart,
   type IChartApi,
-  type ISeriesApi,
-  type UTCTimestamp,
 } from 'lightweight-charts';
 
 import { QNextProvider, type QNextBar } from '../qnext-provider';
@@ -26,8 +24,6 @@ export class QNextLightweightChart {
   private readonly timeframe: string;
   private readonly historyLimit: number;
   private chart?: IChartApi;
-  private candleSeries?: ISeriesApi<'Candlestick', UTCTimestamp>;
-  private volumeSeries?: ISeriesApi<'Histogram', UTCTimestamp>;
   private unsubscribe?: () => void;
   private resizeObserver?: ResizeObserver;
 
@@ -83,8 +79,6 @@ export class QNextLightweightChart {
     });
 
     this.chart = chart;
-    this.candleSeries = candleSeries;
-    this.volumeSeries = volumeSeries;
 
     const bars = await this.provider.getBars(this.ticker, this.timeframe, {
       limit: this.historyLimit,
@@ -119,7 +113,5 @@ export class QNextLightweightChart {
     this.resizeObserver = undefined;
     this.chart?.remove();
     this.chart = undefined;
-    this.candleSeries = undefined;
-    this.volumeSeries = undefined;
   }
 }
