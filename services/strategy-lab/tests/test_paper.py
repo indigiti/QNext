@@ -61,12 +61,19 @@ class PaperEngineTest(unittest.TestCase):
     def test_signal_and_fill_markers_are_deterministic(self):
         paper = PaperEngine(MovingAverageCross(fast=2, slow=3))
         snapshot = None
-        for bar in bars():
+        source_bars = bars()
+        for bar in source_bars:
             snapshot = paper.apply(bar)
         self.assertIsNotNone(snapshot)
         self.assertTrue(any(marker.kind == "SIGNAL" for marker in snapshot.markers))
         self.assertTrue(any(marker.kind == "FILL" for marker in snapshot.markers))
         self.assertEqual(len({marker.marker_id for marker in snapshot.markers}), len(snapshot.markers))
+
+        bar_open_times = {bar.open_time_ms for bar in source_bars}
+        for marker in snapshot.markers:
+            self.assertIn(marker.anchor_time_ms, bar_open_times)
+            if marker.kind == "FILL":
+                self.assertEqual(marker.time_ms, marker.anchor_time_ms)
 
     def test_paper_rejects_forming_or_degraded_bars(self):
         paper = PaperEngine(MovingAverageCross())
