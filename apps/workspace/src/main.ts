@@ -199,6 +199,7 @@ async function bootstrapLightweight(
   const workspace = new QNextLightweightWorkspace({
     container: app,
     provider,
+    apiBase: runtime.apiBase ?? defaultApiBase,
     symbols,
     timeframes,
     initialTicker,
