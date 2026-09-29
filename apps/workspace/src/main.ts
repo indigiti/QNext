@@ -26,12 +26,24 @@ declare global {
   }
 }
 
+interface WorkspaceSettings {
+  chartEngine: QNextChartEngine;
+  lightweightLayout: 1 | 2 | 4;
+  lightweightSync: boolean;
+}
+
 const runtime = window.__QNEXT_CONFIG__ ?? {};
 const defaultApiBase = window.location.pathname.replace(/\/+$/, '');
 
 const fallbackTimeframes = [
   '15s', '30s', '1m', '2m', '3m', '5m', '15m', '30m', '1h', '1D',
 ];
+
+const fallbackWorkspaceSettings: WorkspaceSettings = {
+  chartEngine: 'vela',
+  lightweightLayout: 1,
+  lightweightSync: true,
+};
 
 async function loadEnabledTimeframes(): Promise<string[]> {
   const apiBase = (runtime.apiBase ?? defaultApiBase).replace(/\/+$/, '');
@@ -57,6 +69,33 @@ async function loadEnabledTimeframes(): Promise<string[]> {
   } catch (error) {
     console.warn('QNext enabled timeframes unavailable; using defaults', error);
     return [...fallbackTimeframes];
+  }
+}
+
+async function loadWorkspaceSettings(): Promise<WorkspaceSettings> {
+  const apiBase = (runtime.apiBase ?? defaultApiBase).replace(/\/+$/, '');
+  try {
+    const response = await fetch(`${apiBase}/api/v1/workspace-settings/`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = (await response.json()) as Partial<WorkspaceSettings>;
+    const chartEngine =
+      payload.chartEngine === 'lightweight' ||
+      payload.chartEngine === 'auto' ||
+      payload.chartEngine === 'vela'
+        ? payload.chartEngine
+        : fallbackWorkspaceSettings.chartEngine;
+    const lightweightLayout = normalizeLightweightLayout(payload.lightweightLayout);
+    const lightweightSync =
+      typeof payload.lightweightSync === 'boolean'
+        ? payload.lightweightSync
+        : fallbackWorkspaceSettings.lightweightSync;
+    return { chartEngine, lightweightLayout, lightweightSync };
+  } catch (error) {
+    console.warn('QNext workspace settings unavailable; using defaults', error);
+    return { ...fallbackWorkspaceSettings };
   }
 }
 
@@ -124,7 +163,10 @@ async function bootstrapVela(timeframes: string[]) {
   window.__QNEXT_WORKSPACE__ = workspace;
 }
 
-async function bootstrapLightweight(timeframes: string[]) {
+async function bootstrapLightweight(
+  timeframes: string[],
+  settings: WorkspaceSettings,
+) {
   const app = document.querySelector<HTMLElement>('#app');
   if (!app) throw new Error('QNext workspace root #app not found');
 
@@ -147,11 +189,11 @@ async function bootstrapLightweight(timeframes: string[]) {
 
   const query = new URLSearchParams(window.location.search);
   const layout = normalizeLightweightLayout(
-    query.get('layout') ?? runtime.lightweightLayout,
+    query.get('layout') ?? runtime.lightweightLayout ?? settings.lightweightLayout,
   );
   const querySync = query.get('sync');
   const syncCharts = querySync === null
-    ? runtime.lightweightSync ?? true
+    ? runtime.lightweightSync ?? settings.lightweightSync
     : querySync !== '0' && querySync !== 'false';
 
   const workspace = new QNextLightweightWorkspace({
@@ -170,11 +212,14 @@ async function bootstrapLightweight(timeframes: string[]) {
 }
 
 async function bootstrap() {
-  const timeframes = await loadEnabledTimeframes();
-  const engine = resolveChartEngine(runtime.chartEngine);
+  const [timeframes, settings] = await Promise.all([
+    loadEnabledTimeframes(),
+    loadWorkspaceSettings(),
+  ]);
+  const engine = resolveChartEngine(runtime.chartEngine ?? settings.chartEngine);
 
   if (engine === 'lightweight') {
-    await bootstrapLightweight(timeframes);
+    await bootstrapLightweight(timeframes, settings);
     return;
   }
 
