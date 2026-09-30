@@ -258,6 +258,9 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("HTTP shutdown error: %v", err)
 	}
+	if err := history.CloseAsyncWriters(shutdownCtx); err != nil {
+		log.Printf("history shutdown flush error: %v", err)
+	}
 }
 
 func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
