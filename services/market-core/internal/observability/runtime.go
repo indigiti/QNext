@@ -6,6 +6,7 @@ type Snapshot struct {
 	Capture any `json:"capture,omitempty"`
 	Broker  any `json:"broker,omitempty"`
 	Demand  any `json:"demand,omitempty"`
+	History any `json:"history,omitempty"`
 }
 
 var (
@@ -13,6 +14,7 @@ var (
 	captureSource func() any
 	brokerSource  func() any
 	demandSource  func() any
+	historySource func() any
 )
 
 func SetCaptureSource(source func() any) {
@@ -33,11 +35,18 @@ func SetDemandSource(source func() any) {
 	mu.Unlock()
 }
 
+func SetHistorySource(source func() any) {
+	mu.Lock()
+	historySource = source
+	mu.Unlock()
+}
+
 func Current() Snapshot {
 	mu.RLock()
 	capture := captureSource
 	broker := brokerSource
 	demand := demandSource
+	history := historySource
 	mu.RUnlock()
 
 	var snapshot Snapshot
@@ -49,6 +58,9 @@ func Current() Snapshot {
 	}
 	if demand != nil {
 		snapshot.Demand = demand()
+	}
+	if history != nil {
+		snapshot.History = history()
 	}
 	return snapshot
 }
