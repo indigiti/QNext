@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
 
 type persistRequest struct {
@@ -35,17 +36,22 @@ type AsyncWriter struct {
 }
 
 type PersistenceStats struct {
-	Queued          int    `json:"queued"`
-	Capacity        int    `json:"capacity"`
-	Pending         uint64 `json:"pending"`
-	Enqueued        uint64 `json:"enqueued"`
-	Writes          uint64 `json:"writes"`
-	Errors          uint64 `json:"errors"`
-	LastQueuedAtMS  int64  `json:"last_queued_at_ms,omitempty"`
-	LastFlushAtMS   int64  `json:"last_flush_at_ms,omitempty"`
-	FlushLagMS      int64  `json:"flush_lag_ms"`
-	LastError       string `json:"last_error,omitempty"`
+	Queued         int    `json:"queued"`
+	Capacity       int    `json:"capacity"`
+	Pending        uint64 `json:"pending"`
+	Enqueued       uint64 `json:"enqueued"`
+	Writes         uint64 `json:"writes"`
+	Errors         uint64 `json:"errors"`
+	LastQueuedAtMS int64  `json:"last_queued_at_ms,omitempty"`
+	LastFlushAtMS  int64  `json:"last_flush_at_ms,omitempty"`
+	FlushLagMS     int64  `json:"flush_lag_ms"`
+	LastError      string `json:"last_error,omitempty"`
 }
+
+var asyncRegistry = struct {
+	sync.Mutex
+	writers map[*Store]*AsyncWriter
+}{writers: make(map[*Store]*AsyncWriter)}
 
 func NewAsyncWriter(store *Store, capacity int) *AsyncWriter {
 	if capacity <= 0 {
@@ -59,6 +65,47 @@ func NewAsyncWriter(store *Store, capacity int) *AsyncWriter {
 	}
 	go writer.run()
 	return writer
+}
+
+func (s *Store) AppendBarAsync(bar domain.Bar) error {
+	if s == nil {
+		return errors.New("history store is unavailable")
+	}
+	writer := asyncWriterFor(s)
+	return writer.AppendBar(bar)
+}
+
+func asyncWriterFor(store *Store) *AsyncWriter {
+	asyncRegistry.Lock()
+	defer asyncRegistry.Unlock()
+	if writer := asyncRegistry.writers[store]; writer != nil {
+		return writer
+	}
+	writer := NewAsyncWriter(store, 4096)
+	asyncRegistry.writers[store] = writer
+	observability.SetHistorySource(func() any {
+		return map[string]any{
+			"cache":       store.CacheStats(),
+			"persistence": writer.Stats(),
+		}
+	})
+	return writer
+}
+
+func CloseAsyncWriters(ctx context.Context) error {
+	asyncRegistry.Lock()
+	writers := make([]*AsyncWriter, 0, len(asyncRegistry.writers))
+	for _, writer := range asyncRegistry.writers {
+		writers = append(writers, writer)
+	}
+	asyncRegistry.Unlock()
+
+	for _, writer := range writers {
+		if err := writer.Close(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (w *AsyncWriter) AppendBar(bar domain.Bar) error {
