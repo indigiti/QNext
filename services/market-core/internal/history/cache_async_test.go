@@ -94,6 +94,9 @@ func TestCurrentDayCacheConcurrentReadersAndAsyncFinals(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	if stats := store.CacheStats(); stats.DiskLoads != 1 {
+		t.Fatalf("concurrent readers caused repeated JSONL scans: %+v", stats)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -113,6 +116,53 @@ func TestCurrentDayCacheConcurrentReadersAndAsyncFinals(t *testing.T) {
 	}
 	if len(bars) != 20 {
 		t.Fatalf("restart recovery expected 20 bars, got %d", len(bars))
+	}
+}
+
+func TestAsyncWriterReturnsWhileDiskFlushIsBlocked(t *testing.T) {
+	store := New(t.TempDir())
+	now := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
+	fixedCurrentDay(store, now)
+	writer := NewAsyncWriter(store, 4)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	writer.writeFn = func(bar domain.Bar) error {
+		once.Do(func() { close(started) })
+		<-release
+		return store.appendBarDisk(bar)
+	}
+
+	bar := testBar(time.Date(2026, 9, 30, 3, 45, 0, 0, time.UTC), 25101, 0)
+	appendDone := make(chan error, 1)
+	go func() { appendDone <- writer.AppendBar(bar) }()
+
+	select {
+	case err := <-appendDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("live producer waited for disk persistence")
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("background disk writer did not start")
+	}
+	if stats := writer.Stats(); stats.Pending != 1 {
+		t.Fatalf("expected one pending final while disk is blocked: %+v", stats)
+	}
+
+	close(release)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := writer.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if stats := writer.Stats(); stats.Writes != 1 || stats.Pending != 0 {
+		t.Fatalf("blocked final was not drained: %+v", stats)
 	}
 }
 
