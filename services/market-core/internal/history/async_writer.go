@@ -21,6 +21,7 @@ type AsyncWriter struct {
 	queue    chan persistRequest
 	stop     chan struct{}
 	done     chan struct{}
+	writeFn  func(domain.Bar) error
 	submitMu sync.Mutex
 	stopOnce sync.Once
 	closed   bool
@@ -62,6 +63,9 @@ func NewAsyncWriter(store *Store, capacity int) *AsyncWriter {
 		queue: make(chan persistRequest, capacity),
 		stop:  make(chan struct{}),
 		done:  make(chan struct{}),
+	}
+	if store != nil {
+		writer.writeFn = store.appendBarDisk
 	}
 	go writer.run()
 	return writer
@@ -109,7 +113,7 @@ func CloseAsyncWriters(ctx context.Context) error {
 }
 
 func (w *AsyncWriter) AppendBar(bar domain.Bar) error {
-	if w == nil || w.store == nil {
+	if w == nil || w.store == nil || w.writeFn == nil {
 		return errors.New("history async writer is unavailable")
 	}
 	if err := validateBar(bar); err != nil {
@@ -126,9 +130,9 @@ func (w *AsyncWriter) AppendBar(bar domain.Bar) error {
 	// Make the finalized candle immediately visible to current-day history.
 	// Persistence remains ordered behind the queue and never drops finals.
 	w.store.observeBar(bar)
-	w.queue <- request
 	w.enqueued.Add(1)
 	w.lastQueuedAtMS.Store(request.queuedAt.UnixMilli())
+	w.queue <- request
 	return nil
 }
 
@@ -153,7 +157,7 @@ func (w *AsyncWriter) run() {
 
 func (w *AsyncWriter) persist(request persistRequest) {
 	for {
-		err := w.store.appendBarDisk(request.bar)
+		err := w.writeFn(request.bar)
 		if err == nil {
 			w.writes.Add(1)
 			w.lastFlushAtMS.Store(time.Now().UTC().UnixMilli())
@@ -204,8 +208,16 @@ func (w *AsyncWriter) Stats() PersistenceStats {
 	lastQueued := w.lastQueuedAtMS.Load()
 	lastFlush := w.lastFlushAtMS.Load()
 	flushLag := int64(0)
-	if pending > 0 && lastQueued > lastFlush {
-		flushLag = lastQueued - lastFlush
+	if pending > 0 {
+		nowMS := time.Now().UTC().UnixMilli()
+		if lastFlush > 0 {
+			flushLag = nowMS - lastFlush
+		} else if lastQueued > 0 {
+			flushLag = nowMS - lastQueued
+		}
+		if flushLag < 0 {
+			flushLag = 0
+		}
 	}
 	w.errMu.RLock()
 	lastError := w.lastError
