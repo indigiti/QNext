@@ -13,18 +13,16 @@ func TestTrackerObservesProviderInstrumentAndSyntheticStatus(t *testing.T) {
 	trade := at.Add(-2 * time.Second)
 	processed := at.Add(35 * time.Millisecond)
 	tracker.Observe(domain.Tick{
-		InstrumentID: "NSE:NIFTY50",
-		Provider:     "upstox",
-		Price:        25123.45,
-		EventTime:    at,
-		TradeTime:    trade,
-		ReceivedTime: at.Add(20 * time.Millisecond),
+		InstrumentID:  "NSE:NIFTY50",
+		Provider:      "upstox",
+		Price:         25123.45,
+		EventTime:     at,
+		TradeTime:     trade,
+		ReceivedTime:  at.Add(20 * time.Millisecond),
 		ProcessedTime: processed,
-		Quality:      domain.QualityGood,
+		Quality:       domain.QualityGood,
 	})
-	tracker.SetSyntheticStatus(func() any {
-		return map[string]any{"atm": 25100.0, "active_legs": 6}
-	})
+	tracker.SetSyntheticStatus(func() any { return map[string]any{"atm": 25100.0, "active_legs": 6} })
 
 	snapshot := tracker.Snapshot()
 	provider := snapshot.Providers["upstox"]
@@ -48,13 +46,8 @@ func TestTrackerObservesProviderInstrumentAndSyntheticStatus(t *testing.T) {
 
 func TestTrackerReportsMultipleSyntheticStatuses(t *testing.T) {
 	tracker := New()
-	tracker.SetSyntheticStatusFor("QNEXT:NIFTY-SYN", func() any {
-		return map[string]any{"atm": 25100.0}
-	})
-	tracker.SetSyntheticStatusFor("QNEXT:BANKNIFTY-SYN", func() any {
-		return map[string]any{"atm": 55100.0}
-	})
-
+	tracker.SetSyntheticStatusFor("QNEXT:NIFTY-SYN", func() any { return map[string]any{"atm": 25100.0} })
+	tracker.SetSyntheticStatusFor("QNEXT:BANKNIFTY-SYN", func() any { return map[string]any{"atm": 55100.0} })
 	snapshot := tracker.Snapshot()
 	if len(snapshot.Synthetics) != 2 {
 		t.Fatalf("expected two synthetic statuses, got %+v", snapshot.Synthetics)
