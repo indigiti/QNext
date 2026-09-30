@@ -126,6 +126,11 @@ func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain
 }
 
 func (s *Store) loadDayDisk(instrumentID, timeframe string, day time.Time) ([]domain.Bar, error) {
+	// Keep scans mutually exclusive with append+fsync so a reader can never
+	// observe a partially-written trailing JSONL record.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	path := s.dayPath(instrumentID, timeframe, day)
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
