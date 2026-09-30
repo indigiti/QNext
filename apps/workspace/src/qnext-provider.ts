@@ -23,6 +23,14 @@ export interface QNextBar {
   volume?: number;
 }
 
+export interface QNextTransportSnapshot {
+  mode: 'idle' | 'connecting' | 'wss' | 'rest_fallback';
+  sockets: number;
+  streams: number;
+  consumers: number;
+  polling_streams: number;
+}
+
 interface QNextSymbol {
   instrument_id: string;
   ticker: string;
@@ -60,6 +68,8 @@ interface StreamMessage {
   op?: string;
   stream_id?: string;
   seq?: number;
+  symbol?: string;
+  timeframe?: string;
   bar?: QNextBar;
 }
 
@@ -73,6 +83,22 @@ interface WebSocketLike {
   close(): void;
 }
 
+interface SharedBarSubscription {
+  key: string;
+  ticker: string;
+  instrumentID: string;
+  timeframe: string;
+  callbacks: Set<(bar: QNextBar) => void>;
+  streamID: string;
+  lastSeq: number;
+  needsSnapshot: boolean;
+  healing: boolean;
+  polling: boolean;
+  pollFailures: number;
+  lastPollSignature: string;
+  pollTimer?: ReturnType<typeof setTimeout>;
+}
+
 const WS_OPEN = 1;
 
 export class QNextProvider {
@@ -83,6 +109,12 @@ export class QNextProvider {
   private readonly reconnectDelayMs: number;
   private readonly pollIntervalMs: number;
   private symbolsPromise?: Promise<QNextSymbol[]>;
+
+  private socket?: WebSocketLike;
+  private socketConnected = false;
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private readonly subscriptions = new Map<string, SharedBarSubscription>();
+  private readonly streamToKey = new Map<string, string>();
 
   constructor(options: QNextProviderOptions = {}) {
     this.apiBase = (options.apiBase ?? '').replace(/\/+$/, '');
@@ -197,241 +229,402 @@ export class QNextProvider {
     _options?: { session?: string },
   ): () => void {
     let cancelled = false;
-    let socket: WebSocketLike | undefined;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-    let pollTimer: ReturnType<typeof setTimeout> | undefined;
-    let polling = false;
-    let pollFailures = 0;
-    let streamID = '';
-    let lastSeq = 0;
-    let resuming = false;
-    let needsSnapshot = false;
-    let healing = false;
-    let socketOpened = false;
-    let lastPollSignature = '';
+    let attached: SharedBarSubscription | undefined;
 
-    const send = (message: Record<string, unknown>) => {
-      if (socket?.readyState === WS_OPEN) {
-        socket.send(JSON.stringify(message));
-      }
-    };
-
-    const freshSubscribe = (instrumentID: string) => {
-      send({
-        op: 'subscribe',
-        channel: 'bars',
-        symbol: instrumentID,
-        timeframe,
-      });
-    };
-
-    const healAndSubscribe = async (instrumentID: string) => {
-      if (cancelled || healing) {
-        return;
-      }
-      healing = true;
-      needsSnapshot = true;
-      streamID = '';
-      lastSeq = 0;
-      resuming = false;
-      try {
-        const snapshot = await this.getBars(ticker, timeframe, { limit: 500 });
+    void this.resolveInstrument(ticker)
+      .then((instrument) => {
         if (cancelled) {
           return;
         }
-        for (const bar of snapshot) {
-          onBar(bar);
-        }
-        needsSnapshot = false;
-        freshSubscribe(instrumentID);
-      } catch (error) {
-        console.error('QNext stream resync snapshot failed', error);
-        socket?.close();
-      } finally {
-        healing = false;
-      }
-    };
 
-    const startPolling = () => {
-      if (cancelled || polling) {
-        return;
-      }
-      polling = true;
-      pollFailures = 0;
-
-      const poll = async () => {
-        if (cancelled || !polling) {
-          return;
+        const key = subscriptionKey(instrument.instrument_id, timeframe);
+        let subscription = this.subscriptions.get(key);
+        if (!subscription) {
+          subscription = {
+            key,
+            ticker,
+            instrumentID: instrument.instrument_id,
+            timeframe,
+            callbacks: new Set(),
+            streamID: '',
+            lastSeq: 0,
+            needsSnapshot: false,
+            healing: false,
+            polling: false,
+            pollFailures: 0,
+            lastPollSignature: '',
+          };
+          this.subscriptions.set(key, subscription);
         }
-        try {
-          const bars = await this.getBars(ticker, timeframe, { limit: 2 });
-          pollFailures = 0;
-          const latest = bars.at(-1);
-          if (latest) {
-            const signature = [
-              latest.time,
-              latest.open,
-              latest.high,
-              latest.low,
-              latest.close,
-              latest.volume ?? '',
-            ].join(':');
-            if (signature !== lastPollSignature) {
-              lastPollSignature = signature;
-              onBar(latest);
-            }
+
+        subscription.callbacks.add(onBar);
+        attached = subscription;
+
+        if (this.socketConnected) {
+          if (!subscription.streamID) {
+            this.freshSubscribe(subscription);
           }
-        } catch (error) {
-          pollFailures += 1;
-          if (pollFailures === 1 || pollFailures % 5 === 0) {
-            console.error('QNext live polling failed', error);
-          }
-        } finally {
-          if (!cancelled && polling) {
-            const retryDelay =
-              pollFailures === 0
-                ? this.pollIntervalMs
-                : Math.min(
-                    10_000,
-                    Math.max(
-                      1_000,
-                      this.pollIntervalMs * 2 ** Math.min(pollFailures, 6),
-                    ),
-                  );
-            pollTimer = setTimeout(poll, retryDelay);
-          }
-        }
-      };
-
-      void poll();
-    };
-
-    const stopPolling = () => {
-      polling = false;
-      pollFailures = 0;
-      if (pollTimer !== undefined) {
-        clearTimeout(pollTimer);
-        pollTimer = undefined;
-      }
-    };
-
-    const scheduleReconnect = (instrumentID: string) => {
-      if (cancelled || reconnectTimer !== undefined) {
-        return;
-      }
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = undefined;
-        connect(instrumentID);
-      }, this.reconnectDelayMs);
-    };
-
-    const connect = (instrumentID: string) => {
-      if (cancelled) {
-        return;
-      }
-
-      try {
-        socket = this.webSocketFactory(this.streamURL());
-      } catch (error) {
-        console.warn('QNext WebSocket unavailable; falling back to REST polling', error);
-        startPolling();
-        scheduleReconnect(instrumentID);
-        return;
-      }
-      socketOpened = false;
-      socket.onopen = () => {
-        socketOpened = true;
-        stopPolling();
-        if (needsSnapshot) {
-          void healAndSubscribe(instrumentID);
           return;
         }
-        if (streamID) {
-          resuming = true;
-          send({
-            op: 'resume',
-            stream_id: streamID,
-            after_seq: lastSeq,
-          });
-          return;
-        }
-        resuming = false;
-        freshSubscribe(instrumentID);
-      };
-
-      socket.onmessage = (event) => {
-        if (typeof event.data !== 'string') {
-          return;
-        }
-
-        let message: StreamMessage;
-        try {
-          message = JSON.parse(event.data) as StreamMessage;
-        } catch {
-          return;
-        }
-
-        switch (message.op) {
-          case 'subscribed':
-            if (message.stream_id) {
-              streamID = message.stream_id;
-            }
-            if (!resuming && typeof message.seq === 'number') {
-              lastSeq = Math.max(lastSeq, message.seq);
-            }
-            resuming = false;
-            break;
-
-          case 'update':
-            if (
-              message.bar &&
-              typeof message.seq === 'number' &&
-              message.seq > lastSeq
-            ) {
-              lastSeq = message.seq;
-              onBar(normalizeBar(message.bar));
-            }
-            break;
-
-          case 'resync_required':
-            needsSnapshot = true;
-            void healAndSubscribe(instrumentID);
-            break;
-        }
-      };
-
-      socket.onerror = () => {
-        socket?.close();
-      };
-
-      socket.onclose = () => {
-        startPolling();
-        scheduleReconnect(instrumentID);
-      };
-    };
-
-    void this.resolveInstrument(ticker)
-      .then((instrument) => connect(instrument.instrument_id))
+        this.connectSharedSocket();
+      })
       .catch((error: unknown) => {
         console.error('QNext live subscription failed', error);
       });
 
     return () => {
       cancelled = true;
-      if (reconnectTimer !== undefined) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = undefined;
+      if (!attached) {
+        return;
       }
-      polling = false;
-      if (pollTimer !== undefined) {
-        clearTimeout(pollTimer);
-        pollTimer = undefined;
+
+      attached.callbacks.delete(onBar);
+      if (attached.callbacks.size > 0) {
+        return;
       }
-      if (streamID) {
-        send({ op: 'unsubscribe', stream_id: streamID });
+
+      this.stopPolling(attached);
+      if (attached.streamID) {
+        this.send({ op: 'unsubscribe', stream_id: attached.streamID });
+        this.streamToKey.delete(attached.streamID);
       }
-      socket?.close();
+      this.subscriptions.delete(attached.key);
+      this.closeSharedSocketIfIdle();
     };
+  }
+
+  transportSnapshot(): QNextTransportSnapshot {
+    const streams = this.subscriptions.size;
+    const consumers = [...this.subscriptions.values()].reduce(
+      (total, subscription) => total + subscription.callbacks.size,
+      0,
+    );
+    const pollingStreams = [...this.subscriptions.values()].filter(
+      (subscription) => subscription.polling,
+    ).length;
+
+    const mode: QNextTransportSnapshot['mode'] =
+      streams === 0
+        ? 'idle'
+        : this.socketConnected
+          ? 'wss'
+          : this.socket
+            ? 'connecting'
+            : 'rest_fallback';
+
+    return {
+      mode,
+      sockets: this.socket ? 1 : 0,
+      streams,
+      consumers,
+      polling_streams: pollingStreams,
+    };
+  }
+
+  private connectSharedSocket(): void {
+    if (this.socket || this.subscriptions.size === 0) {
+      return;
+    }
+
+    let socket: WebSocketLike;
+    try {
+      socket = this.webSocketFactory(this.streamURL());
+    } catch (error) {
+      console.warn('QNext WebSocket unavailable; falling back to REST polling', error);
+      this.startPollingAll();
+      this.scheduleReconnect();
+      return;
+    }
+
+    this.socket = socket;
+    this.socketConnected = false;
+
+    socket.onopen = () => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.socketConnected = true;
+      this.clearReconnectTimer();
+      for (const subscription of this.subscriptions.values()) {
+        this.stopPolling(subscription);
+        if (subscription.needsSnapshot) {
+          void this.healAndSubscribe(subscription);
+        } else if (subscription.streamID) {
+          this.send({
+            op: 'resume',
+            stream_id: subscription.streamID,
+            after_seq: subscription.lastSeq,
+          });
+        } else {
+          this.freshSubscribe(subscription);
+        }
+      }
+    };
+
+    socket.onmessage = (event) => {
+      if (this.socket !== socket || typeof event.data !== 'string') {
+        return;
+      }
+
+      let message: StreamMessage;
+      try {
+        message = JSON.parse(event.data) as StreamMessage;
+      } catch {
+        return;
+      }
+      this.handleStreamMessage(message);
+    };
+
+    socket.onerror = () => {
+      if (this.socket === socket) {
+        socket.close();
+      }
+    };
+
+    socket.onclose = () => {
+      if (this.socket !== socket) {
+        return;
+      }
+      this.socket = undefined;
+      this.socketConnected = false;
+      if (this.subscriptions.size === 0) {
+        return;
+      }
+      this.startPollingAll();
+      this.scheduleReconnect();
+    };
+  }
+
+  private handleStreamMessage(message: StreamMessage): void {
+    switch (message.op) {
+      case 'subscribed': {
+        let subscription: SharedBarSubscription | undefined;
+        if (message.symbol && message.timeframe) {
+          subscription = this.subscriptions.get(
+            subscriptionKey(message.symbol, message.timeframe),
+          );
+        }
+        if (!subscription && message.stream_id) {
+          const key = this.streamToKey.get(message.stream_id);
+          if (key) {
+            subscription = this.subscriptions.get(key);
+          }
+        }
+        if (!subscription && !message.symbol && !message.timeframe) {
+          const unbound = [...this.subscriptions.values()].filter(
+            (candidate) => !candidate.streamID,
+          );
+          if (unbound.length === 1) {
+            subscription = unbound[0];
+          }
+        }
+        if (!subscription || !message.stream_id) {
+          return;
+        }
+
+        if (subscription.streamID && subscription.streamID !== message.stream_id) {
+          this.streamToKey.delete(subscription.streamID);
+        }
+        subscription.streamID = message.stream_id;
+        this.streamToKey.set(message.stream_id, subscription.key);
+        if (typeof message.seq === 'number') {
+          subscription.lastSeq = Math.max(subscription.lastSeq, message.seq);
+        }
+        subscription.needsSnapshot = false;
+        this.stopPolling(subscription);
+        return;
+      }
+
+      case 'update': {
+        if (!message.stream_id || !message.bar || typeof message.seq !== 'number') {
+          return;
+        }
+        const key = this.streamToKey.get(message.stream_id);
+        const subscription = key ? this.subscriptions.get(key) : undefined;
+        if (!subscription || message.seq <= subscription.lastSeq) {
+          return;
+        }
+        subscription.lastSeq = message.seq;
+        this.deliver(subscription, normalizeBar(message.bar));
+        return;
+      }
+
+      case 'resync_required': {
+        if (!message.stream_id) {
+          return;
+        }
+        const key = this.streamToKey.get(message.stream_id);
+        const subscription = key ? this.subscriptions.get(key) : undefined;
+        if (!subscription) {
+          return;
+        }
+        subscription.needsSnapshot = true;
+        void this.healAndSubscribe(subscription);
+        return;
+      }
+    }
+  }
+
+  private freshSubscribe(subscription: SharedBarSubscription): void {
+    this.send({
+      op: 'subscribe',
+      channel: 'bars',
+      symbol: subscription.instrumentID,
+      timeframe: subscription.timeframe,
+    });
+  }
+
+  private async healAndSubscribe(subscription: SharedBarSubscription): Promise<void> {
+    if (subscription.healing || subscription.callbacks.size === 0) {
+      return;
+    }
+    subscription.healing = true;
+    subscription.needsSnapshot = true;
+
+    try {
+      const snapshot = await this.getBars(subscription.ticker, subscription.timeframe, {
+        limit: 500,
+      });
+      if (!this.subscriptions.has(subscription.key)) {
+        return;
+      }
+      for (const bar of snapshot) {
+        this.deliver(subscription, bar);
+      }
+
+      if (subscription.streamID) {
+        this.streamToKey.delete(subscription.streamID);
+      }
+      subscription.streamID = '';
+      subscription.lastSeq = 0;
+      subscription.needsSnapshot = false;
+      this.stopPolling(subscription);
+      if (this.socketConnected) {
+        this.freshSubscribe(subscription);
+      }
+    } catch (error) {
+      if (this.subscriptions.has(subscription.key)) {
+        console.error('QNext stream resync snapshot failed', error);
+        this.startPolling(subscription);
+      }
+    } finally {
+      subscription.healing = false;
+    }
+  }
+
+  private deliver(subscription: SharedBarSubscription, bar: QNextBar): void {
+    for (const callback of subscription.callbacks) {
+      callback(bar);
+    }
+  }
+
+  private startPollingAll(): void {
+    for (const subscription of this.subscriptions.values()) {
+      this.startPolling(subscription);
+    }
+  }
+
+  private startPolling(subscription: SharedBarSubscription): void {
+    if (subscription.polling || subscription.callbacks.size === 0) {
+      return;
+    }
+    subscription.polling = true;
+    subscription.pollFailures = 0;
+
+    const poll = async () => {
+      if (!subscription.polling || !this.subscriptions.has(subscription.key)) {
+        return;
+      }
+      try {
+        const bars = await this.getBars(subscription.ticker, subscription.timeframe, {
+          limit: 2,
+        });
+        subscription.pollFailures = 0;
+        const latest = bars.at(-1);
+        if (latest) {
+          const signature = [
+            latest.time,
+            latest.open,
+            latest.high,
+            latest.low,
+            latest.close,
+            latest.volume ?? '',
+          ].join(':');
+          if (signature !== subscription.lastPollSignature) {
+            subscription.lastPollSignature = signature;
+            this.deliver(subscription, latest);
+          }
+        }
+        if (this.socketConnected && subscription.needsSnapshot) {
+          void this.healAndSubscribe(subscription);
+        }
+      } catch (error) {
+        subscription.pollFailures += 1;
+        if (subscription.pollFailures === 1 || subscription.pollFailures % 5 === 0) {
+          console.error('QNext live polling failed', error);
+        }
+      } finally {
+        if (subscription.polling && this.subscriptions.has(subscription.key)) {
+          const retryDelay =
+            subscription.pollFailures === 0
+              ? this.pollIntervalMs
+              : Math.min(
+                  10_000,
+                  Math.max(
+                    1_000,
+                    this.pollIntervalMs *
+                      2 ** Math.min(subscription.pollFailures, 6),
+                  ),
+                );
+          subscription.pollTimer = setTimeout(poll, retryDelay);
+        }
+      }
+    };
+
+    void poll();
+  }
+
+  private stopPolling(subscription: SharedBarSubscription): void {
+    subscription.polling = false;
+    subscription.pollFailures = 0;
+    if (subscription.pollTimer !== undefined) {
+      clearTimeout(subscription.pollTimer);
+      subscription.pollTimer = undefined;
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer !== undefined || this.subscriptions.size === 0) {
+      return;
+    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      this.connectSharedSocket();
+    }, this.reconnectDelayMs);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== undefined) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
+  }
+
+  private closeSharedSocketIfIdle(): void {
+    if (this.subscriptions.size !== 0) {
+      return;
+    }
+    this.clearReconnectTimer();
+    const socket = this.socket;
+    this.socket = undefined;
+    this.socketConnected = false;
+    socket?.close();
+  }
+
+  private send(message: Record<string, unknown>): void {
+    if (this.socketConnected && this.socket?.readyState === WS_OPEN) {
+      this.socket.send(JSON.stringify(message));
+    }
   }
 
   private endpoint(path: string): string {
@@ -526,6 +719,10 @@ function normalizeBar(bar: QNextBar): QNextBar {
     close: Number(bar.close),
     ...(bar.volume === undefined ? {} : { volume: Number(bar.volume) }),
   };
+}
+
+function subscriptionKey(instrumentID: string, timeframe: string): string {
+  return `${instrumentID.trim().toUpperCase()}|${timeframe.trim()}`;
 }
 
 function defaultHistoryLookbackMs(timeframe: string, limit: number): number {
