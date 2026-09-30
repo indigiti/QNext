@@ -20,11 +20,11 @@ type currentDayCache struct {
 	activeDay string
 	series    map[string]*cachedSeries
 
-	hits               atomic.Uint64
-	misses             atomic.Uint64
-	diskLoads           atomic.Uint64
-	lastDiskLoadAtMS    atomic.Int64
-	lastDiskLoadTimeMS  atomic.Int64
+	hits              atomic.Uint64
+	misses            atomic.Uint64
+	diskLoads         atomic.Uint64
+	lastDiskLoadAtMS  atomic.Int64
+	lastDiskLoadTimeMS atomic.Int64
 }
 
 type CacheStats struct {
