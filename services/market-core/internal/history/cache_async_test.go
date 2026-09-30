@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
 
 func fixedCurrentDay(store *Store, now time.Time) {
