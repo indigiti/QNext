@@ -201,6 +201,7 @@ export class QNextProvider {
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
     let polling = false;
+    let pollFailures = 0;
     let streamID = '';
     let lastSeq = 0;
     let resuming = false;
@@ -256,6 +257,7 @@ export class QNextProvider {
         return;
       }
       polling = true;
+      pollFailures = 0;
 
       const poll = async () => {
         if (cancelled || !polling) {
@@ -263,6 +265,7 @@ export class QNextProvider {
         }
         try {
           const bars = await this.getBars(ticker, timeframe, { limit: 2 });
+          pollFailures = 0;
           const latest = bars.at(-1);
           if (latest) {
             const signature = [
@@ -279,10 +282,23 @@ export class QNextProvider {
             }
           }
         } catch (error) {
-          console.error('QNext live polling failed', error);
+          pollFailures += 1;
+          if (pollFailures === 1 || pollFailures % 5 === 0) {
+            console.error('QNext live polling failed', error);
+          }
         } finally {
           if (!cancelled && polling) {
-            pollTimer = setTimeout(poll, this.pollIntervalMs);
+            const retryDelay =
+              pollFailures === 0
+                ? this.pollIntervalMs
+                : Math.min(
+                    10_000,
+                    Math.max(
+                      1_000,
+                      this.pollIntervalMs * 2 ** Math.min(pollFailures, 6),
+                    ),
+                  );
+            pollTimer = setTimeout(poll, retryDelay);
           }
         }
       };
@@ -292,6 +308,7 @@ export class QNextProvider {
 
     const stopPolling = () => {
       polling = false;
+      pollFailures = 0;
       if (pollTimer !== undefined) {
         clearTimeout(pollTimer);
         pollTimer = undefined;
