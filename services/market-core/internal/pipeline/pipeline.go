@@ -13,6 +13,10 @@ type HistoryWriter interface {
 	AppendBar(domain.Bar) error
 }
 
+type AsyncHistoryWriter interface {
+	AppendBarAsync(domain.Bar) error
+}
+
 type Pipeline struct {
 	candles *candle.Engine
 	rollups *rollupEngine
@@ -101,6 +105,12 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 
 func (p *Pipeline) persistFinal(bar domain.Bar) error {
 	if !bar.Final || p.history == nil {
+		return nil
+	}
+	if async, ok := p.history.(AsyncHistoryWriter); ok {
+		if err := async.AppendBarAsync(bar); err != nil {
+			return fmt.Errorf("queue %s bar persistence: %w", bar.Timeframe, err)
+		}
 		return nil
 	}
 	if err := p.history.AppendBar(bar); err != nil {
