@@ -117,11 +117,11 @@ func (n *Normalizer) NormalizeEnvelope(
 		return nil, errors.New("sequence generator is required")
 	}
 
-	receivedTime, err := parseMillis(envelope.CurrentTS)
+	marketTime, err := parseMillis(envelope.CurrentTS)
 	if err != nil {
 		return nil, errors.New("invalid Upstox currentTs")
 	}
-	if processedAt.Before(receivedTime) {
+	if processedAt.Before(marketTime) {
 		return nil, errors.New("processed time precedes provider receive time")
 	}
 
@@ -143,7 +143,7 @@ func (n *Normalizer) NormalizeEnvelope(
 			return nil, errors.New("unregistered Upstox provider key: " + providerKey)
 		}
 
-		eventTime, err := parseMillis(feed.LTPC.LTT)
+		tradeTime, err := parseMillis(feed.LTPC.LTT)
 		if err != nil {
 			return nil, errors.New("invalid Upstox ltt for " + providerKey)
 		}
@@ -162,8 +162,9 @@ func (n *Normalizer) NormalizeEnvelope(
 			Provider:      ProviderName,
 			Price:         feed.LTPC.LTP,
 			Quantity:      quantity,
-			EventTime:     eventTime,
-			ReceivedTime:  receivedTime,
+			EventTime:     marketTime,
+			TradeTime:     tradeTime,
+			ReceivedTime:  marketTime,
 			ProcessedTime: processedAt.UTC(),
 			Sequence:      nextSequence(),
 			Quality:       domain.QualityGood,
