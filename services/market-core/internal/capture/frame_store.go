@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
 
 const (
@@ -50,6 +52,7 @@ func NewFrameStore(root, provider string) *FrameStore {
 		now:      time.Now,
 		queue:    make(chan []byte, defaultCaptureBuffer),
 	}
+	observability.SetCaptureSource(func() any { return store.Stats() })
 	go store.run()
 	return store
 }
