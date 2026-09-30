@@ -9,6 +9,29 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 )
 
+type syncHistoryWriter struct {
+	store *history.Store
+}
+
+func (w syncHistoryWriter) AppendBar(bar domain.Bar) error {
+	return w.store.AppendBar(bar)
+}
+
+type dualHistoryWriter struct {
+	syncCalls  int
+	asyncCalls int
+}
+
+func (w *dualHistoryWriter) AppendBar(domain.Bar) error {
+	w.syncCalls++
+	return nil
+}
+
+func (w *dualHistoryWriter) AppendBarAsync(domain.Bar) error {
+	w.asyncCalls++
+	return nil
+}
+
 func pipelineTick(at string, price float64, sequence uint64) domain.Tick {
 	ts, err := time.Parse(time.RFC3339, at)
 	if err != nil {
@@ -26,7 +49,7 @@ func pipelineTick(at string, price float64, sequence uint64) domain.Tick {
 
 func TestPipelinePersistsOnlyFinalizedBars(t *testing.T) {
 	store := history.New(t.TempDir())
-	pipe, err := New(candle.New("candle-v1"), store, []string{"30s", "1m"})
+	pipe, err := New(candle.New("candle-v1"), syncHistoryWriter{store: store}, []string{"30s", "1m"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +84,23 @@ func TestPipelinePersistsOnlyFinalizedBars(t *testing.T) {
 	}
 }
 
+func TestPipelinePrefersAsyncHistoryForFinalBars(t *testing.T) {
+	writer := &dualHistoryWriter{}
+	pipe := &Pipeline{history: writer}
+	bar := domain.Bar{
+		InstrumentID: "NSE:NIFTY50",
+		Timeframe:    "30s",
+		OpenTime:     time.Date(2026, 9, 30, 3, 45, 0, 0, time.UTC),
+		Final:        true,
+	}
+	if err := pipe.persistFinal(bar); err != nil {
+		t.Fatal(err)
+	}
+	if writer.asyncCalls != 1 || writer.syncCalls != 0 {
+		t.Fatalf("expected async persistence only, got async=%d sync=%d", writer.asyncCalls, writer.syncCalls)
+	}
+}
+
 func TestPipelineRejectsUnsupportedTimeframe(t *testing.T) {
 	_, err := New(candle.New("candle-v1"), nil, []string{"7h"})
 	if err == nil {
@@ -70,7 +110,7 @@ func TestPipelineRejectsUnsupportedTimeframe(t *testing.T) {
 
 func TestPipelineRollsUpTwoMinuteBarsFromCanonicalOneMinute(t *testing.T) {
 	store := history.New(t.TempDir())
-	pipe, err := New(candle.New("candle-v2"), store, []string{"1m", "2m"})
+	pipe, err := New(candle.New("candle-v2"), syncHistoryWriter{store: store}, []string{"1m", "2m"})
 	if err != nil {
 		t.Fatal(err)
 	}
