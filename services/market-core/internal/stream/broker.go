@@ -5,8 +5,10 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
 
 type BarEvent struct {
@@ -26,9 +28,29 @@ type Broker struct {
 }
 
 type streamState struct {
-	seq    uint64
-	replay []BarEvent
-	subs   map[uint64]chan BarEvent
+	seq               uint64
+	replay            []BarEvent
+	subs              map[uint64]chan BarEvent
+	lastPublishedAtMS int64
+}
+
+type BrokerStreamStats struct {
+	StreamID           string `json:"stream_id"`
+	InstrumentID       string `json:"instrument_id"`
+	Timeframe          string `json:"timeframe"`
+	Seq                uint64 `json:"seq"`
+	Subscribers        int    `json:"subscribers"`
+	ReplayEvents       int    `json:"replay_events"`
+	LastPublishedAtMS  int64  `json:"last_published_at_ms"`
+	LastBarOpenTimeMS  int64  `json:"last_bar_open_time_ms,omitempty"`
+	LastBarFinal       bool   `json:"last_bar_final"`
+}
+
+type BrokerStats struct {
+	Streams      int                 `json:"streams"`
+	Subscribers  int                 `json:"subscribers"`
+	ReplayEvents int                 `json:"replay_events"`
+	Details      []BrokerStreamStats `json:"details"`
 }
 
 type Subscription struct {
@@ -51,11 +73,13 @@ func NewBroker(retention, subscriberBuffer int) *Broker {
 	if subscriberBuffer <= 0 {
 		subscriberBuffer = 64
 	}
-	return &Broker{
+	broker := &Broker{
 		retention:        retention,
 		subscriberBuffer: subscriberBuffer,
 		streams:          make(map[string]*streamState),
 	}
+	observability.SetBrokerSource(func() any { return broker.Stats() })
+	return broker
 }
 
 func (b *Broker) PublishBar(bar domain.Bar) {
@@ -73,6 +97,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		b.streams[key] = state
 	}
 	state.seq++
+	state.lastPublishedAtMS = time.Now().UTC().UnixMilli()
 	event := BarEvent{
 		StreamID: streamID(bar.InstrumentID, bar.Timeframe),
 		Seq:      state.seq,
@@ -138,6 +163,39 @@ func (b *Broker) LatestBar(instrumentID, timeframe string) (domain.Bar, bool) {
 		return domain.Bar{}, false
 	}
 	return state.replay[len(state.replay)-1].Bar, true
+}
+
+func (b *Broker) Stats() BrokerStats {
+	if b == nil {
+		return BrokerStats{}
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	stats := BrokerStats{Streams: len(b.streams)}
+	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
+	for key, state := range b.streams {
+		instrumentID, timeframe := splitStreamKey(key)
+		streamStats := BrokerStreamStats{
+			StreamID:          streamID(instrumentID, timeframe),
+			InstrumentID:      instrumentID,
+			Timeframe:         timeframe,
+			Seq:               state.seq,
+			Subscribers:       len(state.subs),
+			ReplayEvents:      len(state.replay),
+			LastPublishedAtMS: state.lastPublishedAtMS,
+		}
+		if len(state.replay) > 0 {
+			bar := state.replay[len(state.replay)-1].Bar
+			streamStats.LastBarOpenTimeMS = bar.OpenTime.UTC().UnixMilli()
+			streamStats.LastBarFinal = bar.Final
+		}
+		stats.Subscribers += streamStats.Subscribers
+		stats.ReplayEvents += streamStats.ReplayEvents
+		stats.Details = append(stats.Details, streamStats)
+	}
+	return stats
 }
 
 func (b *Broker) Subscribe(instrumentID, timeframe string, afterSeq *uint64) (*Subscription, error) {
@@ -221,6 +279,14 @@ func (s *Subscription) Cancel() {
 
 func streamKey(instrumentID, timeframe string) string {
 	return instrumentID + "\x00" + timeframe
+}
+
+func splitStreamKey(key string) (string, string) {
+	parts := strings.SplitN(key, "\x00", 2)
+	if len(parts) != 2 {
+		return key, ""
+	}
+	return parts[0], parts[1]
 }
 
 func streamID(instrumentID, timeframe string) string {
