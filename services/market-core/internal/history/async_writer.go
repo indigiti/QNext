@@ -109,15 +109,27 @@ func asyncWriterFor(store *Store) *AsyncWriter {
 	return writer
 }
 
-func CloseAsyncWriters(ctx context.Context) error {
+func snapshotAsyncWriters() []*AsyncWriter {
 	asyncRegistry.Lock()
+	defer asyncRegistry.Unlock()
 	writers := make([]*AsyncWriter, 0, len(asyncRegistry.writers))
 	for _, writer := range asyncRegistry.writers {
 		writers = append(writers, writer)
 	}
-	asyncRegistry.Unlock()
+	return writers
+}
 
-	for _, writer := range writers {
+func FlushAsyncWriters(ctx context.Context) error {
+	for _, writer := range snapshotAsyncWriters() {
+		if err := writer.Flush(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func CloseAsyncWriters(ctx context.Context) error {
+	for _, writer := range snapshotAsyncWriters() {
 		if err := writer.Close(ctx); err != nil {
 			return err
 		}
