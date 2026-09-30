@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/indigiti/QNext/services/market-core/internal/demand"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/synthetic"
 )
@@ -81,6 +82,7 @@ type Status struct {
 	PendingExpiry     string  `json:"pending_expiry"`
 	ActiveLegs        int     `json:"active_legs"`
 	WarmSubscriptions int     `json:"warm_subscriptions"`
+	DemandActive      bool    `json:"demand_active"`
 }
 
 type observation struct {
@@ -112,6 +114,7 @@ type Manager struct {
 
 	current *generation
 	pending *generation
+	active  bool
 
 	candidateATM   float64
 	candidateSince time.Time
@@ -133,7 +136,7 @@ func New(
 	if resolver == nil || subs == nil || nextSeq == nil {
 		return nil, errors.New("auto leg manager requires resolver, subscriptions, and sequence generator")
 	}
-	return &Manager{
+	manager := &Manager{
 		cfg:          cfg,
 		resolver:     resolver,
 		subs:         subs,
@@ -142,7 +145,9 @@ func New(
 		observations: make(chan observation, 1),
 		retire:       make(chan []string, 8),
 		latestTicks:  make(map[string]domain.Tick),
-	}, nil
+	}
+	demand.Register(cfg.SyntheticInstrumentID, manager)
+	return manager, nil
 }
 
 func (m *Manager) Run(ctx context.Context) error {
@@ -165,12 +170,71 @@ func (m *Manager) Run(ctx context.Context) error {
 	}
 }
 
+func (m *Manager) Activate(context.Context) error {
+	m.mu.Lock()
+	if m.active {
+		m.mu.Unlock()
+		return nil
+	}
+	m.active = true
+	spot := m.latestSpot
+	m.mu.Unlock()
+
+	if spot.price > 0 && !spot.at.IsZero() {
+		m.observe(spot)
+	}
+	return nil
+}
+
+func (m *Manager) Deactivate(ctx context.Context) error {
+	m.mu.Lock()
+	if !m.active {
+		m.mu.Unlock()
+		return nil
+	}
+	m.active = false
+
+	keys := make(map[string]bool)
+	if m.current != nil {
+		for key := range m.current.warmKeys {
+			keys[key] = true
+		}
+	}
+	if m.pending != nil {
+		for key := range m.pending.warmKeys {
+			keys[key] = true
+		}
+	}
+	m.current = nil
+	m.pending = nil
+	m.candidateATM = 0
+	m.candidateSince = time.Time{}
+	m.latestTicks = make(map[string]domain.Tick)
+	m.mu.Unlock()
+
+	if len(keys) == 0 {
+		return nil
+	}
+	return m.subs.Unsubscribe(ctx, sortedKeys(keys))
+}
+
 func (m *Manager) Apply(tick domain.Tick) (domain.Tick, bool, error) {
 	if tick.InstrumentID == m.cfg.UnderlyingInstrumentID && tick.Price > 0 && !tick.EventTime.IsZero() {
-		m.observe(observation{price: tick.Price, at: tick.EventTime.UTC()})
+		spot := observation{price: tick.Price, at: tick.EventTime.UTC()}
+		m.mu.Lock()
+		m.latestSpot = spot
+		active := m.active
+		m.mu.Unlock()
+		if active {
+			m.observe(spot)
+		}
 	}
 
 	m.mu.Lock()
+	if !m.active {
+		m.mu.Unlock()
+		return domain.Tick{}, false, nil
+	}
 	m.latestTicks[tick.InstrumentID] = tick
 
 	if m.pending != nil && m.pending.ready != nil {
@@ -213,7 +277,7 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var status Status
+	status := Status{DemandActive: m.active}
 	if m.current != nil {
 		status.ATM = m.current.atm
 		status.Expiry = m.current.expiry
@@ -235,7 +299,7 @@ func (m *Manager) consider(ctx context.Context, obs observation) error {
 
 	m.mu.Lock()
 	m.latestSpot = obs
-	if m.pending != nil {
+	if !m.active || m.pending != nil {
 		m.mu.Unlock()
 		return nil
 	}
@@ -283,6 +347,13 @@ func (m *Manager) consider(ctx context.Context, obs observation) error {
 }
 
 func (m *Manager) prepare(ctx context.Context, atm float64, at time.Time) error {
+	m.mu.Lock()
+	active := m.active
+	m.mu.Unlock()
+	if !active {
+		return nil
+	}
+
 	warm := centeredStrikes(atm, m.cfg.StrikeInterval, m.cfg.WarmStrikes)
 	basket, err := m.resolver.Resolve(ctx, at, warm)
 	if err != nil {
@@ -304,12 +375,18 @@ func (m *Manager) prepare(ctx context.Context, atm float64, at time.Time) error 
 	}
 
 	keys := sortedKeys(warmKeys)
+	m.mu.Lock()
+	active = m.active
+	m.mu.Unlock()
+	if !active {
+		return nil
+	}
 	if err := m.subs.Subscribe(ctx, keys); err != nil {
 		return fmt.Errorf("subscribe synthetic warm basket: %w", err)
 	}
 
-	active := centeredStrikes(atm, m.cfg.StrikeInterval, m.cfg.ActiveStrikes)
-	activeSet := strikeSet(active)
+	activeStrikes := centeredStrikes(atm, m.cfg.StrikeInterval, m.cfg.ActiveStrikes)
+	activeSet := strikeSet(activeStrikes)
 	bindings := make([]synthetic.LegBinding, 0, m.cfg.ActiveStrikes*2)
 	activeIDs := make(map[string]bool, m.cfg.ActiveStrikes*2)
 	for _, leg := range basket.Legs {
@@ -324,12 +401,19 @@ func (m *Manager) prepare(ctx context.Context, atm float64, at time.Time) error 
 		activeIDs[leg.InstrumentID] = true
 	}
 	if len(bindings) != m.cfg.ActiveStrikes*2 {
+		_ = m.subs.Unsubscribe(ctx, keys)
 		return fmt.Errorf("resolved active basket is incomplete: got %d legs, want %d", len(bindings), m.cfg.ActiveStrikes*2)
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	if !m.active {
+		m.mu.Unlock()
+		_ = m.subs.Unsubscribe(ctx, keys)
+		return nil
+	}
 	if m.pending != nil {
+		m.mu.Unlock()
+		_ = m.subs.Unsubscribe(ctx, keys)
 		return errors.New("synthetic basket changed while preparing a pending generation")
 	}
 
@@ -350,6 +434,8 @@ func (m *Manager) prepare(ctx context.Context, atm float64, at time.Time) error 
 		MaxLegTimeSkew:         m.cfg.MaxLegTimeSkew,
 	}, bindings, m.nextSeq)
 	if err != nil {
+		m.mu.Unlock()
+		_ = m.subs.Unsubscribe(ctx, keys)
 		return err
 	}
 
@@ -377,6 +463,8 @@ func (m *Manager) prepare(ctx context.Context, atm float64, at time.Time) error 
 	for _, tick := range cached {
 		out, emitted, applyErr := gen.assembler.Apply(tick)
 		if applyErr != nil {
+			m.mu.Unlock()
+			_ = m.subs.Unsubscribe(ctx, keys)
 			return applyErr
 		}
 		if emitted {
@@ -386,6 +474,7 @@ func (m *Manager) prepare(ctx context.Context, atm float64, at time.Time) error 
 	}
 
 	m.pending = gen
+	m.mu.Unlock()
 	return nil
 }
 

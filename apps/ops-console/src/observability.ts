@@ -18,8 +18,18 @@ type BrokerStream = {
   last_bar_final?: boolean;
 };
 
+type DemandTarget = {
+  instrument_id?: string;
+  refs?: number;
+  active?: boolean;
+  idle_until_ms?: number;
+  last_change_ms?: number;
+  last_error?: string;
+};
+
 type FeedPayload = {
   nifty_instrument_id?: string;
+  synthetic_instrument_id?: string;
   telemetry?: {
     instruments?: Record<string, InstrumentTelemetry>;
     runtime?: {
@@ -35,6 +45,13 @@ type FeedPayload = {
         subscribers?: number;
         replay_events?: number;
         details?: BrokerStream[];
+      };
+      demand?: {
+        idle_ttl_ms?: number;
+        targets?: number;
+        active_targets?: number;
+        total_refs?: number;
+        details?: DemandTarget[];
       };
     };
   };
@@ -112,6 +129,26 @@ function streamFor(details: BrokerStream[], instrument: string, timeframe: strin
   );
 }
 
+function renderPrimarySyntheticDemandState(feed: FeedPayload, demandDetails: DemandTarget[]): void {
+  const instrumentID = feed.synthetic_instrument_id;
+  if (!instrumentID) return;
+  const target = demandDetails.find((item) => item.instrument_id === instrumentID);
+  if (!target || target.active) return;
+
+  const summary = document.querySelectorAll<HTMLElement>('#feed-summary > div');
+  const syntheticCard = summary.item(3);
+  const syntheticLastTick = summary.item(4);
+  const badge = syntheticCard?.querySelector<HTMLSpanElement>('.badge');
+  if (badge) {
+    badge.className = 'badge good';
+    badge.textContent = 'IDLE';
+  }
+  const lastTickValue = syntheticLastTick?.querySelector<HTMLElement>('strong');
+  if (lastTickValue) {
+    lastTickValue.textContent = 'on demand';
+  }
+}
+
 function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const panel = ensurePanel();
   if (!panel) return;
@@ -120,7 +157,9 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const runtime = telemetry.runtime ?? {};
   const capture = runtime.capture;
   const broker = runtime.broker;
+  const demand = runtime.demand;
   const details = broker?.details ?? [];
+  const demandDetails = demand?.details ?? [];
   const niftyID = feed.nifty_instrument_id ?? 'NSE:NIFTY50';
   const nifty = telemetry.instruments?.[niftyID];
   const marketAge = ageMS(nifty?.last_event_time_ms);
@@ -136,10 +175,16 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const captureHealthy = !capture || ((capture.dropped ?? 0) === 0 && (capture.errors ?? 0) === 0);
   const proxyHealthy = (proxy.failures ?? 0) === 0 || (ageMS(proxy.last_at_ms) ?? Number.MAX_SAFE_INTEGER) > 60_000;
   const marketHealthy = marketAge !== null && marketAge <= 30_000;
+  const demandHealthy = !demandDetails.some((target) => Boolean(target.last_error));
+  const activeDemand = demandDetails.filter((target) => target.active);
+  const activeIDs = activeDemand
+    .map((target) => target.instrument_id)
+    .filter((instrumentID): instrumentID is string => Boolean(instrumentID))
+    .join(', ');
 
   const health = document.querySelector<HTMLSpanElement>('#observability-health');
   if (health) {
-    const ok = marketHealthy && captureHealthy && proxyHealthy;
+    const ok = marketHealthy && captureHealthy && proxyHealthy && demandHealthy;
     health.className = `badge ${ok ? 'good' : 'bad'}`;
     health.textContent = ok ? 'HEALTHY' : 'CHECK';
   }
@@ -163,6 +208,15 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
     </div>
 
     <div class="feed-provider-card">
+      <div class="line"><strong>LIVE DEMAND</strong>${stateBadge(demandHealthy, demandHealthy ? 'HEALTHY' : 'CHECK')}</div>
+      <div class="feed-kv"><span>Synthetic targets</span><strong>${demand?.targets ?? 0}</strong></div>
+      <div class="feed-kv"><span>Active synthetics</span><strong>${demand?.active_targets ?? 0}</strong></div>
+      <div class="feed-kv"><span>Consumer refs</span><strong>${demand?.total_refs ?? 0}</strong></div>
+      <div class="feed-kv"><span>Idle grace</span><strong>${duration(demand?.idle_ttl_ms ?? null)}</strong></div>
+      <div class="feed-kv"><span>Active IDs</span><strong>${activeIDs || 'none'}</strong></div>
+    </div>
+
+    <div class="feed-provider-card">
       <div class="line"><strong>RAW CAPTURE</strong>${stateBadge(captureHealthy, capture ? (captureHealthy ? 'HEALTHY' : 'CHECK') : 'OFF')}</div>
       <div class="feed-kv"><span>Queue</span><strong>${capture ? `${capture.queued ?? 0} / ${capture.capacity ?? 0}` : 'disabled'}</strong></div>
       <div class="feed-kv"><span>Enqueued</span><strong>${capture?.enqueued ?? 0}</strong></div>
@@ -178,6 +232,8 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Last path</span><strong>${proxy.last_path ?? '—'}</strong></div>
     </div>
   `;
+
+  renderPrimarySyntheticDemandState(feed, demandDetails);
 }
 
 async function refreshObservability(): Promise<void> {

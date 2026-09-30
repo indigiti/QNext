@@ -113,6 +113,9 @@ func TestManagerAtomicallyRollsToNextATM(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() { _ = manager.Run(ctx) }()
+	if err := manager.Activate(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	at := time.Date(2026, 9, 25, 3, 45, 0, 0, time.UTC)
 	_, _, _ = manager.Apply(domain.Tick{
@@ -147,7 +150,7 @@ func TestManagerAtomicallyRollsToNextATM(t *testing.T) {
 	if !emitted {
 		t.Fatal("expected initial synthetic generation to become active")
 	}
-	if status := manager.Status(); status.ATM != 25100 || status.Expiry != "2026-09-29" {
+	if status := manager.Status(); status.ATM != 25100 || status.Expiry != "2026-09-29" || !status.DemandActive {
 		t.Fatalf("unexpected initial status: %+v", status)
 	}
 
@@ -178,6 +181,46 @@ func TestManagerAtomicallyRollsToNextATM(t *testing.T) {
 	}
 	if status := manager.Status(); status.ATM != 25150 || status.Generation < 2 {
 		t.Fatalf("unexpected rolled status: %+v", status)
+	}
+}
+
+func TestManagerReleasesWarmKeysWhenDemandExpires(t *testing.T) {
+	subs := newFakeSubscriptions()
+	manager, err := New(Config{
+		UnderlyingInstrumentID: "NSE:NIFTY50",
+		SyntheticInstrumentID:  "QNEXT:NIFTY-SYN-IDLE-TEST",
+		Version:                "nifty-syn-v2",
+		StrikeInterval:         50,
+		ActiveStrikes:          5,
+		WarmStrikes:            7,
+		HysteresisPoints:       5,
+		MinimumValidCandidates: 3,
+		MaxLegAge:              2 * time.Second,
+		MaxLegTimeSkew:         time.Second,
+	}, fakeResolver{}, subs, func() uint64 { return 1 }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = manager.Run(ctx) }()
+	if err := manager.Activate(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	at := time.Date(2026, 9, 25, 3, 45, 0, 0, time.UTC)
+	_, _, _ = manager.Apply(domain.Tick{InstrumentID: "NSE:NIFTY50", Price: 25110, EventTime: at, Quality: domain.QualityGood})
+	waitForPending(t, manager, 25100)
+	if err := manager.Deactivate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if status := manager.Status(); status.DemandActive || status.PendingATM != 0 || status.WarmSubscriptions != 0 {
+		t.Fatalf("manager retained live demand state: %+v", status)
+	}
+	subs.mu.Lock()
+	defer subs.mu.Unlock()
+	if len(subs.subscribed) != 0 || len(subs.unsubscribed) == 0 {
+		t.Fatalf("warm subscriptions were not released: subscribed=%+v unsubscribed=%+v", subs.subscribed, subs.unsubscribed)
 	}
 }
 
