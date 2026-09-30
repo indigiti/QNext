@@ -182,6 +182,7 @@ func TestNormalizeRejectsUnknownProviderKey(t *testing.T) {
 			Feeds: map[string]Feed{
 				"UNKNOWN": {LTPC: &LTPC{LTP: 1, LTT: "1740729552723"}},
 			},
+		},
 		time.UnixMilli(1740729566045).UTC(),
 		func() uint64 { return 1 },
 	)
