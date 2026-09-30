@@ -16,6 +16,9 @@ type BrokerStream = {
   last_published_at_ms?: number;
   last_bar_open_time_ms?: number;
   last_bar_final?: boolean;
+  coalesced_forming?: number;
+  dropped_forming?: number;
+  slow_disconnects?: number;
 };
 
 type DemandTarget = {
@@ -44,6 +47,9 @@ type FeedPayload = {
         streams?: number;
         subscribers?: number;
         replay_events?: number;
+        coalesced_forming?: number;
+        dropped_forming?: number;
+        slow_disconnects?: number;
         details?: BrokerStream[];
       };
       demand?: {
@@ -203,6 +209,9 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Logical streams</span><strong>${broker?.streams ?? 0}</strong></div>
       <div class="feed-kv"><span>Subscribers</span><strong>${broker?.subscribers ?? 0}</strong></div>
       <div class="feed-kv"><span>Replay events</span><strong>${broker?.replay_events ?? 0}</strong></div>
+      <div class="feed-kv"><span>Coalesced forming</span><strong>${broker?.coalesced_forming ?? 0}</strong></div>
+      <div class="feed-kv"><span>Dropped forming</span><strong>${broker?.dropped_forming ?? 0}</strong></div>
+      <div class="feed-kv"><span>Slow disconnects</span><strong>${broker?.slow_disconnects ?? 0}</strong></div>
       <div class="feed-kv"><span>NIFTY 15s bar age</span><strong>${duration(bar15Age)}</strong></div>
       <div class="feed-kv"><span>NIFTY 30s bar age</span><strong>${duration(bar30Age)}</strong></div>
     </div>
