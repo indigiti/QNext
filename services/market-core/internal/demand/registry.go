@@ -236,6 +236,9 @@ func (r *Registry) activate(instrumentID string, item *entry, target Target) {
 		item.transition.Lock()
 		defer item.transition.Unlock()
 
+		if !r.transitionStillWanted(instrumentID, item, target, true) {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := target.Activate(ctx); err != nil {
@@ -251,6 +254,9 @@ func (r *Registry) deactivate(instrumentID string, item *entry, target Target) {
 		item.transition.Lock()
 		defer item.transition.Unlock()
 
+		if !r.transitionStillWanted(instrumentID, item, target, false) {
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := target.Deactivate(ctx); err != nil {
@@ -259,6 +265,13 @@ func (r *Registry) deactivate(instrumentID string, item *entry, target Target) {
 		}
 		r.setError(instrumentID, "")
 	}()
+}
+
+func (r *Registry) transitionStillWanted(instrumentID string, item *entry, target Target, active bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.entries[instrumentID]
+	return current == item && item.target == target && item.active == active
 }
 
 func (r *Registry) setError(instrumentID, message string) {
