@@ -410,6 +410,14 @@ export class QNextProvider {
             subscription = this.subscriptions.get(key);
           }
         }
+        if (!subscription && !message.symbol && !message.timeframe) {
+          const unbound = [...this.subscriptions.values()].filter(
+            (candidate) => !candidate.streamID,
+          );
+          if (unbound.length === 1) {
+            subscription = unbound[0];
+          }
+        }
         if (!subscription || !message.stream_id) {
           return;
         }
