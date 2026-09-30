@@ -22,8 +22,9 @@ const (
 )
 
 type Store struct {
-	root string
-	mu   sync.Mutex
+	root  string
+	mu    sync.Mutex
+	cache *currentDayCache
 }
 
 type barRecord struct {
@@ -51,20 +52,34 @@ type barRecord struct {
 }
 
 func New(root string) *Store {
-	return &Store{root: root}
+	return &Store{root: root, cache: newCurrentDayCache()}
 }
 
-func (s *Store) AppendBar(bar domain.Bar) error {
-	if s.root == "" {
-		return errors.New("history root is required")
-	}
+func validateBar(bar domain.Bar) error {
 	if bar.InstrumentID == "" || bar.Timeframe == "" || bar.OpenTime.IsZero() {
 		return errors.New("bar requires instrument, timeframe, and open time")
 	}
 	if !bar.Final {
 		return errors.New("only finalized bars may be persisted to canonical history")
 	}
+	return nil
+}
 
+func (s *Store) AppendBar(bar domain.Bar) error {
+	if s.root == "" {
+		return errors.New("history root is required")
+	}
+	if err := validateBar(bar); err != nil {
+		return err
+	}
+	if err := s.appendBarDisk(bar); err != nil {
+		return err
+	}
+	s.observeBar(bar)
+	return nil
+}
+
+func (s *Store) appendBarDisk(bar domain.Bar) error {
 	record := fromBar(bar)
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -104,7 +119,13 @@ func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain
 	if instrumentID == "" || timeframe == "" {
 		return nil, errors.New("instrument and timeframe are required")
 	}
+	if s.isCurrentDay(day) {
+		return s.loadCurrentDay(instrumentID, timeframe, day)
+	}
+	return s.loadDayDisk(instrumentID, timeframe, day)
+}
 
+func (s *Store) loadDayDisk(instrumentID, timeframe string, day time.Time) ([]domain.Bar, error) {
 	path := s.dayPath(instrumentID, timeframe, day)
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -135,6 +156,10 @@ func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain
 		return nil, err
 	}
 
+	return sortedBars(latest), nil
+}
+
+func sortedBars(latest map[string]domain.Bar) []domain.Bar {
 	bars := make([]domain.Bar, 0, len(latest))
 	for _, bar := range latest {
 		bars = append(bars, bar)
@@ -142,7 +167,7 @@ func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain
 	sort.Slice(bars, func(i, j int) bool {
 		return bars[i].OpenTime.Before(bars[j].OpenTime)
 	})
-	return bars, nil
+	return bars
 }
 
 func (s *Store) dayPath(instrumentID, timeframe string, at time.Time) string {
