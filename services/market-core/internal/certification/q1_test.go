@@ -1,6 +1,7 @@
 package certification
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -13,6 +14,15 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/stream"
 	"github.com/indigiti/QNext/services/market-core/internal/synthetic"
 )
+
+func flushHistory(t *testing.T, store *history.Store) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := store.FlushAsync(ctx); err != nil {
+		t.Fatalf("flush async history: %v", err)
+	}
+}
 
 func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 	store := history.New(t.TempDir())
@@ -52,6 +62,7 @@ func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 		events = append(events, <-subscription.Events)
 	}
 
+	flushHistory(t, store)
 	bars, err := store.LoadRange("NSE:NIFTY50", "1m", base, base.Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -168,6 +179,7 @@ func TestQ1NiftySyntheticUsesCanonicalCandleHistory(t *testing.T) {
 	feedRound(base)
 	feedRound(base.Add(time.Minute))
 
+	flushHistory(t, store)
 	bars, err := store.LoadRange("QNEXT:NIFTY-SYN", "1m", base, base.Add(2*time.Minute))
 	if err != nil {
 		t.Fatal(err)

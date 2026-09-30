@@ -30,6 +30,31 @@ type DemandTarget = {
   last_error?: string;
 };
 
+type HistoryRuntime = {
+  cache?: {
+    day?: string;
+    streams?: number;
+    bars?: number;
+    hits?: number;
+    misses?: number;
+    disk_loads?: number;
+    last_disk_load_at_ms?: number;
+    last_disk_load_duration_ms?: number;
+  };
+  persistence?: {
+    queued?: number;
+    capacity?: number;
+    pending?: number;
+    enqueued?: number;
+    writes?: number;
+    errors?: number;
+    last_queued_at_ms?: number;
+    last_flush_at_ms?: number;
+    flush_lag_ms?: number;
+    last_error?: string;
+  };
+};
+
 type FeedPayload = {
   nifty_instrument_id?: string;
   synthetic_instrument_id?: string;
@@ -59,6 +84,7 @@ type FeedPayload = {
         total_refs?: number;
         details?: DemandTarget[];
       };
+      history?: HistoryRuntime;
     };
   };
 };
@@ -164,6 +190,9 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const capture = runtime.capture;
   const broker = runtime.broker;
   const demand = runtime.demand;
+  const history = runtime.history;
+  const historyCache = history?.cache;
+  const persistence = history?.persistence;
   const details = broker?.details ?? [];
   const demandDetails = demand?.details ?? [];
   const niftyID = feed.nifty_instrument_id ?? 'NSE:NIFTY50';
@@ -182,6 +211,7 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const proxyHealthy = (proxy.failures ?? 0) === 0 || (ageMS(proxy.last_at_ms) ?? Number.MAX_SAFE_INTEGER) > 60_000;
   const marketHealthy = marketAge !== null && marketAge <= 30_000;
   const demandHealthy = !demandDetails.some((target) => Boolean(target.last_error));
+  const persistenceHealthy = !persistence || ((persistence.errors ?? 0) === 0 && !persistence.last_error);
   const activeDemand = demandDetails.filter((target) => target.active);
   const activeIDs = activeDemand
     .map((target) => target.instrument_id)
@@ -190,7 +220,7 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
 
   const health = document.querySelector<HTMLSpanElement>('#observability-health');
   if (health) {
-    const ok = marketHealthy && captureHealthy && proxyHealthy && demandHealthy;
+    const ok = marketHealthy && captureHealthy && proxyHealthy && demandHealthy && persistenceHealthy;
     health.className = `badge ${ok ? 'good' : 'bad'}`;
     health.textContent = ok ? 'HEALTHY' : 'CHECK';
   }
@@ -214,6 +244,19 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Slow disconnects</span><strong>${broker?.slow_disconnects ?? 0}</strong></div>
       <div class="feed-kv"><span>NIFTY 15s bar age</span><strong>${duration(bar15Age)}</strong></div>
       <div class="feed-kv"><span>NIFTY 30s bar age</span><strong>${duration(bar30Age)}</strong></div>
+    </div>
+
+    <div class="feed-provider-card">
+      <div class="line"><strong>HISTORY PATH</strong>${stateBadge(persistenceHealthy, persistenceHealthy ? 'HEALTHY' : 'CHECK')}</div>
+      <div class="feed-kv"><span>Cache day</span><strong>${historyCache?.day ?? 'warming'}</strong></div>
+      <div class="feed-kv"><span>Cached streams / bars</span><strong>${historyCache?.streams ?? 0} / ${historyCache?.bars ?? 0}</strong></div>
+      <div class="feed-kv"><span>Cache hits / misses</span><strong>${historyCache?.hits ?? 0} / ${historyCache?.misses ?? 0}</strong></div>
+      <div class="feed-kv"><span>JSONL disk loads</span><strong>${historyCache?.disk_loads ?? 0}</strong></div>
+      <div class="feed-kv"><span>Last disk load</span><strong>${duration(historyCache?.last_disk_load_duration_ms ?? null)}</strong></div>
+      <div class="feed-kv"><span>Persist queue</span><strong>${persistence ? `${persistence.queued ?? 0} / ${persistence.capacity ?? 0}` : 'warming'}</strong></div>
+      <div class="feed-kv"><span>Pending finals</span><strong>${persistence?.pending ?? 0}</strong></div>
+      <div class="feed-kv"><span>Persist writes / errors</span><strong>${persistence?.writes ?? 0} / ${persistence?.errors ?? 0}</strong></div>
+      <div class="feed-kv"><span>Flush lag</span><strong>${duration(persistence?.flush_lag_ms ?? null)}</strong></div>
     </div>
 
     <div class="feed-provider-card">
