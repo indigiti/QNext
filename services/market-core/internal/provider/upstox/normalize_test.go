@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -163,11 +164,7 @@ func TestNormalizeAdvancesSubMinuteCandlesWhenLTTIsFrozen(t *testing.T) {
 }
 
 func formatMillis(at time.Time) string {
-	return time.UnixMilli(at.UnixMilli()).UTC().Format("150405.000")[:0] + millisString(at.UnixMilli())
-}
-
-func millisString(value int64) string {
-	return fmt.Sprintf("%d", value)
+	return strconv.FormatInt(at.UnixMilli(), 10)
 }
 
 func TestNormalizeRejectsUnknownProviderKey(t *testing.T) {
