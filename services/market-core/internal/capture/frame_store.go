@@ -8,17 +8,32 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const rawFrameSchema = "QNEXT.RAW.FRAME/1"
+const (
+	rawFrameSchema       = "QNEXT.RAW.FRAME/1"
+	defaultCaptureBuffer = 1024
+)
 
 type FrameStore struct {
 	root     string
 	provider string
-	mu       sync.Mutex
 	now      func() time.Time
+	queue    chan []byte
+
+	enqueued atomic.Uint64
+	dropped  atomic.Uint64
+	errors   atomic.Uint64
+}
+
+type FrameStoreStats struct {
+	Enqueued uint64 `json:"enqueued"`
+	Dropped  uint64 `json:"dropped"`
+	Errors   uint64 `json:"errors"`
+	Queued   int    `json:"queued"`
+	Capacity int    `json:"capacity"`
 }
 
 type frameRecord struct {
@@ -29,13 +44,19 @@ type frameRecord struct {
 }
 
 func NewFrameStore(root, provider string) *FrameStore {
-	return &FrameStore{
+	store := &FrameStore{
 		root:     root,
 		provider: strings.ToLower(strings.TrimSpace(provider)),
 		now:      time.Now,
+		queue:    make(chan []byte, defaultCaptureBuffer),
 	}
+	go store.run()
+	return store
 }
 
+// Append is intentionally non-blocking. Raw capture is diagnostic and must
+// never stall the live market-data path. If storage cannot keep up, frames are
+// dropped from capture while live decoding/normalization continues.
 func (s *FrameStore) Append(payload []byte) error {
 	if s.root == "" || s.provider == "" {
 		return errors.New("raw frame store requires root and provider")
@@ -43,6 +64,39 @@ func (s *FrameStore) Append(payload []byte) error {
 	if len(payload) == 0 {
 		return errors.New("raw frame payload is empty")
 	}
+
+	frame := append([]byte(nil), payload...)
+	select {
+	case s.queue <- frame:
+		s.enqueued.Add(1)
+	default:
+		s.dropped.Add(1)
+	}
+	return nil
+}
+
+func (s *FrameStore) Stats() FrameStoreStats {
+	if s == nil {
+		return FrameStoreStats{}
+	}
+	return FrameStoreStats{
+		Enqueued: s.enqueued.Load(),
+		Dropped:  s.dropped.Load(),
+		Errors:   s.errors.Load(),
+		Queued:   len(s.queue),
+		Capacity: cap(s.queue),
+	}
+}
+
+func (s *FrameStore) run() {
+	for payload := range s.queue {
+		if err := s.persist(payload); err != nil {
+			s.errors.Add(1)
+		}
+	}
+}
+
+func (s *FrameStore) persist(payload []byte) error {
 	now := s.now().UTC()
 	record := frameRecord{
 		Schema:        rawFrameSchema,
@@ -64,8 +118,6 @@ func (s *FrameStore) Append(payload []byte) error {
 		now.Format("2006-01-02")+".jsonl",
 	)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
@@ -81,5 +133,5 @@ func (s *FrameStore) Append(payload []byte) error {
 	if n != len(data) {
 		return io.ErrShortWrite
 	}
-	return file.Sync()
+	return nil
 }
