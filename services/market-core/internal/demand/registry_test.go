@@ -39,7 +39,7 @@ type blockingTarget struct {
 	deactivations     int
 	deactivateStarted chan struct{}
 	allowDeactivate   chan struct{}
-	startOnce          sync.Once
+	startOnce         sync.Once
 }
 
 func (b *blockingTarget) Activate(context.Context) error {
