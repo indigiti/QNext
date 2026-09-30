@@ -79,6 +79,19 @@ func (s *Store) AppendBarAsync(bar domain.Bar) error {
 	return writer.AppendBar(bar)
 }
 
+func (s *Store) FlushAsync(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	asyncRegistry.Lock()
+	writer := asyncRegistry.writers[s]
+	asyncRegistry.Unlock()
+	if writer == nil {
+		return nil
+	}
+	return writer.Flush(ctx)
+}
+
 func asyncWriterFor(store *Store) *AsyncWriter {
 	asyncRegistry.Lock()
 	defer asyncRegistry.Unlock()
@@ -175,6 +188,25 @@ func (w *AsyncWriter) persist(request persistRequest) {
 		w.lastError = err.Error()
 		w.errMu.Unlock()
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func (w *AsyncWriter) Flush(ctx context.Context) error {
+	if w == nil {
+		return nil
+	}
+	ticker := time.NewTicker(2 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		stats := w.Stats()
+		if stats.Pending == 0 && stats.Queued == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
 
