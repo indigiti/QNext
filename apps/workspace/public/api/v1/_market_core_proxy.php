@@ -30,6 +30,68 @@ function qnext_proxy_value(string $key, string $default = ''): string
     return $default;
 }
 
+function qnext_proxy_stats_path(): string
+{
+    $configured = qnext_proxy_value('QNEXT_PROXY_STATS_PATH');
+    if ($configured !== '') {
+        return $configured;
+    }
+    return rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'qnext-market-core-proxy-status.json';
+}
+
+function qnext_proxy_record_failure(int $status, string $path): void
+{
+    if ($status < 500) {
+        return;
+    }
+
+    $statsPath = qnext_proxy_stats_path();
+    $handle = @fopen($statsPath, 'c+');
+    if ($handle === false) {
+        return;
+    }
+
+    try {
+        if (!flock($handle, LOCK_EX)) {
+            return;
+        }
+        $contents = stream_get_contents($handle);
+        $stats = is_string($contents) && $contents !== '' ? json_decode($contents, true) : null;
+        if (!is_array($stats)) {
+            $stats = [];
+        }
+        $stats['failures'] = ((int) ($stats['failures'] ?? 0)) + 1;
+        $stats['last_status'] = $status;
+        $stats['last_at_ms'] = (int) floor(microtime(true) * 1000);
+        $stats['last_path'] = $path;
+        rewind($handle);
+        ftruncate($handle, 0);
+        fwrite($handle, json_encode($stats, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        fflush($handle);
+        flock($handle, LOCK_UN);
+    } catch (Throwable) {
+        // Telemetry must never change proxy behavior.
+    } finally {
+        fclose($handle);
+    }
+}
+
+function qnext_proxy_status_snapshot(): array
+{
+    $statsPath = qnext_proxy_stats_path();
+    $contents = @file_get_contents($statsPath);
+    $stats = is_string($contents) && $contents !== '' ? json_decode($contents, true) : null;
+    if (!is_array($stats)) {
+        $stats = [];
+    }
+    return [
+        'failures' => (int) ($stats['failures'] ?? 0),
+        'last_status' => isset($stats['last_status']) ? (int) $stats['last_status'] : null,
+        'last_at_ms' => isset($stats['last_at_ms']) ? (int) $stats['last_at_ms'] : null,
+        'last_path' => isset($stats['last_path']) ? (string) $stats['last_path'] : null,
+    ];
+}
+
 function qnext_proxy_market_core_get(string $path, array $allowedQueryKeys = []): never
 {
     if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
@@ -64,6 +126,9 @@ function qnext_proxy_market_core_get(string $path, array $allowedQueryKeys = [])
             curl_close($handle);
 
             if (is_string($body) && $body !== '') {
+                if ($status >= 500) {
+                    qnext_proxy_record_failure($status, $path);
+                }
                 http_response_code($status > 0 ? $status : 200);
                 echo $body;
                 exit;
@@ -89,9 +154,13 @@ function qnext_proxy_market_core_get(string $path, array $allowedQueryKeys = [])
     }
 
     if ($body === false) {
+        qnext_proxy_record_failure(502, $path);
         qnext_proxy_fail(502, 'market data unavailable');
     }
 
+    if ($status >= 500) {
+        qnext_proxy_record_failure($status, $path);
+    }
     http_response_code($status > 0 ? $status : 200);
     echo $body;
     exit;
