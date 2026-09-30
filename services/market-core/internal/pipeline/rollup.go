@@ -133,9 +133,9 @@ func (s *rollupState) applyMinute(bar domain.Bar) {
 	// rebuilding this one bounded active bucket.
 	needsRebuild :=
 		(previous.High == s.high && bar.High < previous.High) ||
-		(previous.Low == s.low && bar.Low > previous.Low) ||
-		(previous.Recovered && !bar.Recovered) ||
-		(qualityRank(bar.Quality) < qualityRank(previous.Quality) && previous.Quality == s.quality)
+			(previous.Low == s.low && bar.Low > previous.Low) ||
+			(previous.Recovered && !bar.Recovered) ||
+			(qualityRank(bar.Quality) < qualityRank(previous.Quality) && previous.Quality == s.quality)
 
 	s.minutes[key] = bar
 	if previous.Final != bar.Final {
