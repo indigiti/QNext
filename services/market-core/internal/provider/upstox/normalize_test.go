@@ -126,6 +126,7 @@ func TestNormalizeAdvancesSubMinuteCandlesWhenLTTIsFrozen(t *testing.T) {
 						LTP: 22000 + float64(i),
 						LTT: formatMillis(time.UnixMilli(tradeMS)),
 					},
+				},
 			},
 		}
 		ticks, normalizeErr := normalizer.NormalizeEnvelope(envelope, marketAt.Add(time.Millisecond), nextSeq)
