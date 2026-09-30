@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/indigiti/QNext/services/market-core/internal/demand"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
@@ -60,10 +61,11 @@ type Subscription struct {
 	Events         <-chan BarEvent
 	ResyncRequired bool
 
-	broker *Broker
-	key    string
-	id     uint64
-	once   sync.Once
+	broker           *Broker
+	key              string
+	id               uint64
+	demandInstrument string
+	once             sync.Once
 }
 
 func NewBroker(retention, subscriberBuffer int) *Broker {
@@ -115,6 +117,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		default:
 			close(ch)
 			delete(state.subs, id)
+			demand.Default().Release(bar.InstrumentID)
 		}
 	}
 }
@@ -137,6 +140,7 @@ func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
 		default:
 			close(ch)
 			delete(state.subs, id)
+			demand.Default().Release(instrumentID)
 		}
 	}
 }
@@ -208,7 +212,14 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 		state = &streamState{replay: make([]BarEvent, 0, b.retention), subs: make(map[uint64]chan BarEvent)}
 		b.streams[key] = state
 	}
-	sub := &Subscription{StreamID: id, CurrentSeq: state.seq, broker: b, key: key}
+	instrumentID, _ := splitStreamKey(key)
+	sub := &Subscription{
+		StreamID:         id,
+		CurrentSeq:       state.seq,
+		broker:           b,
+		key:              key,
+		demandInstrument: instrumentID,
+	}
 	if afterSeq != nil {
 		if *afterSeq > state.seq {
 			sub.ResyncRequired = true
@@ -231,6 +242,7 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 	state.subs[b.nextSubscriberID] = ch
 	sub.id = b.nextSubscriberID
 	sub.Events = ch
+	demand.Default().Acquire(instrumentID)
 	return sub, nil
 }
 
@@ -239,15 +251,19 @@ func (s *Subscription) Cancel() {
 		return
 	}
 	s.once.Do(func() {
+		removed := false
 		s.broker.mu.Lock()
-		defer s.broker.mu.Unlock()
 		state := s.broker.streams[s.key]
-		if state == nil {
-			return
+		if state != nil {
+			if ch, ok := state.subs[s.id]; ok {
+				close(ch)
+				delete(state.subs, s.id)
+				removed = true
+			}
 		}
-		if ch, ok := state.subs[s.id]; ok {
-			close(ch)
-			delete(state.subs, s.id)
+		s.broker.mu.Unlock()
+		if removed {
+			demand.Default().Release(s.demandInstrument)
 		}
 	})
 }
