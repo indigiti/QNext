@@ -5,22 +5,27 @@ import (
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
 
 type ProviderSnapshot struct {
-	Observed           uint64  `json:"observed"`
-	LastEventTimeMS    int64   `json:"last_event_time_ms"`
-	LastReceivedTimeMS int64   `json:"last_received_time_ms"`
-	LastPrice          float64 `json:"last_price,omitempty"`
+	Observed            uint64  `json:"observed"`
+	LastEventTimeMS     int64   `json:"last_event_time_ms"`
+	LastTradeTimeMS     int64   `json:"last_trade_time_ms,omitempty"`
+	LastReceivedTimeMS  int64   `json:"last_received_time_ms"`
+	LastProcessedTimeMS int64   `json:"last_processed_time_ms,omitempty"`
+	LastPrice           float64 `json:"last_price,omitempty"`
 }
 
 type InstrumentSnapshot struct {
-	Provider           string         `json:"provider"`
-	Price              float64        `json:"price"`
-	LastEventTimeMS    int64          `json:"last_event_time_ms"`
-	LastReceivedTimeMS int64          `json:"last_received_time_ms"`
-	Quality            domain.Quality `json:"quality"`
-	SyntheticVersion   string         `json:"synthetic_version,omitempty"`
+	Provider            string         `json:"provider"`
+	Price               float64        `json:"price"`
+	LastEventTimeMS     int64          `json:"last_event_time_ms"`
+	LastTradeTimeMS     int64          `json:"last_trade_time_ms,omitempty"`
+	LastReceivedTimeMS  int64          `json:"last_received_time_ms"`
+	LastProcessedTimeMS int64          `json:"last_processed_time_ms,omitempty"`
+	Quality             domain.Quality `json:"quality"`
+	SyntheticVersion    string         `json:"synthetic_version,omitempty"`
 }
 
 type Snapshot struct {
@@ -28,6 +33,7 @@ type Snapshot struct {
 	Instruments map[string]InstrumentSnapshot `json:"instruments"`
 	Synthetic   any                           `json:"synthetic,omitempty"`
 	Synthetics  map[string]any                `json:"synthetics,omitempty"`
+	Runtime     observability.Snapshot        `json:"runtime"`
 }
 
 type Tracker struct {
@@ -79,11 +85,20 @@ func (t *Tracker) Observe(tick domain.Tick) {
 	}
 
 	eventMS := tick.EventTime.UTC().UnixMilli()
+	tradeMS := int64(0)
+	if !tick.TradeTime.IsZero() {
+		tradeMS = tick.TradeTime.UTC().UnixMilli()
+	}
 	received := tick.ReceivedTime.UTC()
 	if received.IsZero() {
 		received = tick.EventTime.UTC()
 	}
 	receivedMS := received.UnixMilli()
+	processed := tick.ProcessedTime.UTC()
+	if processed.IsZero() {
+		processed = received
+	}
+	processedMS := processed.UnixMilli()
 
 	t.mu.Lock()
 	provider := t.providers[tick.Provider]
@@ -92,20 +107,28 @@ func (t *Tracker) Observe(tick domain.Tick) {
 		provider.LastEventTimeMS = eventMS
 		provider.LastPrice = tick.Price
 	}
+	if tradeMS > provider.LastTradeTimeMS {
+		provider.LastTradeTimeMS = tradeMS
+	}
 	if receivedMS > provider.LastReceivedTimeMS {
 		provider.LastReceivedTimeMS = receivedMS
+	}
+	if processedMS > provider.LastProcessedTimeMS {
+		provider.LastProcessedTimeMS = processedMS
 	}
 	t.providers[tick.Provider] = provider
 
 	current := t.instruments[tick.InstrumentID]
 	if eventMS >= current.LastEventTimeMS {
 		t.instruments[tick.InstrumentID] = InstrumentSnapshot{
-			Provider:           tick.Provider,
-			Price:              tick.Price,
-			LastEventTimeMS:    eventMS,
-			LastReceivedTimeMS: receivedMS,
-			Quality:            tick.Quality,
-			SyntheticVersion:   tick.SyntheticVersion,
+			Provider:            tick.Provider,
+			Price:               tick.Price,
+			LastEventTimeMS:     eventMS,
+			LastTradeTimeMS:     tradeMS,
+			LastReceivedTimeMS:  receivedMS,
+			LastProcessedTimeMS: processedMS,
+			Quality:             tick.Quality,
+			SyntheticVersion:    tick.SyntheticVersion,
 		}
 	}
 	t.mu.Unlock()
@@ -131,7 +154,11 @@ func (t *Tracker) SetSyntheticStatusFor(instrumentID string, status func() any) 
 
 func (t *Tracker) Snapshot() Snapshot {
 	if t == nil {
-		return Snapshot{Providers: map[string]ProviderSnapshot{}, Instruments: map[string]InstrumentSnapshot{}}
+		return Snapshot{
+			Providers:   map[string]ProviderSnapshot{},
+			Instruments: map[string]InstrumentSnapshot{},
+			Runtime:     observability.Current(),
+		}
 	}
 
 	t.mu.RLock()
@@ -163,6 +190,7 @@ func (t *Tracker) Snapshot() Snapshot {
 		Instruments: instruments,
 		Synthetic:   synthetic,
 		Synthetics:  synthetics,
+		Runtime:     observability.Current(),
 	}
 }
 

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
 
 type BarEvent struct {
@@ -26,9 +28,29 @@ type Broker struct {
 }
 
 type streamState struct {
-	seq    uint64
-	replay []BarEvent
-	subs   map[uint64]chan BarEvent
+	seq               uint64
+	replay            []BarEvent
+	subs              map[uint64]chan BarEvent
+	lastPublishedAtMS int64
+}
+
+type BrokerStreamStats struct {
+	StreamID          string `json:"stream_id"`
+	InstrumentID      string `json:"instrument_id"`
+	Timeframe         string `json:"timeframe"`
+	Seq               uint64 `json:"seq"`
+	Subscribers       int    `json:"subscribers"`
+	ReplayEvents      int    `json:"replay_events"`
+	LastPublishedAtMS int64  `json:"last_published_at_ms"`
+	LastBarOpenTimeMS int64  `json:"last_bar_open_time_ms,omitempty"`
+	LastBarFinal      bool   `json:"last_bar_final"`
+}
+
+type BrokerStats struct {
+	Streams      int                 `json:"streams"`
+	Subscribers  int                 `json:"subscribers"`
+	ReplayEvents int                 `json:"replay_events"`
+	Details      []BrokerStreamStats `json:"details"`
 }
 
 type Subscription struct {
@@ -51,11 +73,13 @@ func NewBroker(retention, subscriberBuffer int) *Broker {
 	if subscriberBuffer <= 0 {
 		subscriberBuffer = 64
 	}
-	return &Broker{
+	broker := &Broker{
 		retention:        retention,
 		subscriberBuffer: subscriberBuffer,
 		streams:          make(map[string]*streamState),
 	}
+	observability.SetBrokerSource(func() any { return broker.Stats() })
+	return broker
 }
 
 func (b *Broker) PublishBar(bar domain.Bar) {
@@ -73,6 +97,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		b.streams[key] = state
 	}
 	state.seq++
+	state.lastPublishedAtMS = time.Now().UTC().UnixMilli()
 	event := BarEvent{
 		StreamID: streamID(bar.InstrumentID, bar.Timeframe),
 		Seq:      state.seq,
@@ -81,12 +106,9 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	if len(state.replay) < b.retention {
 		state.replay = append(state.replay, event)
 	} else {
-		// Keep a bounded replay window without allocating a new tail slice for
-		// every forming-bar update once retention has been reached.
 		copy(state.replay, state.replay[1:])
 		state.replay[len(state.replay)-1] = event
 	}
-
 	for id, ch := range state.subs {
 		select {
 		case ch <- event:
@@ -102,19 +124,13 @@ func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
 		return
 	}
 	key := streamKey(instrumentID, timeframe)
-
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
 	state := b.streams[key]
 	if state == nil {
 		return
 	}
-	event := BarEvent{
-		StreamID:       streamID(instrumentID, timeframe),
-		ResyncRequired: true,
-		Reason:         reason,
-	}
+	event := BarEvent{StreamID: streamID(instrumentID, timeframe), ResyncRequired: true, Reason: reason}
 	for id, ch := range state.subs {
 		select {
 		case ch <- event:
@@ -129,15 +145,44 @@ func (b *Broker) LatestBar(instrumentID, timeframe string) (domain.Bar, bool) {
 	if instrumentID == "" || timeframe == "" {
 		return domain.Bar{}, false
 	}
-
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
 	state := b.streams[streamKey(instrumentID, timeframe)]
 	if state == nil || len(state.replay) == 0 {
 		return domain.Bar{}, false
 	}
 	return state.replay[len(state.replay)-1].Bar, true
+}
+
+func (b *Broker) Stats() BrokerStats {
+	if b == nil {
+		return BrokerStats{}
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	stats := BrokerStats{Streams: len(b.streams)}
+	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
+	for key, state := range b.streams {
+		instrumentID, timeframe := splitStreamKey(key)
+		streamStats := BrokerStreamStats{
+			StreamID:          streamID(instrumentID, timeframe),
+			InstrumentID:      instrumentID,
+			Timeframe:         timeframe,
+			Seq:               state.seq,
+			Subscribers:       len(state.subs),
+			ReplayEvents:      len(state.replay),
+			LastPublishedAtMS: state.lastPublishedAtMS,
+		}
+		if len(state.replay) > 0 {
+			bar := state.replay[len(state.replay)-1].Bar
+			streamStats.LastBarOpenTimeMS = bar.OpenTime.UTC().UnixMilli()
+			streamStats.LastBarFinal = bar.Final
+		}
+		stats.Subscribers += streamStats.Subscribers
+		stats.ReplayEvents += streamStats.ReplayEvents
+		stats.Details = append(stats.Details, streamStats)
+	}
+	return stats
 }
 
 func (b *Broker) Subscribe(instrumentID, timeframe string, afterSeq *uint64) (*Subscription, error) {
@@ -158,23 +203,12 @@ func (b *Broker) SubscribeByID(id string, afterSeq uint64) (*Subscription, error
 func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
 	state := b.streams[key]
 	if state == nil {
-		state = &streamState{
-			replay: make([]BarEvent, 0, b.retention),
-			subs:   make(map[uint64]chan BarEvent),
-		}
+		state = &streamState{replay: make([]BarEvent, 0, b.retention), subs: make(map[uint64]chan BarEvent)}
 		b.streams[key] = state
 	}
-
-	sub := &Subscription{
-		StreamID:   id,
-		CurrentSeq: state.seq,
-		broker:     b,
-		key:        key,
-	}
-
+	sub := &Subscription{StreamID: id, CurrentSeq: state.seq, broker: b, key: key}
 	if afterSeq != nil {
 		if *afterSeq > state.seq {
 			sub.ResyncRequired = true
@@ -192,7 +226,6 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 			}
 		}
 	}
-
 	b.nextSubscriberID++
 	ch := make(chan BarEvent, b.subscriberBuffer)
 	state.subs[b.nextSubscriberID] = ch
@@ -219,15 +252,18 @@ func (s *Subscription) Cancel() {
 	})
 }
 
-func streamKey(instrumentID, timeframe string) string {
-	return instrumentID + "\x00" + timeframe
+func streamKey(instrumentID, timeframe string) string { return instrumentID + "\x00" + timeframe }
+func splitStreamKey(key string) (string, string) {
+	parts := strings.SplitN(key, "\x00", 2)
+	if len(parts) != 2 {
+		return key, ""
+	}
+	return parts[0], parts[1]
 }
-
 func streamID(instrumentID, timeframe string) string {
 	encode := base64.RawURLEncoding.EncodeToString
 	return "bars." + encode([]byte(instrumentID)) + "." + encode([]byte(timeframe))
 }
-
 func parseStreamID(id string) (string, string, error) {
 	parts := strings.Split(id, ".")
 	if len(parts) != 3 || parts[0] != "bars" {
