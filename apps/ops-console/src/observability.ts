@@ -18,6 +18,15 @@ type BrokerStream = {
   last_bar_final?: boolean;
 };
 
+type DemandTarget = {
+  instrument_id?: string;
+  refs?: number;
+  active?: boolean;
+  idle_until_ms?: number;
+  last_change_ms?: number;
+  last_error?: string;
+};
+
 type FeedPayload = {
   nifty_instrument_id?: string;
   telemetry?: {
@@ -35,6 +44,13 @@ type FeedPayload = {
         subscribers?: number;
         replay_events?: number;
         details?: BrokerStream[];
+      };
+      demand?: {
+        idle_ttl_ms?: number;
+        targets?: number;
+        active_targets?: number;
+        total_refs?: number;
+        details?: DemandTarget[];
       };
     };
   };
@@ -120,7 +136,9 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const runtime = telemetry.runtime ?? {};
   const capture = runtime.capture;
   const broker = runtime.broker;
+  const demand = runtime.demand;
   const details = broker?.details ?? [];
+  const demandDetails = demand?.details ?? [];
   const niftyID = feed.nifty_instrument_id ?? 'NSE:NIFTY50';
   const nifty = telemetry.instruments?.[niftyID];
   const marketAge = ageMS(nifty?.last_event_time_ms);
@@ -136,10 +154,16 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const captureHealthy = !capture || ((capture.dropped ?? 0) === 0 && (capture.errors ?? 0) === 0);
   const proxyHealthy = (proxy.failures ?? 0) === 0 || (ageMS(proxy.last_at_ms) ?? Number.MAX_SAFE_INTEGER) > 60_000;
   const marketHealthy = marketAge !== null && marketAge <= 30_000;
+  const demandHealthy = !demandDetails.some((target) => Boolean(target.last_error));
+  const activeDemand = demandDetails.filter((target) => target.active);
+  const activeIDs = activeDemand
+    .map((target) => target.instrument_id)
+    .filter((instrumentID): instrumentID is string => Boolean(instrumentID))
+    .join(', ');
 
   const health = document.querySelector<HTMLSpanElement>('#observability-health');
   if (health) {
-    const ok = marketHealthy && captureHealthy && proxyHealthy;
+    const ok = marketHealthy && captureHealthy && proxyHealthy && demandHealthy;
     health.className = `badge ${ok ? 'good' : 'bad'}`;
     health.textContent = ok ? 'HEALTHY' : 'CHECK';
   }
@@ -160,6 +184,15 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Replay events</span><strong>${broker?.replay_events ?? 0}</strong></div>
       <div class="feed-kv"><span>NIFTY 15s bar age</span><strong>${duration(bar15Age)}</strong></div>
       <div class="feed-kv"><span>NIFTY 30s bar age</span><strong>${duration(bar30Age)}</strong></div>
+    </div>
+
+    <div class="feed-provider-card">
+      <div class="line"><strong>LIVE DEMAND</strong>${stateBadge(demandHealthy, demandHealthy ? 'HEALTHY' : 'CHECK')}</div>
+      <div class="feed-kv"><span>Synthetic targets</span><strong>${demand?.targets ?? 0}</strong></div>
+      <div class="feed-kv"><span>Active synthetics</span><strong>${demand?.active_targets ?? 0}</strong></div>
+      <div class="feed-kv"><span>Consumer refs</span><strong>${demand?.total_refs ?? 0}</strong></div>
+      <div class="feed-kv"><span>Idle grace</span><strong>${duration(demand?.idle_ttl_ms ?? null)}</strong></div>
+      <div class="feed-kv"><span>Active IDs</span><strong>${activeIDs || 'none'}</strong></div>
     </div>
 
     <div class="feed-provider-card">
