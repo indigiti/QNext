@@ -59,7 +59,7 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 
 	return &Pipeline{
 		candles: candles,
-		rollups: newRollupEngine("candle-rollup-v1"),
+		rollups: newRollupEngine("candle-rollup-v2-incremental"),
 		history: history,
 		direct:  append([]string(nil), direct...),
 		derived: append([]string(nil), derived...),

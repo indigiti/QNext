@@ -140,7 +140,7 @@ func TestPipelineRollsUpTwoMinuteBarsFromCanonicalOneMinute(t *testing.T) {
 	if !got.Final || got.Open != 25100 || got.High != 25108 || got.Close != 25108 {
 		t.Fatalf("unexpected 2m rollup: %+v", got)
 	}
-	if got.CandleEngineVersion != "candle-rollup-v1" {
+	if got.CandleEngineVersion != "candle-rollup-v2-incremental" {
 		t.Fatalf("expected rollup engine version, got %q", got.CandleEngineVersion)
 	}
 }
