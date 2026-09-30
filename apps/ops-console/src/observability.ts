@@ -29,6 +29,7 @@ type DemandTarget = {
 
 type FeedPayload = {
   nifty_instrument_id?: string;
+  synthetic_instrument_id?: string;
   telemetry?: {
     instruments?: Record<string, InstrumentTelemetry>;
     runtime?: {
@@ -128,6 +129,26 @@ function streamFor(details: BrokerStream[], instrument: string, timeframe: strin
   );
 }
 
+function renderPrimarySyntheticDemandState(feed: FeedPayload, demandDetails: DemandTarget[]): void {
+  const instrumentID = feed.synthetic_instrument_id;
+  if (!instrumentID) return;
+  const target = demandDetails.find((item) => item.instrument_id === instrumentID);
+  if (!target || target.active) return;
+
+  const summary = document.querySelectorAll<HTMLElement>('#feed-summary > div');
+  const syntheticCard = summary.item(3);
+  const syntheticLastTick = summary.item(4);
+  const badge = syntheticCard?.querySelector<HTMLSpanElement>('.badge');
+  if (badge) {
+    badge.className = 'badge good';
+    badge.textContent = 'IDLE';
+  }
+  const lastTickValue = syntheticLastTick?.querySelector<HTMLElement>('strong');
+  if (lastTickValue) {
+    lastTickValue.textContent = 'on demand';
+  }
+}
+
 function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const panel = ensurePanel();
   if (!panel) return;
@@ -211,6 +232,8 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Last path</span><strong>${proxy.last_path ?? '—'}</strong></div>
     </div>
   `;
+
+  renderPrimarySyntheticDemandState(feed, demandDetails);
 }
 
 async function refreshObservability(): Promise<void> {
