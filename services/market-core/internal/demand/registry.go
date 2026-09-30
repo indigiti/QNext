@@ -42,6 +42,7 @@ type Snapshot struct {
 }
 
 type entry struct {
+	transition   sync.Mutex
 	target       Target
 	refs         int
 	active       bool
@@ -104,7 +105,7 @@ func (r *Registry) Register(instrumentID string, target Target) {
 	r.mu.Unlock()
 
 	if shouldActivate {
-		r.activate(instrumentID, target)
+		r.activate(instrumentID, item, target)
 	}
 }
 
@@ -136,7 +137,7 @@ func (r *Registry) Acquire(instrumentID string) {
 	r.mu.Unlock()
 
 	if shouldActivate {
-		r.activate(instrumentID, target)
+		r.activate(instrumentID, item, target)
 	}
 }
 
@@ -227,11 +228,14 @@ func (r *Registry) expire(instrumentID string, version uint64) {
 	target := item.target
 	r.mu.Unlock()
 
-	r.deactivate(instrumentID, target)
+	r.deactivate(instrumentID, item, target)
 }
 
-func (r *Registry) activate(instrumentID string, target Target) {
+func (r *Registry) activate(instrumentID string, item *entry, target Target) {
 	go func() {
+		item.transition.Lock()
+		defer item.transition.Unlock()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := target.Activate(ctx); err != nil {
@@ -242,8 +246,11 @@ func (r *Registry) activate(instrumentID string, target Target) {
 	}()
 }
 
-func (r *Registry) deactivate(instrumentID string, target Target) {
+func (r *Registry) deactivate(instrumentID string, item *entry, target Target) {
 	go func() {
+		item.transition.Lock()
+		defer item.transition.Unlock()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := target.Deactivate(ctx); err != nil {
