@@ -1,6 +1,7 @@
 package research
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -51,6 +52,12 @@ func TestSynPlusPersistsChartHistoryWithoutMarketCore(t *testing.T) {
 	}
 	if published != 2 {
 		t.Fatalf("expected 2 snapshot callbacks, got %d", published)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := history.FlushAsyncWriters(ctx); err != nil {
+		t.Fatalf("flush async chart history: %v", err)
 	}
 
 	bars, err := history.New(root).LoadDay("QNEXT:NIFTY-SYN+", "15s", firstAt)
