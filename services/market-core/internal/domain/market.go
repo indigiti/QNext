@@ -21,7 +21,13 @@ type Tick struct {
 	Provider         string
 	Price            float64
 	Quantity         float64
-	EventTime        time.Time
+	// EventTime is the provider market-data clock used for sequencing and
+	// candle bucketing. It must advance with fresh market-data messages even
+	// when the last traded time does not (notably for index feeds).
+	EventTime time.Time
+	// TradeTime preserves the provider's last-traded timestamp when one is
+	// available. It is informational and must not drive candle chronology.
+	TradeTime        time.Time
 	ReceivedTime     time.Time
 	ProcessedTime    time.Time
 	PublishedTime    time.Time

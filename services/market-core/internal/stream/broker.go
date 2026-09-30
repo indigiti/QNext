@@ -66,7 +66,10 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 
 	state := b.streams[key]
 	if state == nil {
-		state = &streamState{subs: make(map[uint64]chan BarEvent)}
+		state = &streamState{
+			replay: make([]BarEvent, 0, b.retention),
+			subs:   make(map[uint64]chan BarEvent),
+		}
 		b.streams[key] = state
 	}
 	state.seq++
@@ -75,9 +78,13 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		Seq:      state.seq,
 		Bar:      bar,
 	}
-	state.replay = append(state.replay, event)
-	if len(state.replay) > b.retention {
-		state.replay = append([]BarEvent(nil), state.replay[len(state.replay)-b.retention:]...)
+	if len(state.replay) < b.retention {
+		state.replay = append(state.replay, event)
+	} else {
+		// Keep a bounded replay window without allocating a new tail slice for
+		// every forming-bar update once retention has been reached.
+		copy(state.replay, state.replay[1:])
+		state.replay[len(state.replay)-1] = event
 	}
 
 	for id, ch := range state.subs {
@@ -154,7 +161,10 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 
 	state := b.streams[key]
 	if state == nil {
-		state = &streamState{subs: make(map[uint64]chan BarEvent)}
+		state = &streamState{
+			replay: make([]BarEvent, 0, b.retention),
+			subs:   make(map[uint64]chan BarEvent),
+		}
 		b.streams[key] = state
 	}
 
