@@ -36,10 +36,9 @@ const QNEXT_API_PREFIX = '/qnext/api/v1/';
 const BROKEN_ADMIN_PUBLIC_API_PREFIX = '/qnext/admin/api/v1/';
 
 function installFetchSafetyNet(): void {
-  const marker = '__qnextPrettyRouteFetchInstalled';
-  const tagged = window as Window & { [marker]?: boolean };
-  if (tagged[marker]) return;
-  tagged[marker] = true;
+  const tagged = window as Window & { __qnextPrettyRouteFetchInstalled?: boolean };
+  if (tagged.__qnextPrettyRouteFetchInstalled) return;
+  tagged.__qnextPrettyRouteFetchInstalled = true;
 
   const nativeFetch = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
