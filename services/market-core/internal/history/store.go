@@ -44,6 +44,7 @@ type barRecord struct {
 	Quality             domain.Quality `json:"quality"`
 	Recovered           bool           `json:"recovered"`
 	Corrected           bool           `json:"corrected"`
+	CarryForward        bool           `json:"carry_forward,omitempty"`
 	CandleEngineVersion string         `json:"candle_engine_version"`
 	SyntheticVersion    string         `json:"synthetic_version,omitempty"`
 	SourceSequence      uint64         `json:"source_sequence,omitempty"`
@@ -219,6 +220,7 @@ func fromBar(bar domain.Bar) barRecord {
 		Quality:             bar.Quality,
 		Recovered:           bar.Recovered,
 		Corrected:           bar.Corrected,
+		CarryForward:        bar.CarryForward,
 		CandleEngineVersion: bar.CandleEngineVersion,
 		SyntheticVersion:    bar.SyntheticVersion,
 		SourceSequence:      bar.SourceSequence,
@@ -244,6 +246,7 @@ func (r barRecord) toBar() domain.Bar {
 		Quality:             r.Quality,
 		Recovered:           r.Recovered,
 		Corrected:           r.Corrected,
+		CarryForward:        r.CarryForward,
 		CandleEngineVersion: r.CandleEngineVersion,
 		SyntheticVersion:    r.SyntheticVersion,
 		SourceSequence:      r.SourceSequence,

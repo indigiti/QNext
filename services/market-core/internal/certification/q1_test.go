@@ -24,10 +24,32 @@ func flushHistory(t *testing.T, store *history.Store) {
 	}
 }
 
+func waitHistoryLiveBoundary(t *testing.T, subscription *stream.Subscription, base time.Time) (stream.BarEvent, stream.BarEvent) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	var finalEvent stream.BarEvent
+	var nextLive stream.BarEvent
+	for finalEvent.Seq == 0 || nextLive.Seq == 0 {
+		select {
+		case event := <-subscription.Events:
+			if event.Bar.Final && event.Bar.OpenTime.Equal(base) {
+				finalEvent = event
+			}
+			if event.Bar.OpenTime.Equal(base.Add(time.Minute)) && !event.Bar.Final {
+				nextLive = event
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for finalized/current 1m boundary: final=%+v live=%+v", finalEvent, nextLive)
+		}
+	}
+	return finalEvent, nextLive
+}
+
 func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 	store := history.New(t.TempDir())
-	broker := stream.NewBroker(32, 32)
-	canonicalPipeline, err := pipeline.New(candle.New("candle-v1"), store, []string{"1m"})
+	broker := stream.NewBroker(64, 64)
+	canonicalPipeline, err := pipeline.New(candle.New("candle-v3"), store, []string{"1m"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,22 +68,26 @@ func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 	defer subscription.Cancel()
 
 	base := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
-	for sequence, tick := range []domain.Tick{
-		{InstrumentID: "NSE:NIFTY50", Provider: "fixture", Price: 25100, EventTime: base, Quality: domain.QualityGood},
-		{InstrumentID: "NSE:NIFTY50", Provider: "fixture", Price: 25102, EventTime: base.Add(30 * time.Second), Quality: domain.QualityGood},
-		{InstrumentID: "NSE:NIFTY50", Provider: "fixture", Price: 25101, EventTime: base.Add(time.Minute), Quality: domain.QualityGood},
-	} {
-		tick.Sequence = uint64(sequence + 1)
+	// One tick in every canonical 5s bucket plus the first tick of the next
+	// minute proves the 1m history/live boundary without relying on a sparse
+	// direct 1m candle.
+	for i := 0; i <= 12; i++ {
+		at := base.Add(time.Duration(i) * 5 * time.Second)
+		tick := domain.Tick{
+			InstrumentID: "NSE:NIFTY50",
+			Provider:     "fixture",
+			Price:        25100 + float64(i%4),
+			EventTime:    at,
+			ReceivedTime: at,
+			Sequence:     uint64(i + 1),
+			Quality:      domain.QualityGood,
+		}
 		if err := sink.Handle(tick); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	events := make([]stream.BarEvent, 0, 4)
-	for i := 0; i < 4; i++ {
-		events = append(events, <-subscription.Events)
-	}
-
+	finalEvent, nextLive := waitHistoryLiveBoundary(t, subscription, base)
 	flushHistory(t, store)
 	bars, err := store.LoadRange("NSE:NIFTY50", "1m", base, base.Add(2*time.Minute))
 	if err != nil {
@@ -72,19 +98,6 @@ func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 	}
 	if err := integrity.CheckBarContinuity(bars, "1m"); err != nil {
 		t.Fatal(err)
-	}
-
-	var finalEvent, nextLive stream.BarEvent
-	for _, event := range events {
-		if event.Bar.Final {
-			finalEvent = event
-		}
-		if event.Bar.OpenTime.Equal(base.Add(time.Minute)) && !event.Bar.Final {
-			nextLive = event
-		}
-	}
-	if finalEvent.Seq == 0 || nextLive.Seq == 0 {
-		t.Fatalf("missing boundary events: %+v", events)
 	}
 	if finalEvent.Bar.Key() != bars[0].Key() {
 		t.Fatalf("history and stream disagree on finalized bar: history=%s live=%s", bars[0].Key(), finalEvent.Bar.Key())
@@ -98,18 +111,19 @@ func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resumed.Cancel()
-	if resumed.ResyncRequired || len(resumed.Replay) != 1 {
-		t.Fatalf("expected one replay event after final history bar, got %+v", resumed)
+	if resumed.ResyncRequired || len(resumed.Replay) == 0 {
+		t.Fatalf("expected replay after final history bar, got %+v", resumed)
 	}
-	if !resumed.Replay[0].Bar.OpenTime.Equal(nextLive.Bar.OpenTime) {
+	last := resumed.Replay[len(resumed.Replay)-1]
+	if !last.Bar.OpenTime.Equal(nextLive.Bar.OpenTime) {
 		t.Fatalf("resume did not preserve history/live boundary: %+v", resumed.Replay)
 	}
 }
 
 func TestQ1NiftySyntheticUsesCanonicalCandleHistory(t *testing.T) {
 	store := history.New(t.TempDir())
-	broker := stream.NewBroker(64, 64)
-	canonicalPipeline, err := pipeline.New(candle.New("candle-v1"), store, []string{"1m"})
+	broker := stream.NewBroker(128, 128)
+	canonicalPipeline, err := pipeline.New(candle.New("candle-v3"), store, []string{"1m"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +173,7 @@ func TestQ1NiftySyntheticUsesCanonicalCandleHistory(t *testing.T) {
 	}
 	base := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
 
-	feedRound := func(at time.Time) {
+	feedRound := func(at time.Time, round int) {
 		t.Helper()
 		for i, leg := range legs {
 			if err := sink.Handle(domain.Tick{
@@ -169,15 +183,19 @@ func TestQ1NiftySyntheticUsesCanonicalCandleHistory(t *testing.T) {
 				EventTime:     at,
 				ReceivedTime:  at,
 				ProcessedTime: at,
-				Sequence:      uint64(i + 1),
+				Sequence:      uint64(round*100 + i + 1),
 				Quality:       domain.QualityGood,
 			}); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
-	feedRound(base)
-	feedRound(base.Add(time.Minute))
+	// Maintain fresh option pairs in every canonical 5s bucket. The final
+	// round starts the next minute and therefore finalizes the first synthetic
+	// 1m candle from twelve complete 5s children.
+	for round := 0; round <= 12; round++ {
+		feedRound(base.Add(time.Duration(round)*5*time.Second), round)
+	}
 
 	flushHistory(t, store)
 	bars, err := store.LoadRange("QNEXT:NIFTY-SYN", "1m", base, base.Add(2*time.Minute))

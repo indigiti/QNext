@@ -202,6 +202,15 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 	}
 
 	if openTime.Equal(current.OpenTime) {
+		// A clock-generated carry-forward is only a placeholder for an empty
+		// active bucket. If genuine market data subsequently arrives inside the
+		// bucket, replace the placeholder completely so Open and lineage come
+		// from the first real observation rather than the previous close.
+		if current.CarryForward && !current.Final {
+			observed := newBar(tick, timeframe, openTime, closeTime, e.version)
+			e.bars[key] = observed
+			return []domain.Bar{observed}, nil
+		}
 		current.High = max(current.High, tick.Price)
 		current.Low = min(current.Low, tick.Price)
 		current.Close = tick.Price

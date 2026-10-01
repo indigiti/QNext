@@ -52,6 +52,7 @@ type Bar struct {
 	Quality             Quality
 	Recovered           bool
 	Corrected           bool
+	CarryForward        bool
 	SourceSequence      uint64
 	CandleEngineVersion string
 	SyntheticVersion    string
