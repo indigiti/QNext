@@ -39,11 +39,24 @@ type ProductionPointer = {
   previous_candidate_id?: string;
 };
 
+type Operation = {
+  state?: 'IDLE' | 'QUEUED' | 'SUCCESS' | 'FAILED';
+  request_id?: string | null;
+  action?: string | null;
+  requested_at_ms?: number;
+  completed_at_ms?: number;
+  error?: string;
+};
+
 type IntelligenceStatus = {
   production: ProductionPointer | null;
   candidates: Candidate[];
   history?: Array<Record<string, unknown>>;
+  data?: { features?: number; predictions?: number; outcomes?: number };
+  operation?: Operation;
 };
+
+type QueueResponse = { queued: boolean; requestId: string; action: string };
 
 declare global {
   interface Window {
@@ -100,15 +113,15 @@ function badge(ok: boolean, label: string): string {
 }
 
 function metricRows(candidate: Candidate): string {
-  const c = candidate.test_metrics ?? {};
-  const p = candidate.champion_test_metrics ?? {};
+  const current = candidate.test_metrics ?? {};
+  const champion = candidate.champion_test_metrics ?? {};
   return `
-    <div class="qi-metric"><span>Test samples</span><strong>${c.samples ?? candidate.test_samples ?? 0}</strong></div>
-    <div class="qi-metric"><span>Accuracy</span><strong>${pct(c.accuracy)} <small>vs ${pct(p.accuracy)}</small></strong></div>
-    <div class="qi-metric"><span>Coverage</span><strong>${pct(c.coverage)} <small>vs ${pct(p.coverage)}</small></strong></div>
-    <div class="qi-metric"><span>Strategy return</span><strong>${num(c.strategy_return)} <small>vs ${num(p.strategy_return)}</small></strong></div>
-    <div class="qi-metric"><span>Avg return</span><strong>${num(c.average_strategy_return)} <small>vs ${num(p.average_strategy_return)}</small></strong></div>
-    <div class="qi-metric"><span>Max drawdown</span><strong>${num(c.max_drawdown)} <small>vs ${num(p.max_drawdown)}</small></strong></div>
+    <div class="qi-metric"><span>Test samples</span><strong>${current.samples ?? candidate.test_samples ?? 0}</strong></div>
+    <div class="qi-metric"><span>Accuracy</span><strong>${pct(current.accuracy)} <small>vs ${pct(champion.accuracy)}</small></strong></div>
+    <div class="qi-metric"><span>Coverage</span><strong>${pct(current.coverage)} <small>vs ${pct(champion.coverage)}</small></strong></div>
+    <div class="qi-metric"><span>Strategy return</span><strong>${num(current.strategy_return)} <small>vs ${num(champion.strategy_return)}</small></strong></div>
+    <div class="qi-metric"><span>Avg return</span><strong>${num(current.average_strategy_return)} <small>vs ${num(champion.average_strategy_return)}</small></strong></div>
+    <div class="qi-metric"><span>Max drawdown</span><strong>${num(current.max_drawdown)} <small>vs ${num(champion.max_drawdown)}</small></strong></div>
   `;
 }
 
@@ -143,22 +156,43 @@ function candidateCard(candidate: Candidate, productionId: string | null): strin
   `;
 }
 
+function operationLabel(operation?: Operation): string {
+  const state = operation?.state ?? 'IDLE';
+  if (state === 'QUEUED') return `${operation?.action ?? 'action'} queued for supervisor`;
+  if (state === 'FAILED') return `${operation?.action ?? 'action'} failed: ${operation?.error ?? 'unknown error'}`;
+  if (state === 'SUCCESS') return `${operation?.action ?? 'action'} completed ${date(operation?.completed_at_ms)}`;
+  return 'Ready';
+}
+
 function render(status: IntelligenceStatus): void {
   const production = document.querySelector<HTMLDivElement>('#qi-production')!;
   const candidates = document.querySelector<HTMLDivElement>('#qi-candidates')!;
   const history = document.querySelector<HTMLDivElement>('#qi-history')!;
   const rollbackSelect = document.querySelector<HTMLSelectElement>('#qi-rollback-target')!;
+  const state = document.querySelector<HTMLSpanElement>('#qi-state')!;
   const pointer = status.production;
+  const data = status.data ?? {};
 
   production.innerHTML = pointer ? `
     <div><span>Production</span>${badge(true, 'ACTIVE')}<strong>${html(pointer.candidate_id)}</strong></div>
     <div><span>Model</span><strong>${html(pointer.model_name)} v${html(pointer.model_version)}</strong></div>
     <div><span>Promoted</span><strong>${html(date(pointer.promoted_at_ms))}</strong></div>
     <div><span>Approved by</span><strong>${html(pointer.approved_by)}</strong></div>
+    <div><span>Features</span><strong>${data.features ?? 0}</strong></div>
+    <div><span>Predictions</span><strong>${data.predictions ?? 0}</strong></div>
+    <div><span>Outcomes</span><strong>${data.outcomes ?? 0}</strong></div>
   ` : `
     <div><span>Production</span>${badge(false, 'NONE')}</div>
     <div><span>State</span><strong>DRAFT / research only</strong></div>
+    <div><span>Features</span><strong>${data.features ?? 0}</strong></div>
+    <div><span>Predictions</span><strong>${data.predictions ?? 0}</strong></div>
+    <div><span>Outcomes</span><strong>${data.outcomes ?? 0}</strong></div>
   `;
+
+  state.textContent = operationLabel(status.operation);
+  const busy = status.operation?.state === 'QUEUED';
+  document.querySelector<HTMLButtonElement>('#qi-train')!.disabled = busy;
+  document.querySelector<HTMLButtonElement>('#qi-rollback')!.disabled = busy;
 
   const ordered = [...(status.candidates ?? [])].sort((a, b) => (b.created_at_ms ?? 0) - (a.created_at_ms ?? 0));
   candidates.innerHTML = ordered.length
@@ -188,41 +222,35 @@ function render(status: IntelligenceStatus): void {
     });
   });
   candidates.querySelectorAll<HTMLButtonElement>('.qi-promote').forEach((button) => {
+    if (busy) button.disabled = true;
     button.addEventListener('click', () => void promote(button.closest<HTMLElement>('.qi-candidate')!.dataset.candidate ?? '', ordered));
   });
 }
 
 async function load(): Promise<void> {
   const state = document.querySelector<HTMLSpanElement>('#qi-state')!;
-  state.textContent = 'Loading…';
   try {
-    const status = await request<IntelligenceStatus>('/intelligence');
-    render(status);
-    state.textContent = 'Ready';
+    render(await request<IntelligenceStatus>('/intelligence'));
   } catch (error) {
     state.textContent = `Unavailable: ${(error as Error).message}`;
   }
 }
 
-async function train(): Promise<void> {
-  const button = document.querySelector<HTMLButtonElement>('#qi-train')!;
+async function queueAction(path: string, body: Record<string, unknown>, verb: string): Promise<void> {
   const state = document.querySelector<HTMLSpanElement>('#qi-state')!;
-  button.disabled = true;
-  state.textContent = 'Analyzing outcomes → optimizing → holdout backtest…';
   try {
-    const candidate = await request<Candidate>('/intelligence/train', {
-      method: 'POST',
-      body: JSON.stringify({ minSamples: 60, minTestSamples: 12 }),
-    });
-    state.textContent = candidate.promotion_gate?.passed
-      ? `New DRAFT ${candidate.candidate_id} passed promotion gates.`
-      : `New DRAFT ${candidate.candidate_id} requires review; gates did not pass.`;
+    const queued = await request<QueueResponse>(path, { method: 'POST', body: JSON.stringify(body) });
+    state.textContent = `${verb} queued (${queued.requestId}). Supervisor will apply it on its next run.`;
     await load();
   } catch (error) {
-    state.textContent = `Training failed: ${(error as Error).message}`;
-  } finally {
-    button.disabled = false;
+    state.textContent = `${verb} failed: ${(error as Error).message}`;
   }
+}
+
+async function train(): Promise<void> {
+  const state = document.querySelector<HTMLSpanElement>('#qi-state')!;
+  state.textContent = 'Queueing Analyze → Optimize → Holdout Backtest…';
+  await queueAction('/intelligence/train', { minSamples: 60, minTestSamples: 12 }, 'Training');
 }
 
 async function promote(candidateId: string, candidates: Candidate[]): Promise<void> {
@@ -238,22 +266,12 @@ async function promote(candidateId: string, candidates: Candidate[]): Promise<vo
     state.textContent = 'Candidate cannot be promoted because its certification gates failed.';
     return;
   }
-  state.textContent = `Promoting ${candidateId}…`;
-  try {
-    await request('/intelligence/promote', {
-      method: 'POST',
-      body: JSON.stringify({
-        candidateId,
-        expectedModelHash: candidate.model_hash,
-        approvedBy,
-        note,
-      }),
-    });
-    state.textContent = `Promoted ${candidateId}.`;
-    await load();
-  } catch (error) {
-    state.textContent = `Promotion failed: ${(error as Error).message}`;
-  }
+  await queueAction('/intelligence/promote', {
+    candidateId,
+    expectedModelHash: candidate.model_hash,
+    approvedBy,
+    note,
+  }, 'Promotion');
 }
 
 async function rollback(): Promise<void> {
@@ -265,17 +283,7 @@ async function rollback(): Promise<void> {
     state.textContent = 'Rollback requires an approver name.';
     return;
   }
-  state.textContent = 'Applying rollback…';
-  try {
-    await request('/intelligence/rollback', {
-      method: 'POST',
-      body: JSON.stringify({ candidateId: candidateId || null, approvedBy, note }),
-    });
-    state.textContent = 'Rollback completed.';
-    await load();
-  } catch (error) {
-    state.textContent = `Rollback failed: ${(error as Error).message}`;
-  }
+  await queueAction('/intelligence/rollback', { candidateId: candidateId || null, approvedBy, note }, 'Rollback');
 }
 
 function mount(): void {
@@ -310,8 +318,8 @@ function mount(): void {
     <div id="qi-history" class="stack"></div>
   `;
 
-  const firstSecret = grid.querySelector<HTMLElement>('#custom-indicators-card')?.nextElementSibling;
-  if (firstSecret) grid.insertBefore(section, firstSecret); else grid.append(section);
+  const insertBefore = grid.querySelector<HTMLElement>('#custom-indicators-card')?.nextElementSibling;
+  if (insertBefore) grid.insertBefore(section, insertBefore); else grid.append(section);
 
   const style = document.createElement('style');
   style.textContent = `
@@ -329,12 +337,9 @@ function mount(): void {
   document.querySelector('#qi-train')!.addEventListener('click', () => void train());
   document.querySelector('#qi-rollback')!.addEventListener('click', () => void rollback());
   if (sessionStorage.getItem('qnext-ops-token')) void load();
-  window.addEventListener('storage', (event) => {
-    if (event.key === 'qnext-ops-token') void load();
-  });
   window.setInterval(() => {
     if (sessionStorage.getItem('qnext-ops-token')) void load();
-  }, 30000);
+  }, 5000);
 }
 
 mount();
