@@ -1,0 +1,322 @@
+html.ops-booting #app {
+  visibility: hidden;
+  opacity: 0;
+}
+
+html.ops-ready #app {
+  visibility: visible;
+  opacity: 1;
+}
+
+body.ops-shell-ready {
+  background: #0a0d12;
+}
+
+body.ops-shell-ready .shell.ops-shell {
+  background: #0a0d12;
+}
+
+.ops-sidebar {
+  gap: .95rem;
+  padding: 1rem .85rem;
+  background: #0d1117;
+}
+
+.ops-brand {
+  min-height: 42px;
+  padding: .15rem .3rem;
+}
+
+.ops-brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: #151b25;
+}
+
+.ops-search {
+  min-height: 38px;
+  background: #11161e;
+}
+
+.ops-nav {
+  gap: .9rem;
+}
+
+button.ops-nav-item {
+  min-height: 38px;
+  padding: .56rem .62rem;
+  border-radius: 9px;
+}
+
+button.ops-nav-item.active {
+  border-color: #334155;
+  background: #1a2230;
+  box-shadow: inset 3px 0 0 #7da2ff;
+}
+
+body.ops-shell-ready .topbar {
+  min-height: 70px;
+  padding: .72rem clamp(.9rem, 2vw, 1.6rem);
+  background: rgba(10, 13, 18, .96);
+}
+
+.ops-page-heading h1 {
+  font-size: 1.1rem;
+}
+
+body.ops-shell-ready #ops-content-grid {
+  max-width: 1680px;
+  margin: 0 auto;
+  padding: 1rem clamp(.85rem, 2vw, 1.5rem) 2rem;
+  gap: .85rem;
+}
+
+body.ops-shell-ready .card,
+.ops-panel,
+.ops-kpi,
+.ops-dashboard-hero {
+  border-color: #232b36;
+  border-radius: 14px;
+  background: #10151c;
+  box-shadow: none;
+}
+
+body.ops-shell-ready .card {
+  padding: 1.05rem;
+}
+
+.card-head {
+  align-items: flex-start;
+}
+
+.card-head h2,
+.ops-panel-head h3,
+.ops-dashboard-hero h2 {
+  margin-bottom: .35rem;
+}
+
+.card-head .muted,
+.ops-dashboard-hero .muted {
+  max-width: 880px;
+  line-height: 1.45;
+}
+
+.status-grid {
+  gap: .55rem;
+}
+
+.status-grid > div,
+.feed-provider-card {
+  border-color: #222b37;
+  background: #0d1218;
+}
+
+.ops-kpi-grid {
+  gap: .75rem;
+}
+
+.ops-kpi {
+  min-height: 112px;
+  padding: 1rem;
+  text-align: left;
+}
+
+.ops-kpi span {
+  color: #7f8b9d;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.ops-kpi strong {
+  margin-top: .45rem;
+  font-size: 1.16rem;
+}
+
+.ops-kpi small {
+  margin-top: auto;
+  color: #7f8b9d;
+}
+
+.ops-dashboard-grid {
+  gap: .85rem;
+}
+
+.ops-panel {
+  padding: 1rem;
+}
+
+.ops-quick-grid button {
+  min-height: 92px;
+  border: 1px solid #222b37;
+  background: #0d1218;
+}
+
+.ops-health-list {
+  display: grid;
+  gap: .55rem;
+}
+
+.ops-health-row {
+  min-height: 68px;
+  border: 1px solid #222b37;
+  border-radius: 11px;
+  background: #0d1218;
+}
+
+.ops-health-row:hover,
+.ops-quick-grid button:hover,
+.ops-kpi:hover {
+  border-color: #38465b;
+  background: #121924;
+}
+
+.qnext-health-browser {
+  display: grid;
+  grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);
+  gap: .85rem;
+  margin-top: 1rem;
+}
+
+.qnext-health-symbols,
+.qnext-health-detail {
+  min-width: 0;
+  border: 1px solid #222b37;
+  border-radius: 12px;
+  background: #0d1218;
+}
+
+.qnext-health-symbols {
+  padding: .8rem;
+}
+
+.qnext-health-symbols-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-bottom: .65rem;
+}
+
+.qnext-health-symbol-list {
+  display: grid;
+  gap: .35rem;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: .15rem;
+}
+
+button.qnext-health-symbol {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .5rem;
+  align-items: center;
+  padding: .62rem .68rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #aab4c4;
+  text-align: left;
+}
+
+button.qnext-health-symbol:hover {
+  background: #121924;
+}
+
+button.qnext-health-symbol.active {
+  border-color: #334155;
+  background: #182130;
+  color: #eff4fb;
+}
+
+.qnext-health-symbol small {
+  color: #6f7b8c;
+  font-size: .68rem;
+}
+
+.qnext-health-detail {
+  padding: 1rem;
+}
+
+.qnext-health-detail-empty {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  color: #7f8b9d;
+  text-align: center;
+}
+
+.qnext-health-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: .55rem;
+  margin: .8rem 0;
+}
+
+.qnext-health-kpis > div {
+  min-width: 0;
+  padding: .7rem;
+  border: 1px solid #222b37;
+  border-radius: 9px;
+  background: #0a0f15;
+}
+
+.qnext-health-kpis span {
+  display: block;
+  margin-bottom: .25rem;
+  color: #778397;
+  font-size: .67rem;
+}
+
+.qnext-health-kpis strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qnext-health-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .7rem;
+  flex-wrap: wrap;
+}
+
+.qnext-health-toolbar .muted {
+  margin: 0;
+}
+
+.qnext-health-loading {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  color: #7f8b9d;
+}
+
+@media (max-width: 1120px) {
+  .qnext-health-browser {
+    grid-template-columns: 1fr;
+  }
+
+  .qnext-health-symbol-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 260px;
+  }
+
+  .qnext-health-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .qnext-health-symbol-list {
+    grid-template-columns: 1fr;
+  }
+
+  .qnext-health-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
