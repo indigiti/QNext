@@ -89,6 +89,9 @@ SECRETS_FILE="$PRIVATE_ROOT/secrets/qnext.env"
 CONTROL_REQUEST="$PRIVATE_ROOT/run/control-request"
 DESIRED_STATE="$PRIVATE_ROOT/run/desired-state"
 CRON_HEARTBEAT="$PRIVATE_ROOT/run/cron-heartbeat"
+INTELLIGENCE_REQUEST="$PRIVATE_ROOT/run/intelligence-request.json"
+INTELLIGENCE_RESULT="$PRIVATE_ROOT/run/intelligence-result.json"
+INTELLIGENCE_LOG="$PRIVATE_ROOT/logs/intelligence.log"
 LOCK_DIR="$PRIVATE_ROOT/run/supervisor.lock"
 MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:18080}"
 
@@ -437,8 +440,28 @@ set_desired() {
   printf '%s\n' "$state" > "$DESIRED_STATE"
 }
 
+process_intelligence_request() {
+  [[ -s "$INTELLIGENCE_REQUEST" ]] || return 0
+
+  local intelligence_root="$PAYLOAD_PRIVATE/intelligence"
+  if [[ ! -d "$intelligence_root/qnext_intelligence" ]]; then
+    printf '%s\n' '{"state":"FAILED","action":"unknown","request_id":"","completed_at_ms":0,"error":"Quant Intelligence runtime is not deployed"}' > "$INTELLIGENCE_RESULT"
+    rm -f "$INTELLIGENCE_REQUEST"
+    return 0
+  fi
+
+  if ! PYTHONPATH="$intelligence_root" python3 -m qnext_intelligence.admin_worker \
+      --request "$INTELLIGENCE_REQUEST" \
+      --result "$INTELLIGENCE_RESULT" \
+      --storage-root "$PRIVATE_ROOT/storage/intelligence" >>"$INTELLIGENCE_LOG" 2>&1; then
+    echo "Quant Intelligence queued action failed; see $INTELLIGENCE_LOG" >>"$INTELLIGENCE_LOG"
+  fi
+  rm -f "$INTELLIGENCE_REQUEST"
+}
+
 reconcile() {
   date +%s > "$CRON_HEARTBEAT"
+  process_intelligence_request
 
   local request=""
   if [[ -s "$CONTROL_REQUEST" ]]; then
