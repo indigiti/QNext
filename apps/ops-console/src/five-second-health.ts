@@ -1,3 +1,5 @@
+import './five-second-health.css';
+
 export {};
 
 type HealthState = 'GOOD' | 'CARRY_FORWARD' | 'RECOVERED' | 'DEGRADED' | 'MISSING';
