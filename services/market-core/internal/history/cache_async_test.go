@@ -42,6 +42,49 @@ func TestCurrentDayCacheHydratesOnceThenServesRAM(t *testing.T) {
 	}
 }
 
+func TestCurrentDayCacheRefreshesAfterExternalStoreAppend(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 10, 1, 8, 15, 0, 0, time.UTC)
+	base := time.Date(2026, 10, 1, 3, 45, 0, 0, time.UTC)
+	instrumentID := "QNEXT:NIFTY-SYN+"
+
+	collectorStore := New(root)
+	fixedCurrentDay(collectorStore, now)
+	firstBar := testBar(base, 25101, 0)
+	firstBar.InstrumentID = instrumentID
+	if err := collectorStore.AppendBar(firstBar); err != nil {
+		t.Fatal(err)
+	}
+
+	marketCoreStore := New(root)
+	fixedCurrentDay(marketCoreStore, now)
+	first, err := marketCoreStore.LoadDay(instrumentID, "30s", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 {
+		t.Fatalf("expected initial SYN+ history, got %+v", first)
+	}
+
+	secondBar := testBar(base.Add(30*time.Second), 25102, 0)
+	secondBar.InstrumentID = instrumentID
+	if err := collectorStore.AppendBar(secondBar); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshed, err := marketCoreStore.LoadDay(instrumentID, "30s", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refreshed) != 2 || refreshed[1].OpenTime != secondBar.OpenTime || refreshed[1].Close != secondBar.Close {
+		t.Fatalf("market-core cache did not ingest externally persisted SYN+ bar: %+v", refreshed)
+	}
+	stats := marketCoreStore.CacheStats()
+	if stats.DiskLoads != 2 || stats.ExternalRefreshes != 1 {
+		t.Fatalf("expected one external cache refresh, got %+v", stats)
+	}
+}
+
 func TestCurrentDayHydrationPreservesNewerLiveRevision(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
