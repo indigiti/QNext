@@ -57,7 +57,9 @@ jobs:
           bash -n deploy/qnext-ops-web
           bash -n deploy/qnext-ops-user
       - name: PHP smoke
-        run: php services/ops-api/tests/smoke.php
+        run: |
+          php services/ops-api/tests/smoke.php
+          php services/ops-api/tests/auth_migration.php
       - name: Reject generic shell execution surface
         shell: bash
         run: |

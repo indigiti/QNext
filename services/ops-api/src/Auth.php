@@ -55,10 +55,26 @@ final class Auth
             return false;
         }
 
-        if ($this->legacyExpectedToken !== '') {
-            return hash_equals($this->legacyExpectedToken, $providedToken);
+        // Prefer the persisted password hash when it exists. Older Cloudways
+        // installs may still expose QNEXT_OPS_ADMIN_TOKEN while a newer
+        // first-time setup has already written ops-auth.json. The previous
+        // implementation returned immediately on the legacy token and made
+        // the persisted credential unusable, which manifested as every
+        // restricted Admin card returning HTTP 403 while public telemetry
+        // remained healthy.
+        if ($this->authorizedByPersistedHash($providedToken)) {
+            return true;
         }
 
+        // Keep the environment token as a bounded migration fallback. Hosts
+        // should remove QNEXT_OPS_ADMIN_TOKEN after confirming the persisted
+        // credential, but accepting either prevents an accidental lockout.
+        return $this->legacyExpectedToken !== ''
+            && hash_equals($this->legacyExpectedToken, $providedToken);
+    }
+
+    private function authorizedByPersistedHash(string $providedToken): bool
+    {
         if (!is_file($this->authPath)) {
             return false;
         }

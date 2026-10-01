@@ -1,5 +1,20 @@
 export type ServiceAction = 'start' | 'stop' | 'restart';
 
+export const OPS_AUTH_REJECTED_EVENT = 'qnext-ops-auth-rejected';
+
+function rejectStoredAdminSession(): void {
+  try {
+    globalThis.sessionStorage?.removeItem('qnext-ops-token');
+  } catch {
+    // Session storage can be unavailable under hardened browser policies.
+  }
+  try {
+    globalThis.dispatchEvent?.(new CustomEvent(OPS_AUTH_REJECTED_EVENT));
+  } catch {
+    // CustomEvent may be unavailable in non-browser test/runtime contexts.
+  }
+}
+
 export interface Probe {
   ok: boolean;
   status?: number;
@@ -420,6 +435,9 @@ export class OpsAPI {
     }
 
     if (!response.ok) {
+      if (response.status === 403 && includeToken && this.token) {
+        rejectStoredAdminSession();
+      }
       const message =
         typeof payload === 'object' &&
         payload !== null &&
