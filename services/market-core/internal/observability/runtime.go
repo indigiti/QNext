@@ -3,18 +3,20 @@ package observability
 import "sync"
 
 type Snapshot struct {
-	Capture any `json:"capture,omitempty"`
-	Broker  any `json:"broker,omitempty"`
-	Demand  any `json:"demand,omitempty"`
-	History any `json:"history,omitempty"`
+	Capture      any `json:"capture,omitempty"`
+	Broker       any `json:"broker,omitempty"`
+	Demand       any `json:"demand,omitempty"`
+	History      any `json:"history,omitempty"`
+	QuotePricing any `json:"quote_pricing,omitempty"`
 }
 
 var (
-	mu            sync.RWMutex
-	captureSource func() any
-	brokerSource  func() any
-	demandSource  func() any
-	historySource func() any
+	mu                 sync.RWMutex
+	captureSource      func() any
+	brokerSource       func() any
+	demandSource       func() any
+	historySource      func() any
+	quotePricingSource func() any
 )
 
 func SetCaptureSource(source func() any) {
@@ -41,12 +43,19 @@ func SetHistorySource(source func() any) {
 	mu.Unlock()
 }
 
+func SetQuotePricingSource(source func() any) {
+	mu.Lock()
+	quotePricingSource = source
+	mu.Unlock()
+}
+
 func Current() Snapshot {
 	mu.RLock()
 	capture := captureSource
 	broker := brokerSource
 	demand := demandSource
 	history := historySource
+	quotePricing := quotePricingSource
 	mu.RUnlock()
 
 	var snapshot Snapshot
@@ -61,6 +70,9 @@ func Current() Snapshot {
 	}
 	if history != nil {
 		snapshot.History = history()
+	}
+	if quotePricing != nil {
+		snapshot.QuotePricing = quotePricing()
 	}
 	return snapshot
 }

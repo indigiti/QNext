@@ -13,6 +13,7 @@ type SubscriptionState struct {
 	guid    string
 	mode    SubscriptionMode
 	keys    map[string]bool
+	keyMode map[string]SubscriptionMode
 	updates chan SubscriptionRequest
 }
 
@@ -20,9 +21,7 @@ func NewSubscriptionState(guid string, mode SubscriptionMode, initialKeys []stri
 	if strings.TrimSpace(guid) == "" {
 		return nil, errors.New("subscription guid is required")
 	}
-	switch mode {
-	case ModeLTPC, ModeOptionGreeks, ModeFull, ModeFullD30:
-	default:
+	if !validSubscriptionMode(mode) {
 		return nil, errors.New("unsupported subscription mode")
 	}
 
@@ -30,6 +29,7 @@ func NewSubscriptionState(guid string, mode SubscriptionMode, initialKeys []stri
 		guid:    guid,
 		mode:    mode,
 		keys:    make(map[string]bool),
+		keyMode: make(map[string]SubscriptionMode),
 		updates: make(chan SubscriptionRequest, 32),
 	}
 	for _, raw := range initialKeys {
@@ -38,6 +38,7 @@ func NewSubscriptionState(guid string, mode SubscriptionMode, initialKeys []stri
 			return nil, errors.New("initial subscription key is empty")
 		}
 		state.keys[key] = true
+		state.keyMode[key] = state.modeForKey(key)
 	}
 	return state, nil
 }
@@ -45,11 +46,25 @@ func NewSubscriptionState(guid string, mode SubscriptionMode, initialKeys []stri
 func (s *SubscriptionState) Snapshot() SubscriptionRequest {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
+	// Upstox applies one mode to the complete subscription request. During the
+	// normal live session only dynamically-added derivative keys use Full mode.
+	// On reconnect, if any such key is still active, subscribe the small current
+	// set in Full mode so quote-driven synthetics do not silently fall back to
+	// LTP until the next basket rotation. Once derivative demand is released,
+	// the snapshot automatically returns to the base LTPC mode.
+	mode := s.mode
+	for key := range s.keys {
+		if s.keyMode[key] == ModeFull {
+			mode = ModeFull
+			break
+		}
+	}
 	return SubscriptionRequest{
 		GUID:   s.guid,
 		Method: MethodSubscribe,
 		Data: SubscriptionData{
-			Mode:           s.mode,
+			Mode:           mode,
 			InstrumentKeys: sortedSubscriptionKeys(s.keys),
 		},
 	}
@@ -60,30 +75,39 @@ func (s *SubscriptionState) Updates() <-chan SubscriptionRequest {
 }
 
 func (s *SubscriptionState) Subscribe(ctx context.Context, keys []string) error {
+	byMode := make(map[SubscriptionMode][]string)
+
 	s.mu.Lock()
-	var added []string
 	for _, raw := range keys {
 		key := strings.TrimSpace(raw)
 		if key == "" || s.keys[key] {
 			continue
 		}
+		mode := s.modeForKey(key)
 		s.keys[key] = true
-		added = append(added, key)
+		s.keyMode[key] = mode
+		byMode[mode] = append(byMode[mode], key)
 	}
 	s.mu.Unlock()
 
-	if len(added) == 0 {
-		return nil
+	for _, mode := range []SubscriptionMode{ModeLTPC, ModeOptionGreeks, ModeFull, ModeFullD30} {
+		added := byMode[mode]
+		if len(added) == 0 {
+			continue
+		}
+		sort.Strings(added)
+		if err := s.emit(ctx, SubscriptionRequest{
+			GUID:   s.guid,
+			Method: MethodSubscribe,
+			Data: SubscriptionData{
+				Mode:           mode,
+				InstrumentKeys: added,
+			},
+		}); err != nil {
+			return err
+		}
 	}
-	sort.Strings(added)
-	return s.emit(ctx, SubscriptionRequest{
-		GUID:   s.guid,
-		Method: MethodSubscribe,
-		Data: SubscriptionData{
-			Mode:           s.mode,
-			InstrumentKeys: added,
-		},
-	})
+	return nil
 }
 
 func (s *SubscriptionState) Unsubscribe(ctx context.Context, keys []string) error {
@@ -95,6 +119,7 @@ func (s *SubscriptionState) Unsubscribe(ctx context.Context, keys []string) erro
 			continue
 		}
 		delete(s.keys, key)
+		delete(s.keyMode, key)
 		removed = append(removed, key)
 	}
 	s.mu.Unlock()
@@ -110,6 +135,28 @@ func (s *SubscriptionState) Unsubscribe(ctx context.Context, keys []string) erro
 			InstrumentKeys: removed,
 		},
 	})
+}
+
+func (s *SubscriptionState) modeForKey(key string) SubscriptionMode {
+	if derivativeProviderKey(key) {
+		return ModeFull
+	}
+	return s.mode
+}
+
+func derivativeProviderKey(key string) bool {
+	key = strings.ToUpper(strings.TrimSpace(key))
+	segment, _, _ := strings.Cut(key, "|")
+	return strings.HasSuffix(segment, "_FO")
+}
+
+func validSubscriptionMode(mode SubscriptionMode) bool {
+	switch mode {
+	case ModeLTPC, ModeOptionGreeks, ModeFull, ModeFullD30:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *SubscriptionState) emit(ctx context.Context, request SubscriptionRequest) error {

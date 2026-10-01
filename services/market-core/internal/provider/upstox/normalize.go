@@ -4,9 +4,12 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
 )
 
@@ -94,13 +97,33 @@ type DecodedEnvelope struct {
 
 type Normalizer struct {
 	registry *symbol.Registry
+
+	microprice atomic.Uint64
+	midpoint   atomic.Uint64
+	ltpOption  atomic.Uint64
 }
+
+type OptionQuoteStats struct {
+	Microprice  uint64 `json:"microprice"`
+	Midpoint    uint64 `json:"midpoint"`
+	LTPFallback uint64 `json:"ltp_fallback"`
+}
+
+type optionPriceSource uint8
+
+const (
+	optionPriceLTP optionPriceSource = iota
+	optionPriceMicroprice
+	optionPriceMidpoint
+)
 
 func NewNormalizer(registry *symbol.Registry) (*Normalizer, error) {
 	if registry == nil {
 		return nil, errors.New("symbol registry is required")
 	}
-	return &Normalizer{registry: registry}, nil
+	normalizer := &Normalizer{registry: registry}
+	observability.SetQuotePricingSource(func() any { return normalizer.QuoteStats() })
+	return normalizer, nil
 }
 
 func (n *Normalizer) NormalizeEnvelope(
@@ -143,24 +166,32 @@ func (n *Normalizer) NormalizeEnvelope(
 			return nil, errors.New("unregistered Upstox provider key: " + providerKey)
 		}
 
-		tradeTime, err := parseMillis(feed.LTPC.LTT)
-		if err != nil {
+		price, source := normalizedPrice(instrument.AssetClass, feed)
+		quoteDriven := source != optionPriceLTP
+		if price <= 0 {
+			return nil, errors.New("invalid Upstox price for " + providerKey)
+		}
+		if strings.EqualFold(strings.TrimSpace(instrument.AssetClass), "OPTION") {
+			n.recordOptionPriceSource(source)
+		}
+
+		tradeTime, tradeErr := parseMillis(feed.LTPC.LTT)
+		if tradeErr != nil && !quoteDriven {
 			return nil, errors.New("invalid Upstox ltt for " + providerKey)
 		}
 
-		quantity, err := parseOptionalNonNegativeFloat(feed.LTPC.LTQ)
-		if err != nil {
-			return nil, errors.New("invalid Upstox ltq for " + providerKey)
-		}
-
-		if feed.LTPC.LTP <= 0 {
-			return nil, errors.New("invalid Upstox ltp for " + providerKey)
+		quantity := float64(0)
+		if !quoteDriven {
+			quantity, err = parseOptionalNonNegativeFloat(feed.LTPC.LTQ)
+			if err != nil {
+				return nil, errors.New("invalid Upstox ltq for " + providerKey)
+			}
 		}
 
 		ticks = append(ticks, domain.Tick{
 			InstrumentID:  instrument.ID,
 			Provider:      ProviderName,
-			Price:         feed.LTPC.LTP,
+			Price:         price,
 			Quantity:      quantity,
 			EventTime:     marketTime,
 			TradeTime:     tradeTime,
@@ -171,6 +202,77 @@ func (n *Normalizer) NormalizeEnvelope(
 		})
 	}
 	return ticks, nil
+}
+
+func (n *Normalizer) recordOptionPriceSource(source optionPriceSource) {
+	switch source {
+	case optionPriceMicroprice:
+		n.microprice.Add(1)
+	case optionPriceMidpoint:
+		n.midpoint.Add(1)
+	default:
+		n.ltpOption.Add(1)
+	}
+}
+
+func (n *Normalizer) QuoteStats() OptionQuoteStats {
+	if n == nil {
+		return OptionQuoteStats{}
+	}
+	return OptionQuoteStats{
+		Microprice:  n.microprice.Load(),
+		Midpoint:    n.midpoint.Load(),
+		LTPFallback: n.ltpOption.Load(),
+	}
+}
+
+func normalizedPrice(assetClass string, feed Feed) (float64, optionPriceSource) {
+	if !strings.EqualFold(strings.TrimSpace(assetClass), "OPTION") {
+		if feed.LTPC == nil {
+			return 0, optionPriceLTP
+		}
+		return feed.LTPC.LTP, optionPriceLTP
+	}
+
+	state, ok := feed.ResearchState()
+	if ok && len(state.Depth) > 0 {
+		if price, ok := quoteMicroprice(state.Depth[0]); ok {
+			return price, optionPriceMicroprice
+		}
+		if price, ok := quoteMidpoint(state.Depth[0]); ok {
+			return price, optionPriceMidpoint
+		}
+	}
+	if feed.LTPC == nil {
+		return 0, optionPriceLTP
+	}
+	return feed.LTPC.LTP, optionPriceLTP
+}
+
+func quoteMicroprice(quote Quote) (float64, bool) {
+	if !validTwoSidedQuote(quote) || quote.BidQ <= 0 || quote.AskQ <= 0 {
+		return 0, false
+	}
+	total := float64(quote.BidQ + quote.AskQ)
+	if total <= 0 {
+		return 0, false
+	}
+	price := (quote.AskP*float64(quote.BidQ) + quote.BidP*float64(quote.AskQ)) / total
+	if price < quote.BidP || price > quote.AskP {
+		return 0, false
+	}
+	return price, true
+}
+
+func quoteMidpoint(quote Quote) (float64, bool) {
+	if !validTwoSidedQuote(quote) {
+		return 0, false
+	}
+	return (quote.BidP + quote.AskP) / 2, true
+}
+
+func validTwoSidedQuote(quote Quote) bool {
+	return quote.BidP > 0 && quote.AskP > 0 && quote.AskP >= quote.BidP
 }
 
 func parseMillis(raw string) (time.Time, error) {
