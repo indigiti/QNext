@@ -11,6 +11,8 @@ use QNext\Ops\PaperProxy;
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/src/IntelligenceControl.php';
 
+const QNEXT_OPS_SESSION_COOKIE = 'qnext_ops_session';
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -55,6 +57,54 @@ function request_path(): string
     return $path;
 }
 
+function request_is_https(): bool
+{
+    $https = strtolower(trim((string) ($_SERVER['HTTPS'] ?? '')));
+    if ($https !== '' && $https !== 'off' && $https !== '0') {
+        return true;
+    }
+    return strtolower(trim((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))) === 'https';
+}
+
+function set_admin_session_cookie(string $session, int $ttl): void
+{
+    setcookie(QNEXT_OPS_SESSION_COOKIE, $session, [
+        'expires' => time() + $ttl,
+        'path' => '/qnext/admin/',
+        'secure' => request_is_https(),
+        'httponly' => true,
+        'samesite' => 'Strict',
+    ]);
+}
+
+function clear_admin_session_cookie(): void
+{
+    setcookie(QNEXT_OPS_SESSION_COOKIE, '', [
+        'expires' => 1,
+        'path' => '/qnext/admin/',
+        'secure' => request_is_https(),
+        'httponly' => true,
+        'samesite' => 'Strict',
+    ]);
+}
+
+function provided_admin_token(): ?string
+{
+    $custom = $_SERVER['HTTP_X_QNEXT_OPS_TOKEN'] ?? null;
+    if (is_string($custom) && trim($custom) !== '') {
+        return trim($custom);
+    }
+
+    $authorization = $_SERVER['HTTP_AUTHORIZATION']
+        ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
+        ?? null;
+    if (is_string($authorization)
+        && preg_match('/^Bearer\s+(.+)$/i', trim($authorization), $matches) === 1) {
+        return trim($matches[1]);
+    }
+    return null;
+}
+
 try {
     $config = OpsConfig::fromEnvironment();
     $auth = new Auth($config->authPath(), $config->adminToken);
@@ -75,11 +125,34 @@ try {
             respond(400, ['error' => 'token is required']);
         }
         $auth->initialize($token);
-        respond(201, ['initialized' => true]);
+        set_admin_session_cookie($auth->issueSession(), Auth::sessionTTLSeconds());
+        respond(201, ['initialized' => true, 'authenticated' => true]);
     }
 
-    $provided = $_SERVER['HTTP_X_QNEXT_OPS_TOKEN'] ?? null;
-    if (!$auth->authorized(is_string($provided) ? $provided : null)) {
+    if ($method === 'POST' && $path === '/session') {
+        $body = request_body();
+        $token = $body['token'] ?? null;
+        if (!is_string($token) || !$auth->authorized(trim($token))) {
+            clear_admin_session_cookie();
+            respond(403, ['error' => 'forbidden']);
+        }
+        set_admin_session_cookie($auth->issueSession(), Auth::sessionTTLSeconds());
+        respond(200, [
+            'authenticated' => true,
+            'expires_in_seconds' => Auth::sessionTTLSeconds(),
+        ]);
+    }
+
+    if ($method === 'DELETE' && $path === '/session') {
+        clear_admin_session_cookie();
+        respond(200, ['authenticated' => false]);
+    }
+
+    $provided = provided_admin_token();
+    $session = $_COOKIE[QNEXT_OPS_SESSION_COOKIE] ?? null;
+    $headerAuthorized = $auth->authorized($provided);
+    $sessionAuthorized = $auth->authorizedSession(is_string($session) ? $session : null);
+    if (!$headerAuthorized && !$sessionAuthorized) {
         respond(403, ['error' => 'forbidden']);
     }
 

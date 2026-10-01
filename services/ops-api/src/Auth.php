@@ -9,6 +9,10 @@ use RuntimeException;
 
 final class Auth
 {
+    private const SESSION_VERSION = 'v1';
+    private const SESSION_TTL_SECONDS = 28800;
+    private const MAX_SESSION_TTL_SECONDS = 43200;
+
     public function __construct(
         private readonly string $authPath,
         private readonly string $legacyExpectedToken = '',
@@ -55,42 +59,103 @@ final class Auth
             return false;
         }
 
-        // Prefer the persisted password hash when it exists. Older Cloudways
-        // installs may still expose QNEXT_OPS_ADMIN_TOKEN while a newer
-        // first-time setup has already written ops-auth.json. The previous
-        // implementation returned immediately on the legacy token and made
-        // the persisted credential unusable, which manifested as every
-        // restricted Admin card returning HTTP 403 while public telemetry
-        // remained healthy.
         if ($this->authorizedByPersistedHash($providedToken)) {
             return true;
         }
 
-        // Keep the environment token as a bounded migration fallback. Hosts
-        // should remove QNEXT_OPS_ADMIN_TOKEN after confirming the persisted
-        // credential, but accepting either prevents an accidental lockout.
         return $this->legacyExpectedToken !== ''
             && hash_equals($this->legacyExpectedToken, $providedToken);
     }
 
+    public function issueSession(?int $now = null): string
+    {
+        $material = $this->sessionMaterial();
+        if ($material === '') {
+            throw new RuntimeException('admin authentication is not initialized');
+        }
+
+        $issuedAt = $now ?? time();
+        $expiresAt = $issuedAt + self::SESSION_TTL_SECONDS;
+        $nonce = bin2hex(random_bytes(16));
+        $payload = self::SESSION_VERSION . '.' . $expiresAt . '.' . $nonce;
+        $signature = hash_hmac('sha256', $payload, $material);
+        return $payload . '.' . $signature;
+    }
+
+    public function authorizedSession(?string $session, ?int $now = null): bool
+    {
+        if ($session === null || $session === '') {
+            return false;
+        }
+
+        $parts = explode('.', $session);
+        if (count($parts) !== 4) {
+            return false;
+        }
+        [$version, $expiresRaw, $nonce, $signature] = $parts;
+        if ($version !== self::SESSION_VERSION
+            || !ctype_digit($expiresRaw)
+            || !preg_match('/^[a-f0-9]{32}$/', $nonce)
+            || !preg_match('/^[a-f0-9]{64}$/', $signature)) {
+            return false;
+        }
+
+        $current = $now ?? time();
+        $expiresAt = (int) $expiresRaw;
+        if ($expiresAt <= $current || $expiresAt > $current + self::MAX_SESSION_TTL_SECONDS) {
+            return false;
+        }
+
+        $material = $this->sessionMaterial();
+        if ($material === '') {
+            return false;
+        }
+        $payload = $version . '.' . $expiresRaw . '.' . $nonce;
+        $expected = hash_hmac('sha256', $payload, $material);
+        return hash_equals($expected, $signature);
+    }
+
+    public static function sessionTTLSeconds(): int
+    {
+        return self::SESSION_TTL_SECONDS;
+    }
+
     private function authorizedByPersistedHash(string $providedToken): bool
     {
+        $hash = $this->persistedHash();
+        return $hash !== '' && password_verify($providedToken, $hash);
+    }
+
+    private function sessionMaterial(): string
+    {
+        $hash = $this->persistedHash();
+        if ($hash !== '') {
+            return 'persisted:' . $hash;
+        }
+        if ($this->legacyExpectedToken !== '') {
+            return 'legacy:' . hash('sha256', $this->legacyExpectedToken);
+        }
+        return '';
+    }
+
+    private function persistedHash(): string
+    {
         if (!is_file($this->authPath)) {
-            return false;
+            return '';
         }
 
         $raw = file_get_contents($this->authPath);
         if ($raw === false || trim($raw) === '') {
-            return false;
+            return '';
         }
 
         try {
             $payload = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
-            return false;
+            return '';
         }
 
         $hash = is_array($payload) ? ($payload['token_hash'] ?? null) : null;
-        return is_string($hash) && $hash !== '' && password_verify($providedToken, $hash);
+        return is_string($hash) ? $hash : '';
     }
 }

@@ -60,6 +60,7 @@ jobs:
         run: |
           php services/ops-api/tests/smoke.php
           php services/ops-api/tests/auth_migration.php
+          php services/ops-api/tests/auth_session.php
       - name: Reject generic shell execution surface
         shell: bash
         run: |
