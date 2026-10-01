@@ -3,6 +3,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 )
 
 func TestBuildRegistryExposesSixIndexAndSyntheticPairsPlusNiftyShadowWithoutLiveConfig(t *testing.T) {
@@ -30,6 +32,39 @@ func TestBuildRegistryExposesSixIndexAndSyntheticPairsPlusNiftyShadowWithoutLive
 	} {
 		if !seen[symbol] {
 			t.Fatalf("workspace catalog missing %s: %+v", symbol, visible)
+		}
+	}
+}
+
+func TestContinuousRecordingCoversEveryDefaultIndexAndSynthetic(t *testing.T) {
+	config := marketconfig.Config{
+		Timeframes: marketconfig.DefaultEnabledTimeframes(),
+		Markets:    marketconfig.DefaultMarkets(),
+	}
+
+	providerKeys := config.ProviderKeys()
+	if len(providerKeys) != 6 {
+		t.Fatalf("expected all six index underlyings to stay provider-subscribed, got %d: %v", len(providerKeys), providerKeys)
+	}
+
+	syntheticIDs := continuousSyntheticInstrumentIDs(config)
+	if len(syntheticIDs) != 6 {
+		t.Fatalf("expected all six INDEX-SYN engines to stay demand-active, got %d: %v", len(syntheticIDs), syntheticIDs)
+	}
+	seen := make(map[string]bool, len(syntheticIDs))
+	for _, instrumentID := range syntheticIDs {
+		seen[instrumentID] = true
+	}
+	for _, instrumentID := range []string{
+		"QNEXT:NIFTY-SYN",
+		"QNEXT:BANKNIFTY-SYN",
+		"QNEXT:MIDCPNIFTY-SYN",
+		"QNEXT:FINNIFTY-SYN",
+		"QNEXT:SENSEX-SYN",
+		"QNEXT:BANKEX-SYN",
+	} {
+		if !seen[instrumentID] {
+			t.Fatalf("continuous recording missing %s: %v", instrumentID, syntheticIDs)
 		}
 	}
 }
