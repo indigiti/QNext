@@ -50,6 +50,13 @@ jobs:
           PYTHONPATH=. python3 -m compileall -q qnext_strategy_lab tests
           PYTHONPATH=. python3 -m unittest discover -s tests -v
 
+      - name: Validate Quant Intelligence runtime
+        working-directory: services/intelligence
+        run: |
+          PYTHONPATH=. python3 -m compileall -q qnext_intelligence tests
+          PYTHONPATH=. python3 -m unittest discover -s tests -v
+          PYTHONPATH=. python3 -m qnext_intelligence.learning_cli --help
+
       - name: Validate Ops PHP control plane
         shell: bash
         run: |
@@ -163,7 +170,7 @@ jobs:
           set -euo pipefail
           rm -rf release
           mkdir -p release/public/admin
-          mkdir -p release/private/bin release/private/config release/private/deploy release/private/strategy-lab
+          mkdir -p release/private/bin release/private/config release/private/deploy release/private/strategy-lab release/private/intelligence
 
           cp -a apps/workspace/dist/. release/public/
           cp apps/workspace/public/.htaccess release/public/.htaccess
@@ -176,6 +183,8 @@ jobs:
           install -m 0750 build/qnext-data-collector "release/private/bin/${collector_binary_name}"
           printf '%s\n' "${collector_binary_name}" > release/private/bin/qnext-data-collector.current
           cp -a services/strategy-lab/qnext_strategy_lab release/private/strategy-lab/
+          cp -a services/intelligence/qnext_intelligence release/private/intelligence/
+          cp services/intelligence/README.md release/private/intelligence/README.md
           cp -a services/ops-api release/private/ops-api
 
           cp config/q1-market.example.json release/private/config/q1-market.example.json
@@ -205,7 +214,8 @@ jobs:
             "services": {
               "market_core": "${binary_name}",
               "data_collector": "${collector_binary_name}",
-              "syn_plus_paper": "strategy-lab/qnext_strategy_lab/syn_plus_runtime.py"
+              "syn_plus_paper": "strategy-lab/qnext_strategy_lab/syn_plus_runtime.py",
+              "quant_intelligence": "intelligence/qnext_intelligence/learning_cli.py"
             },
             "routes": {
               "workspace": "/qnext/",
@@ -251,6 +261,9 @@ jobs:
           test "$(cat release/private/bin/qnext-data-collector.current)" = "qnext-data-collector-${version}"
           test -f release/private/strategy-lab/qnext_strategy_lab/syn_plus_runtime.py
           PYTHONPATH=release/private/strategy-lab python3 -m compileall -q release/private/strategy-lab/qnext_strategy_lab
+          test -f release/private/intelligence/qnext_intelligence/learning_cli.py
+          PYTHONPATH=release/private/intelligence python3 -m compileall -q release/private/intelligence/qnext_intelligence
+          PYTHONPATH=release/private/intelligence python3 -m qnext_intelligence.learning_cli --help >/dev/null
           test -f release/private/ops-api/public/index.php
           test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
