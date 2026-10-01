@@ -142,3 +142,60 @@ func testRegistry(t *testing.T) *symbol.Registry {
 	}
 	return registry
 }
+
+func TestResolverCanAddDynamicInstrumentPolicy(t *testing.T) {
+	registry := testRegistry(t)
+	option := symbol.Instrument{
+		ID:         "NSE:NIFTY:2026-09-29:25100:CE",
+		Symbol:     "NIFTY26SEP25100CE",
+		Name:       "NIFTY option",
+		AssetClass: "OPTION",
+		Exchange:   "NSE",
+		Currency:   "INR",
+		Timezone:   "Asia/Kolkata",
+	}
+	if err := registry.Register(option); err != nil {
+		t.Fatal(err)
+	}
+	for provider, key := range map[string]string{
+		"upstox": "NSE_FO|12345",
+		"backup": "NSE_FNO|54321|OPTIDX",
+	} {
+		if err := registry.RegisterProvider(symbol.ProviderInstrument{
+			Provider: provider, InstrumentID: option.ID, ProviderKey: key,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resolver, err := NewResolver(registry, map[string][]Preference{
+		"NSE:NIFTY50": {
+			{Provider: "upstox", Priority: 10, MaxStaleness: time.Second},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resolver.SetPolicy(option.ID, []Preference{
+		{Provider: "upstox", Priority: 10, MaxStaleness: time.Second},
+		{Provider: "backup", Priority: 20, MaxStaleness: time.Second},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 9, 25, 3, 45, 0, 0, time.UTC)
+	if err := resolver.UpdateState(option.ID, "upstox", ProviderState{
+		Healthy: true, Entitled: true, LastEventTime: now.Add(-2 * time.Second),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolver.UpdateState(option.ID, "backup", ProviderState{
+		Healthy: true, Entitled: true, LastEventTime: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	selection, ok := resolver.Resolve(option.ID, now)
+	if !ok || selection.Provider != "backup" {
+		t.Fatalf("expected dynamic option to fail over to backup, got ok=%v selection=%+v", ok, selection)
+	}
+}
