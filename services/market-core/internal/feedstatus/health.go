@@ -11,6 +11,16 @@ const (
 	defaultCarryProviderFreshness   = 8 * time.Second
 )
 
+// HealthyForCarryDefault checks the active process tracker. It is used by the
+// live runtime so a quiet index may carry briefly while the provider itself is
+// demonstrably alive, without treating a connected-but-dead feed as healthy.
+func HealthyForCarryDefault(instrumentID string, _ domain.Tick, now time.Time) bool {
+	defaultTrackerMu.RLock()
+	tracker := defaultTracker
+	defaultTrackerMu.RUnlock()
+	return tracker != nil && tracker.HealthyForCarry(instrumentID, now)
+}
+
 // HealthyForCarry returns true only when an instrument is still recent and
 // its provider is actively delivering data. It is deliberately stricter than
 // ordinary status reporting because a false positive here would fabricate a
