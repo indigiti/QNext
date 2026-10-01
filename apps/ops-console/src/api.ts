@@ -1,8 +1,14 @@
 export type ServiceAction = 'start' | 'stop' | 'restart';
 
 export const OPS_AUTH_REJECTED_EVENT = 'qnext-ops-auth-rejected';
+export const OPS_AUTH_RESTORED_EVENT = 'qnext-ops-auth-restored';
+
+let authRejected = false;
+let sessionExchange: Promise<boolean> | null = null;
 
 function rejectStoredAdminSession(): void {
+  if (authRejected) return;
+  authRejected = true;
   try {
     globalThis.sessionStorage?.removeItem('qnext-ops-token');
   } catch {
@@ -10,6 +16,17 @@ function rejectStoredAdminSession(): void {
   }
   try {
     globalThis.dispatchEvent?.(new CustomEvent(OPS_AUTH_REJECTED_EVENT));
+  } catch {
+    // CustomEvent may be unavailable in non-browser test/runtime contexts.
+  }
+}
+
+function restoreAdminSession(): void {
+  const changed = authRejected;
+  authRejected = false;
+  if (!changed) return;
+  try {
+    globalThis.dispatchEvent?.(new CustomEvent(OPS_AUTH_RESTORED_EVENT));
   } catch {
     // CustomEvent may be unavailable in non-browser test/runtime contexts.
   }
@@ -268,6 +285,7 @@ export class OpsAPI {
     this.base = (options.base ?? '/qnext/admin/api/index.php').replace(/\/$/, '');
     this.token = options.token;
     this.fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
+    if (this.token) restoreAdminSession();
   }
 
   setupStatus(): Promise<{ initialized: boolean }> {
@@ -399,27 +417,80 @@ export class OpsAPI {
     return this.request('/rollback', { method: 'POST' });
   }
 
-  private async request<T>(
+  private routeURL(path: string): string {
+    const separator = this.base.includes('?') ? '&' : '?';
+    return this.base + separator + 'route=' + encodeURIComponent(path);
+  }
+
+  private async establishSession(): Promise<boolean> {
+    if (!this.token) return false;
+    if (sessionExchange) return sessionExchange;
+
+    sessionExchange = (async () => {
+      try {
+        const response = await this.fetcher(this.routeURL('/session'), {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token: this.token }),
+          credentials: 'same-origin',
+        });
+        if (!response.ok) return false;
+        restoreAdminSession();
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+
+    try {
+      return await sessionExchange;
+    } finally {
+      sessionExchange = null;
+    }
+  }
+
+  private async fetchRequest(
     path: string,
-    init: RequestInit = {},
-    includeToken = true,
-  ): Promise<T> {
+    init: RequestInit,
+    includeToken: boolean,
+    sendToken: boolean,
+  ): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
     if (init.body) {
       headers.set('Content-Type', 'application/json');
     }
-    if (includeToken && this.token) {
+    if (includeToken && sendToken && this.token) {
       headers.set('X-QNext-Ops-Token', this.token);
     }
 
-    const separator = this.base.includes('?') ? '&' : '?';
-    const url = this.base + separator + 'route=' + encodeURIComponent(path);
-    const response = await this.fetcher(url, {
+    return this.fetcher(this.routeURL(path), {
       ...init,
       headers,
       credentials: 'same-origin',
     });
+  }
+
+  private async request<T>(
+    path: string,
+    init: RequestInit = {},
+    includeToken = true,
+  ): Promise<T> {
+    if (includeToken && authRejected && !this.token) {
+      throw new Error('Admin authentication required');
+    }
+
+    let response = await this.fetchRequest(path, init, includeToken, true);
+    if (response.status === 403 && includeToken && this.token) {
+      const established = await this.establishSession();
+      if (established) {
+        response = await this.fetchRequest(path, init, includeToken, false);
+      }
+    }
+
     const text = await response.text();
 
     let payload: unknown = {};
@@ -435,7 +506,7 @@ export class OpsAPI {
     }
 
     if (!response.ok) {
-      if (response.status === 403 && includeToken && this.token) {
+      if (response.status === 403 && includeToken) {
         rejectStoredAdminSession();
       }
       const message =
@@ -447,6 +518,7 @@ export class OpsAPI {
           : `HTTP ${response.status}`;
       throw new Error(message);
     }
+    if (includeToken) restoreAdminSession();
     return payload as T;
   }
 }
