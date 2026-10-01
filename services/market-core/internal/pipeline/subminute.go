@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"errors"
-	"math"
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
@@ -104,6 +103,7 @@ func aggregateSubminute(state *subminuteState, timeframe string) domain.Bar {
 	var volume float64
 	var quality domain.Quality
 	var recovered bool
+	var carryForward bool
 	initialized := false
 
 	for key, bar := range state.children {
@@ -130,6 +130,7 @@ func aggregateSubminute(state *subminuteState, timeframe string) domain.Bar {
 		}
 		volume += bar.Volume
 		recovered = recovered || bar.Recovered
+		carryForward = carryForward || bar.CarryForward
 	}
 
 	return domain.Bar{
@@ -146,6 +147,7 @@ func aggregateSubminute(state *subminuteState, timeframe string) domain.Bar {
 		AuthorityProvider:   last.AuthorityProvider,
 		Quality:             quality,
 		Recovered:           recovered,
+		CarryForward:        carryForward,
 		SourceSequence:      last.SourceSequence,
 		CandleEngineVersion: subminuteRollupVersion,
 		SyntheticVersion:    last.SyntheticVersion,
@@ -167,13 +169,4 @@ func newerFiveSecond(previous, next domain.Bar) bool {
 		return next.Final
 	}
 	return next.CreatedAt.After(previous.CreatedAt)
-}
-
-func barsEqualOHLCV(a, b domain.Bar) bool {
-	const epsilon = 1e-9
-	return math.Abs(a.Open-b.Open) <= epsilon &&
-		math.Abs(a.High-b.High) <= epsilon &&
-		math.Abs(a.Low-b.Low) <= epsilon &&
-		math.Abs(a.Close-b.Close) <= epsilon &&
-		math.Abs(a.Volume-b.Volume) <= epsilon
 }
