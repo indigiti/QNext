@@ -2,6 +2,7 @@ package history
 
 import (
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -98,12 +99,6 @@ func (s *Store) loadCurrentDay(instrumentID, timeframe string, day time.Time) ([
 		return bars, nil
 	}
 	s.cache.misses.Add(1)
-	if loaded {
-		// A second process (currently the NIFTY-SYN+ collector) can append to
-		// the same current-day JSONL files. Count and refresh those invalidations
-		// instead of serving the stale in-process RAM snapshot indefinitely.
-		s.cache.externalRefreshes.Add(1)
-	}
 
 	// Only one current-day request hydrates or refreshes a series at a time.
 	s.cache.loadMu.Lock()
@@ -114,6 +109,12 @@ func (s *Store) loadCurrentDay(instrumentID, timeframe string, day time.Time) ([
 	}
 	if loaded && fresh {
 		return bars, nil
+	}
+	if loaded && externallyWrittenSeries(instrumentID) {
+		// NIFTY-SYN+ is persisted by qnext-data-collector while Market Core
+		// serves history from a different process. Count only actual refreshes
+		// after acquiring the single-loader lock, not all concurrent waiters.
+		s.cache.externalRefreshes.Add(1)
 	}
 
 	started := time.Now()
@@ -168,6 +169,15 @@ func (s *Store) cachedBarsFresh(
 	knownDisk := series.disk
 	s.cache.mu.Unlock()
 
+	// Index and standard INDEX-SYN candles are produced by this Market Core
+	// process; observeBar keeps those RAM series authoritative and avoids an
+	// fs stat/JSONL reload on every live final. SYN+ is the intentional
+	// exception because its chart history is appended by qnext-data-collector.
+	if !externallyWrittenSeries(instrumentID) {
+		bars, ok := s.cachedBars(day, key)
+		return bars, ok, ok, nil
+	}
+
 	currentDisk, err := s.dayFingerprint(instrumentID, timeframe, at)
 	if err != nil {
 		return nil, true, false, err
@@ -178,6 +188,10 @@ func (s *Store) cachedBarsFresh(
 
 	bars, ok := s.cachedBars(day, key)
 	return bars, ok, ok, nil
+}
+
+func externallyWrittenSeries(instrumentID string) bool {
+	return strings.HasSuffix(strings.ToUpper(strings.TrimSpace(instrumentID)), "-SYN+")
 }
 
 func (s *Store) dayFingerprint(instrumentID, timeframe string, at time.Time) (diskFingerprint, error) {
@@ -196,8 +210,8 @@ func (s *Store) dayFingerprint(instrumentID, timeframe string, at time.Time) (di
 }
 
 // refreshDiskFingerprint is called after this Store's asynchronous writer has
-// durably appended a final. It keeps ordinary Market Core streams on the fast
-// RAM path, while external-process writes still invalidate the fingerprint.
+// durably appended a final. It primarily benefits SYN+ when the collector ever
+// reads its own chart cache; ordinary Market Core Index/SYN series stay RAM-led.
 func (s *Store) refreshDiskFingerprint(bar domain.Bar) {
 	if s == nil || s.cache == nil || !bar.Final || !s.isCurrentDay(bar.OpenTime) {
 		return
