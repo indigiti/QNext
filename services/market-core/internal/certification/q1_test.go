@@ -24,16 +24,26 @@ func flushHistory(t *testing.T, store *history.Store) {
 	}
 }
 
-func drainBarEvents(subscription *stream.Subscription) []stream.BarEvent {
-	var events []stream.BarEvent
-	for {
+func waitHistoryLiveBoundary(t *testing.T, subscription *stream.Subscription, base time.Time) (stream.BarEvent, stream.BarEvent) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	var finalEvent stream.BarEvent
+	var nextLive stream.BarEvent
+	for finalEvent.Seq == 0 || nextLive.Seq == 0 {
 		select {
 		case event := <-subscription.Events:
-			events = append(events, event)
-		default:
-			return events
+			if event.Bar.Final && event.Bar.OpenTime.Equal(base) {
+				finalEvent = event
+			}
+			if event.Bar.OpenTime.Equal(base.Add(time.Minute)) && !event.Bar.Final {
+				nextLive = event
+			}
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for finalized/current 1m boundary: final=%+v live=%+v", finalEvent, nextLive)
 		}
 	}
+	return finalEvent, nextLive
 }
 
 func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
@@ -77,7 +87,7 @@ func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 		}
 	}
 
-	events := drainBarEvents(subscription)
+	finalEvent, nextLive := waitHistoryLiveBoundary(t, subscription, base)
 	flushHistory(t, store)
 	bars, err := store.LoadRange("NSE:NIFTY50", "1m", base, base.Add(2*time.Minute))
 	if err != nil {
@@ -88,19 +98,6 @@ func TestQ1HistoryLiveContinuityAndResume(t *testing.T) {
 	}
 	if err := integrity.CheckBarContinuity(bars, "1m"); err != nil {
 		t.Fatal(err)
-	}
-
-	var finalEvent, nextLive stream.BarEvent
-	for _, event := range events {
-		if event.Bar.Final && event.Bar.OpenTime.Equal(base) {
-			finalEvent = event
-		}
-		if event.Bar.OpenTime.Equal(base.Add(time.Minute)) && !event.Bar.Final {
-			nextLive = event
-		}
-	}
-	if finalEvent.Seq == 0 || nextLive.Seq == 0 {
-		t.Fatalf("missing boundary events: %+v", events)
 	}
 	if finalEvent.Bar.Key() != bars[0].Key() {
 		t.Fatalf("history and stream disagree on finalized bar: history=%s live=%s", bars[0].Key(), finalEvent.Bar.Key())
