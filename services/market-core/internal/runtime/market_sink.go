@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/feedstatus"
 	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
 
@@ -34,6 +35,21 @@ type MarketSink struct {
 	Publisher         BarPublisher
 	DirectInstruments map[string]bool
 	Observer          func(domain.Tick)
+
+	// CarryHealthy is the authoritative gate for zero-volume 5s carry bars.
+	// Production defaults to feedstatus.HealthyForCarryDefault so a wall-clock
+	// finalizer cannot fabricate continuity when provider or instrument data is
+	// stale/degraded.
+	CarryHealthy func(string, domain.Tick, time.Time) bool
+
+	// ClockInterval controls how frequently the process clock checks for due 5s
+	// boundaries. The default 100ms cadence bounds normal finalization lag while
+	// candle alignment itself remains anchored to the exchange/session bucket.
+	ClockInterval time.Duration
+	ClockDone     <-chan struct{}
+	ClockError    func(error)
+
+	clockOnce sync.Once
 }
 
 func (s *MarketSink) Handle(tick domain.Tick) error {
@@ -46,6 +62,10 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 			observability.SetSubminuteSource(source.SubminuteTelemetry)
 		})
 	}
+
+	// Start the independent finalization clock on first live activity. From this
+	// point candle closure no longer depends on another provider tick arriving.
+	s.startClockFinalizer()
 
 	if s.Observer != nil {
 		s.Observer(tick)
@@ -70,19 +90,47 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 			return err
 		}
 	}
-
-	// Every fresh provider event advances the trusted market clock for all
-	// canonical 5s streams. The pipeline's built-in freshness guard decides
-	// whether an empty bucket may be carried; a dead feed produces no clock
-	// events and therefore cannot fabricate flat candles.
-	if clocked, ok := s.Pipeline.(ClockPipeline); ok && !tick.EventTime.IsZero() {
-		bars, err := clocked.AdvanceClock(tick.EventTime.UTC(), nil)
-		if err != nil {
-			return err
-		}
-		s.publishBars(bars)
-	}
 	return nil
+}
+
+func (s *MarketSink) startClockFinalizer() {
+	clocked, ok := s.Pipeline.(ClockPipeline)
+	if !ok {
+		return
+	}
+
+	s.clockOnce.Do(func() {
+		interval := s.ClockInterval
+		if interval <= 0 {
+			interval = 100 * time.Millisecond
+		}
+		healthy := s.CarryHealthy
+		if healthy == nil {
+			healthy = feedstatus.HealthyForCarryDefault
+		}
+		done := s.ClockDone
+		onError := s.ClockError
+
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case now := <-ticker.C:
+					bars, err := clocked.AdvanceClock(now.UTC(), healthy)
+					if err != nil {
+						if onError != nil {
+							onError(err)
+						}
+						continue
+					}
+					s.publishBars(bars)
+				}
+			}
+		}()
+	})
 }
 
 func (s *MarketSink) applySynthetic(assembler SyntheticAssembler, tick domain.Tick) error {
