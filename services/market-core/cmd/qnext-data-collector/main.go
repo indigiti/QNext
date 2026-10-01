@@ -122,12 +122,15 @@ func configuredMarket() (marketconfig.MarketConfig, []string, error) {
 		timeframes = append([]string(nil), config.Timeframes...)
 	}
 	target := strings.ToUpper(strings.TrimSpace(env("QNEXT_DATA_COLLECTOR_MARKET", "NIFTY")))
+	if target != "NIFTY" {
+		return marketconfig.MarketConfig{}, nil, errors.New("SYN+ is intentionally NIFTY-only; QNEXT_DATA_COLLECTOR_MARKET must be NIFTY")
+	}
 	for _, market := range markets {
 		if strings.ToUpper(strings.TrimSpace(market.Symbol)) == target {
 			return market, timeframes, nil
 		}
 	}
-	return marketconfig.MarketConfig{}, nil, errors.New("QNEXT_DATA_COLLECTOR_MARKET is not configured")
+	return marketconfig.MarketConfig{}, nil, errors.New("NIFTY is not configured for the SYN+ data collector")
 }
 
 func env(key, fallback string) string {
