@@ -1,6 +1,7 @@
 package history
 
 import (
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -8,9 +9,20 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
 
+type diskFingerprint struct {
+	exists    bool
+	size      int64
+	modTimeNS int64
+}
+
+func (f diskFingerprint) equal(other diskFingerprint) bool {
+	return f.exists == other.exists && f.size == other.size && f.modTimeNS == other.modTimeNS
+}
+
 type cachedSeries struct {
 	loaded bool
 	bars   map[string]domain.Bar
+	disk   diskFingerprint
 }
 
 type currentDayCache struct {
@@ -23,6 +35,7 @@ type currentDayCache struct {
 	hits               atomic.Uint64
 	misses             atomic.Uint64
 	diskLoads          atomic.Uint64
+	externalRefreshes  atomic.Uint64
 	lastDiskLoadAtMS   atomic.Int64
 	lastDiskLoadTimeMS atomic.Int64
 }
@@ -34,6 +47,7 @@ type CacheStats struct {
 	Hits                   uint64 `json:"hits"`
 	Misses                 uint64 `json:"misses"`
 	DiskLoads              uint64 `json:"disk_loads"`
+	ExternalRefreshes      uint64 `json:"external_refreshes"`
 	LastDiskLoadAtMS       int64  `json:"last_disk_load_at_ms,omitempty"`
 	LastDiskLoadDurationMS int64  `json:"last_disk_load_duration_ms,omitempty"`
 }
@@ -75,21 +89,41 @@ func (s *Store) observeBar(bar domain.Bar) {
 func (s *Store) loadCurrentDay(instrumentID, timeframe string, day time.Time) ([]domain.Bar, error) {
 	dayKey := day.UTC().Format("2006-01-02")
 	seriesKey := cacheSeriesKey(instrumentID, timeframe)
-	if bars, ok := s.cachedBars(dayKey, seriesKey); ok {
+	bars, loaded, fresh, err := s.cachedBarsFresh(dayKey, seriesKey, instrumentID, timeframe, day)
+	if err != nil {
+		return nil, err
+	}
+	if loaded && fresh {
 		s.cache.hits.Add(1)
 		return bars, nil
 	}
 	s.cache.misses.Add(1)
+	if loaded {
+		// A second process (currently the NIFTY-SYN+ collector) can append to
+		// the same current-day JSONL files. Count and refresh those invalidations
+		// instead of serving the stale in-process RAM snapshot indefinitely.
+		s.cache.externalRefreshes.Add(1)
+	}
 
-	// Only the first current-day request for a series scans JSONL. Other
-	// readers wait for hydration and then reuse the revision-aware RAM view.
+	// Only one current-day request hydrates or refreshes a series at a time.
 	s.cache.loadMu.Lock()
 	defer s.cache.loadMu.Unlock()
-	if bars, ok := s.cachedBars(dayKey, seriesKey); ok {
+	bars, loaded, fresh, err = s.cachedBarsFresh(dayKey, seriesKey, instrumentID, timeframe, day)
+	if err != nil {
+		return nil, err
+	}
+	if loaded && fresh {
 		return bars, nil
 	}
 
 	started := time.Now()
+	// Capture the file fingerprint before scanning. If another process appends
+	// while the scan is in progress, the next request will see a newer size or
+	// mtime and refresh again rather than incorrectly marking the cache fresh.
+	fingerprint, err := s.dayFingerprint(instrumentID, timeframe, day)
+	if err != nil {
+		return nil, err
+	}
 	diskBars, err := s.loadDayDisk(instrumentID, timeframe, day)
 	if err != nil {
 		return nil, err
@@ -107,13 +141,79 @@ func (s *Store) loadCurrentDay(instrumentID, timeframe string, day time.Time) ([
 		mergeCachedBar(series.bars, bar)
 	}
 	series.loaded = true
-	bars := sortedBarsCopy(series.bars)
+	series.disk = fingerprint
+	bars = sortedBarsCopy(series.bars)
 	s.cache.mu.Unlock()
 
 	s.cache.diskLoads.Add(1)
 	s.cache.lastDiskLoadAtMS.Store(loadedAt.UnixMilli())
 	s.cache.lastDiskLoadTimeMS.Store(time.Since(started).Milliseconds())
 	return bars, nil
+}
+
+func (s *Store) cachedBarsFresh(
+	day string,
+	key string,
+	instrumentID string,
+	timeframe string,
+	at time.Time,
+) ([]domain.Bar, bool, bool, error) {
+	s.cache.mu.Lock()
+	s.cache.ensureDayLocked(day)
+	series := s.cache.series[key]
+	if series == nil || !series.loaded {
+		s.cache.mu.Unlock()
+		return nil, false, false, nil
+	}
+	knownDisk := series.disk
+	s.cache.mu.Unlock()
+
+	currentDisk, err := s.dayFingerprint(instrumentID, timeframe, at)
+	if err != nil {
+		return nil, true, false, err
+	}
+	if !knownDisk.equal(currentDisk) {
+		return nil, true, false, nil
+	}
+
+	bars, ok := s.cachedBars(day, key)
+	return bars, ok, ok, nil
+}
+
+func (s *Store) dayFingerprint(instrumentID, timeframe string, at time.Time) (diskFingerprint, error) {
+	info, err := os.Stat(s.dayPath(instrumentID, timeframe, at))
+	if os.IsNotExist(err) {
+		return diskFingerprint{}, nil
+	}
+	if err != nil {
+		return diskFingerprint{}, err
+	}
+	return diskFingerprint{
+		exists:    true,
+		size:      info.Size(),
+		modTimeNS: info.ModTime().UnixNano(),
+	}, nil
+}
+
+// refreshDiskFingerprint is called after this Store's asynchronous writer has
+// durably appended a final. It keeps ordinary Market Core streams on the fast
+// RAM path, while external-process writes still invalidate the fingerprint.
+func (s *Store) refreshDiskFingerprint(bar domain.Bar) {
+	if s == nil || s.cache == nil || !bar.Final || !s.isCurrentDay(bar.OpenTime) {
+		return
+	}
+	fingerprint, err := s.dayFingerprint(bar.InstrumentID, bar.Timeframe, bar.OpenTime)
+	if err != nil {
+		return
+	}
+	day := bar.OpenTime.UTC().Format("2006-01-02")
+	key := cacheSeriesKey(bar.InstrumentID, bar.Timeframe)
+	s.cache.mu.Lock()
+	defer s.cache.mu.Unlock()
+	s.cache.ensureDayLocked(day)
+	if series := s.cache.series[key]; series != nil {
+		series.disk = fingerprint
+	}
 }
 
 func (s *Store) cachedBars(day, key string) ([]domain.Bar, bool) {
@@ -167,6 +267,7 @@ func (s *Store) CacheStats() CacheStats {
 	stats.Hits = s.cache.hits.Load()
 	stats.Misses = s.cache.misses.Load()
 	stats.DiskLoads = s.cache.diskLoads.Load()
+	stats.ExternalRefreshes = s.cache.externalRefreshes.Load()
 	stats.LastDiskLoadAtMS = s.cache.lastDiskLoadAtMS.Load()
 	stats.LastDiskLoadDurationMS = s.cache.lastDiskLoadTimeMS.Load()
 	return stats
