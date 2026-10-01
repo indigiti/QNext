@@ -108,6 +108,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/v1/symbols", s.symbols)
 	s.mux.HandleFunc("/api/v1/calendar", s.calendar)
 	s.mux.HandleFunc("/api/v1/timeframes", s.timeframes)
+	s.mux.HandleFunc("/api/v1/5s-health", s.fiveSecondHealth)
 	if s.options.ResilienceStatus != nil {
 		s.mux.HandleFunc("/api/v1/resilience", s.resilience)
 	}
