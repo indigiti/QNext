@@ -48,7 +48,9 @@ final class OpsConfig
             @chmod($helper, 0750);
         }
 
-        $legacySuppressed = is_file($privateRoot . '/secrets/ops-legacy-admin-token.disabled');
+        $resetWindow = $privateRoot . '/run/admin-auth-reset-window';
+        $legacySuppression = $privateRoot . '/secrets/ops-legacy-admin-token.disabled';
+        $legacySuppressed = is_file($legacySuppression) || self::resetWindowActiveAt($resetWindow);
         $adminToken = $legacySuppressed ? '' : self::value('QNEXT_OPS_ADMIN_TOKEN');
 
         return new self(
@@ -109,6 +111,11 @@ final class OpsConfig
         return $this->privateRoot . '/run/admin-auth-reset-window';
     }
 
+    public function adminResetBackupPath(): string
+    {
+        return $this->privateRoot . '/secrets/ops-auth.reset-backup.json';
+    }
+
     public function legacyAdminTokenSuppressionPath(): string
     {
         return $this->privateRoot . '/secrets/ops-legacy-admin-token.disabled';
@@ -119,19 +126,9 @@ final class OpsConfig
         return is_file($this->legacyAdminTokenSuppressionPath());
     }
 
-    public function adminResetWindowActive(?int $now = null): bool
+    public function adminResetWindowActive(): bool
     {
-        $path = $this->adminResetWindowPath();
-        if (!is_file($path)) {
-            return false;
-        }
-        $raw = trim((string) file_get_contents($path));
-        if (!ctype_digit($raw)) {
-            return false;
-        }
-        $openedAt = (int) $raw;
-        $current = $now ?? time();
-        return $openedAt <= $current && ($current - $openedAt) <= self::ADMIN_RESET_WINDOW_SECONDS;
+        return self::resetWindowActiveAt($this->adminResetWindowPath());
     }
 
     public function releasesRoot(): string
@@ -195,6 +192,20 @@ final class OpsConfig
         }
 
         return array_values(array_unique($candidates));
+    }
+
+    private static function resetWindowActiveAt(string $path): bool
+    {
+        if (!is_file($path)) {
+            return false;
+        }
+        $raw = trim((string) file_get_contents($path));
+        if (!ctype_digit($raw)) {
+            return false;
+        }
+        $openedAt = (int) $raw;
+        $current = time();
+        return $openedAt <= $current && ($current - $openedAt) <= self::ADMIN_RESET_WINDOW_SECONDS;
     }
 
     private static function value(string $key, string $default = ''): string
