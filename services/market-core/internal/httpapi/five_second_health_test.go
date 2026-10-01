@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/symbol"
 )
 
 func TestBuildFiveSecondSymbolHealthShowsExactBreaks(t *testing.T) {
@@ -60,13 +61,13 @@ func TestAppendFiveSecondHealthSegmentCompressesContiguousState(t *testing.T) {
 }
 
 func TestIncludeFiveSecondHealthInstrumentKeepsIndexAndSynthetic(t *testing.T) {
-	if !includeFiveSecondHealthInstrument(structInstrument("NIFTY", "index", false)) {
+	if !includeFiveSecondHealthInstrument(symbol.Instrument{Symbol: "NIFTY", AssetClass: "index"}) {
 		t.Fatal("index should be included")
 	}
-	if !includeFiveSecondHealthInstrument(structInstrument("NIFTY-SYN", "synthetic", true)) {
+	if !includeFiveSecondHealthInstrument(symbol.Instrument{Symbol: "NIFTY-SYN", AssetClass: "synthetic", Synthetic: true}) {
 		t.Fatal("index synthetic should be included")
 	}
-	if includeFiveSecondHealthInstrument(structInstrument("RELIANCE", "equity", false)) {
+	if includeFiveSecondHealthInstrument(symbol.Instrument{Symbol: "RELIANCE", AssetClass: "equity"}) {
 		t.Fatal("ordinary equity should not be included")
 	}
 }
