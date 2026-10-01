@@ -99,6 +99,11 @@ final class OpsConfig
         return $this->privateRoot . '/secrets/ops-auth.json';
     }
 
+    public function adminRecoveryMarkerPath(): string
+    {
+        return $this->privateRoot . '/secrets/ops-auth-recovery-used.json';
+    }
+
     public function releasesRoot(): string
     {
         return $this->privateRoot . '/releases';
