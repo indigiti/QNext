@@ -1,3 +1,5 @@
+export {};
+
 type IntegrityState = 'GOOD' | 'CARRY_FORWARD' | 'RECOVERED' | 'MISSING' | 'DEGRADED';
 
 type IntegrityEntry = {
