@@ -12,7 +12,10 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
 )
 
-const fiveSecondHealthBucket = 5 * time.Second
+const (
+	fiveSecondHealthBucket     = 5 * time.Second
+	fiveSecondHealthMaxSymbols = 8
+)
 
 type fiveSecondHealthResponse struct {
 	GeneratedAtMS int64                    `json:"generated_at_ms"`
@@ -58,16 +61,22 @@ func (s *Server) fiveSecondHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	requested, err := requestedFiveSecondHealthSymbols(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "five_second_health_bad_request", "message": err.Error()})
+		return
+	}
+
 	now := time.Now().UTC()
 	instruments := s.options.Symbols.ListVisible()
 	response := fiveSecondHealthResponse{
 		GeneratedAtMS: now.UnixMilli(),
 		BucketMS:      fiveSecondHealthBucket.Milliseconds(),
-		Symbols:       make([]fiveSecondSymbolHealth, 0, len(instruments)),
+		Symbols:       make([]fiveSecondSymbolHealth, 0, minInt(len(instruments), fiveSecondHealthMaxSymbols)),
 	}
 
 	for _, instrument := range instruments {
-		if !includeFiveSecondHealthInstrument(instrument) {
+		if !includeFiveSecondHealthInstrument(instrument) || !matchesFiveSecondHealthRequest(instrument, requested) {
 			continue
 		}
 		health, err := s.currentDayFiveSecondHealth(instrument, now)
@@ -82,10 +91,46 @@ func (s *Server) fiveSecondHealth(w http.ResponseWriter, r *http.Request) {
 		response.Symbols = append(response.Symbols, health)
 	}
 
+	if len(requested) > 0 && len(response.Symbols) == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "five_second_health_symbol_not_found"})
+		return
+	}
+
 	sort.SliceStable(response.Symbols, func(i, j int) bool {
 		return fiveSecondHealthSortKey(response.Symbols[i].Symbol) < fiveSecondHealthSortKey(response.Symbols[j].Symbol)
 	})
 	writeJSON(w, http.StatusOK, response)
+}
+
+func requestedFiveSecondHealthSymbols(r *http.Request) (map[string]struct{}, error) {
+	requested := make(map[string]struct{})
+	add := func(value string) {
+		key := strings.ToUpper(strings.TrimSpace(value))
+		if key != "" {
+			requested[key] = struct{}{}
+		}
+	}
+
+	query := r.URL.Query()
+	add(query.Get("symbol"))
+	add(query.Get("instrument_id"))
+	for _, value := range strings.Split(query.Get("symbols"), ",") {
+		add(value)
+	}
+
+	if len(requested) > fiveSecondHealthMaxSymbols {
+		return nil, fmt.Errorf("at most %d symbols may be requested", fiveSecondHealthMaxSymbols)
+	}
+	return requested, nil
+}
+
+func matchesFiveSecondHealthRequest(instrument symbol.Instrument, requested map[string]struct{}) bool {
+	if len(requested) == 0 {
+		return true
+	}
+	_, symbolMatch := requested[strings.ToUpper(strings.TrimSpace(instrument.Symbol))]
+	_, instrumentMatch := requested[strings.ToUpper(strings.TrimSpace(instrument.ID))]
+	return symbolMatch || instrumentMatch
 }
 
 func includeFiveSecondHealthInstrument(instrument symbol.Instrument) bool {
@@ -280,4 +325,11 @@ func percent(value, total int) float64 {
 		return 0
 	}
 	return float64(value) * 100 / float64(total)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

@@ -39,7 +39,14 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
 }
 
 $marketCoreUrl = rtrim(five_second_health_value('QNEXT_MARKET_CORE_URL', 'http://127.0.0.1:18080'), '/');
+$query = trim((string) ($_SERVER['QUERY_STRING'] ?? ''));
+if (strlen($query) > 2048) {
+    five_second_health_fail(414, '5s candle health query is too long');
+}
 $url = $marketCoreUrl . '/api/v1/5s-health';
+if ($query !== '') {
+    $url .= '?' . $query;
+}
 
 if (function_exists('curl_init')) {
     $handle = curl_init($url);
