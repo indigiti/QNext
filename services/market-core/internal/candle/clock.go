@@ -65,6 +65,7 @@ func (e *Engine) Advance(instrumentID, timeframe string, at time.Time, carryForw
 			AuthorityProvider:   current.AuthorityProvider,
 			Quality:             current.Quality,
 			Recovered:           current.Recovered,
+			CarryForward:        true,
 			SourceSequence:      current.SourceSequence,
 			CandleEngineVersion: current.CandleEngineVersion,
 			SyntheticVersion:    current.SyntheticVersion,
