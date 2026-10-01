@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"errors"
+	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
@@ -12,6 +13,10 @@ type SyntheticAssembler interface {
 
 type BarPublisher interface {
 	PublishBar(domain.Bar)
+}
+
+type ClockPipeline interface {
+	AdvanceClock(time.Time, func(string, domain.Tick, time.Time) bool) ([]domain.Bar, error)
 }
 
 type MarketSink struct {
@@ -51,6 +56,18 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 			return err
 		}
 	}
+
+	// Every fresh provider event advances the trusted market clock for all
+	// canonical 5s streams. The pipeline's built-in freshness guard decides
+	// whether an empty bucket may be carried; a dead feed produces no clock
+	// events and therefore cannot fabricate flat candles.
+	if clocked, ok := s.Pipeline.(ClockPipeline); ok && !tick.EventTime.IsZero() {
+		bars, err := clocked.AdvanceClock(tick.EventTime.UTC(), nil)
+		if err != nil {
+			return err
+		}
+		s.publishBars(bars)
+	}
 	return nil
 }
 
@@ -73,10 +90,15 @@ func (s *MarketSink) applyCanonical(tick domain.Tick) error {
 	if err != nil {
 		return err
 	}
-	if s.Publisher != nil {
-		for _, bar := range bars {
-			s.Publisher.PublishBar(bar)
-		}
-	}
+	s.publishBars(bars)
 	return nil
+}
+
+func (s *MarketSink) publishBars(bars []domain.Bar) {
+	if s.Publisher == nil {
+		return
+	}
+	for _, bar := range bars {
+		s.Publisher.PublishBar(bar)
+	}
 }
