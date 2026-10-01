@@ -31,27 +31,27 @@ func TestSynPlusPersistsChartHistoryWithoutMarketCore(t *testing.T) {
 	defer collector.Close()
 
 	firstAt := time.Date(2026, 9, 28, 3, 45, 1, 0, time.UTC)
-	first := SynPlusSnapshot{
+	base := SynPlusSnapshot{
 		Schema:          SynPlusSnapshotSchema,
 		InstrumentID:    "QNEXT:NIFTY-SYN+",
 		Version:         "nifty-syn-plus-v1",
-		SnapshotAtMS:    firstAt.UnixMilli(),
 		Value:           25000,
 		Quality:         "GOOD",
 		ValidCandidates: 7,
 	}
-	second := first
-	second.SnapshotAtMS = firstAt.Add(16 * time.Second).UnixMilli()
-	second.Value = 25004
-
-	if err := collector.persist(first); err != nil {
-		t.Fatal(err)
+	// Feed one valid SYN+ snapshot into each canonical 5s bucket. The fourth
+	// bucket transition finalizes the first 15s bar from exactly three complete
+	// 5s children, matching the production sub-minute hierarchy.
+	for i := 0; i < 4; i++ {
+		snapshot := base
+		snapshot.SnapshotAtMS = firstAt.Add(time.Duration(i) * 5 * time.Second).UnixMilli()
+		snapshot.Value = 25000 + float64(i)
+		if err := collector.persist(snapshot); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := collector.persist(second); err != nil {
-		t.Fatal(err)
-	}
-	if published != 2 {
-		t.Fatalf("expected 2 snapshot callbacks, got %d", published)
+	if published != 4 {
+		t.Fatalf("expected 4 snapshot callbacks, got %d", published)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -67,10 +67,13 @@ func TestSynPlusPersistsChartHistoryWithoutMarketCore(t *testing.T) {
 	if len(bars) != 1 {
 		t.Fatalf("expected one finalized 15s bar, got %d", len(bars))
 	}
-	if bars[0].Close != 25000 || !bars[0].Final {
+	if bars[0].Open != 25000 || bars[0].Close != 25002 || !bars[0].Final {
 		t.Fatalf("unexpected persisted chart bar: %+v", bars[0])
 	}
 	if bars[0].AuthorityProvider != "qnext-syn-plus-shadow" {
 		t.Fatalf("unexpected provider: %s", bars[0].AuthorityProvider)
+	}
+	if bars[0].CandleEngineVersion != "candle-rollup-v3-canonical-5s" {
+		t.Fatalf("unexpected SYN+ subminute lineage: %s", bars[0].CandleEngineVersion)
 	}
 }
