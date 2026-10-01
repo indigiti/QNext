@@ -3,11 +3,13 @@
 declare(strict_types=1);
 
 use QNext\Ops\Auth;
+use QNext\Ops\IntelligenceControl;
 use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
 use QNext\Ops\PaperProxy;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/src/IntelligenceControl.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -83,6 +85,7 @@ try {
 
     $controller = new OpsController($config);
     $paper = new PaperProxy($config->paperRuntimeUrl);
+    $intelligence = new IntelligenceControl($config);
 
     if ($method === 'GET' && $path === '/status') {
         respond(200, $controller->status());
@@ -95,6 +98,18 @@ try {
     }
     if ($method === 'GET' && $path === '/feed-status') {
         respond(200, $controller->feedStatus());
+    }
+    if ($method === 'GET' && $path === '/intelligence') {
+        respond(200, $intelligence->status());
+    }
+    if ($method === 'POST' && $path === '/intelligence/train') {
+        respond(200, $intelligence->train(request_body()));
+    }
+    if ($method === 'POST' && $path === '/intelligence/promote') {
+        respond(200, $intelligence->promote(request_body()));
+    }
+    if ($method === 'POST' && $path === '/intelligence/rollback') {
+        respond(200, $intelligence->rollback(request_body()));
     }
     if ($method === 'GET' && $path === '/syn-plus-paper') {
         respond(200, $paper->status());
