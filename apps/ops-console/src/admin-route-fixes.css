@@ -1,0 +1,12 @@
+/* Route-level visibility guard.
+ * Dashboard markup is refreshed from live telemetry and may be replaced after the
+ * shell has already selected another view. Keep it physically hidden off-route
+ * even if a late DOM replacement loses its `hidden` attribute.
+ */
+body:not([data-ops-view="dashboard"]) #ops-dashboard-card {
+  display: none !important;
+}
+
+body[data-ops-view="dashboard"] #ops-dashboard-card {
+  display: block;
+}
