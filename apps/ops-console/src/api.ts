@@ -6,7 +6,8 @@ export const OPS_AUTH_RESTORED_EVENT = 'qnext-ops-auth-restored';
 let authRejected = false;
 let sessionExchange: Promise<boolean> | null = null;
 
-function rejectStoredAdminSession(): void {
+function rejectStoredAdminSession(force = false): void {
+  if (!force && typeof globalThis.document === 'undefined') return;
   if (authRejected) return;
   authRejected = true;
   try {
@@ -507,7 +508,7 @@ export class OpsAPI {
 
     if (!response.ok) {
       if (response.status === 403 && includeToken) {
-        rejectStoredAdminSession();
+        rejectStoredAdminSession(Boolean(this.token));
       }
       const message =
         typeof payload === 'object' &&
