@@ -21,24 +21,24 @@ type fiveSecondHealthResponse struct {
 }
 
 type fiveSecondSymbolHealth struct {
-	InstrumentID    string                    `json:"instrument_id"`
-	Symbol          string                    `json:"symbol"`
-	CalendarID      string                    `json:"calendar_id"`
-	SessionStartMS  int64                     `json:"session_start_ms,omitempty"`
-	SessionEndMS    int64                     `json:"session_end_ms,omitempty"`
-	ElapsedEndMS    int64                     `json:"elapsed_end_ms,omitempty"`
-	Expected        int                       `json:"expected"`
-	Present         int                       `json:"present"`
-	Good            int                       `json:"good"`
-	CarryForward    int                       `json:"carry_forward"`
-	Recovered       int                       `json:"recovered"`
-	Degraded        int                       `json:"degraded"`
-	Missing         int                       `json:"missing"`
-	HealthyPct      float64                   `json:"healthy_pct"`
-	CompletenessPct float64                   `json:"completeness_pct"`
-	LastFiveSecondMS int64                    `json:"last_5s_ms,omitempty"`
-	Status          string                    `json:"status"`
-	Timeline        []fiveSecondHealthSegment `json:"timeline"`
+	InstrumentID     string                    `json:"instrument_id"`
+	Symbol           string                    `json:"symbol"`
+	CalendarID       string                    `json:"calendar_id"`
+	SessionStartMS   int64                     `json:"session_start_ms,omitempty"`
+	SessionEndMS     int64                     `json:"session_end_ms,omitempty"`
+	ElapsedEndMS     int64                     `json:"elapsed_end_ms,omitempty"`
+	Expected         int                       `json:"expected"`
+	Present          int                       `json:"present"`
+	Good             int                       `json:"good"`
+	CarryForward     int                       `json:"carry_forward"`
+	Recovered        int                       `json:"recovered"`
+	Degraded         int                       `json:"degraded"`
+	Missing          int                       `json:"missing"`
+	HealthyPct       float64                   `json:"healthy_pct"`
+	CompletenessPct  float64                   `json:"completeness_pct"`
+	LastFiveSecondMS int64                     `json:"last_5s_ms,omitempty"`
+	Status           string                    `json:"status"`
+	Timeline         []fiveSecondHealthSegment `json:"timeline"`
 }
 
 type fiveSecondHealthSegment struct {
