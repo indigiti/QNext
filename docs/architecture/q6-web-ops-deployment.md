@@ -120,8 +120,10 @@ Bootstrap responsibilities:
 4. install the narrow sudoers rules;
 5. install the Market Core systemd unit;
 6. ensure PHP execution is enabled under `/qnext/admin/api/index.php`; no rewrite rule is required;
-7. set the PHP environment values including a staging admin token;
+7. expose the required QNext root/runtime environment values; initialize the Admin token once from `/qnext/admin/`, which stores only a password hash in `private_html/qnext/secrets/ops-auth.json`;
 8. stage the first `digiops-release`.
+
+`QNEXT_OPS_ADMIN_TOKEN` is retained only as a migration fallback for older hosts. If both the persisted auth file and the legacy environment variable are present, QNext accepts either valid credential during migration. Remove the legacy environment token after confirming the persisted credential.
 
 The packaged public bridge discovers either the direct DigiOps private layout (`private_html/qnext/ops-api`) or the versioned release layout (`private_html/qnext/current/private/ops-api`).
 
