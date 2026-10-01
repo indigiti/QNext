@@ -24,16 +24,16 @@ type RecoveryResyncPublisher interface {
 }
 
 type IntradayRecovery struct {
-	Client              IntradayFetcher
-	AccessToken         string
-	Registry            *symbol.Registry
-	History             RecoveredHistoryWriter
-	Calendars           *marketcalendar.Registry
-	Timeframes          []string
-	DerivedTimeframes   []string
-	InstrumentIDs       map[string]bool
-	Resync              RecoveryResyncPublisher
-	Status              *GapRecoveryTracker
+	Client            IntradayFetcher
+	AccessToken       string
+	Registry          *symbol.Registry
+	History           RecoveredHistoryWriter
+	Calendars         *marketcalendar.Registry
+	Timeframes        []string
+	DerivedTimeframes []string
+	InstrumentIDs     map[string]bool
+	Resync            RecoveryResyncPublisher
+	Status            *GapRecoveryTracker
 }
 
 func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest) (err error) {
@@ -55,7 +55,7 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 
 	// Upstox is the provider authority only for the canonical minute source.
 	// Derived intraday candles are rebuilt below from repaired 1m history. This
-	// keeps one canonical recovery source and prevents 3m/5m provider candles
+	// keeps one canonical recovery source and prevents provider 3m/5m candles
 	// from drifting from QNext's session-aligned rollup semantics.
 	timeframes := r.Timeframes
 	if len(timeframes) == 0 {
@@ -162,13 +162,29 @@ func (r *IntradayRecovery) repairDerivedFromCanonical(
 	to time.Time,
 ) (uint64, error) {
 	store, ok := r.History.(HistoricalRepairStore)
-	if !ok || r.Calendars == nil || len(r.DerivedTimeframes) == 0 {
+	if !ok {
 		return 0, nil
 	}
-	definition, ok := r.Calendars.Definition(instrument.CalendarID)
+
+	calendars := r.Calendars
+	if calendars == nil {
+		calendars = marketcalendar.DefaultRegistry()
+	}
+	definition, ok := calendars.Definition(instrument.CalendarID)
 	if !ok {
 		return 0, fmt.Errorf("recovery calendar %s is not registered", instrument.CalendarID)
 	}
+
+	derivedTimeframes := r.DerivedTimeframes
+	if len(derivedTimeframes) == 0 && r.Status != nil {
+		// The tracker already classifies enabled canonical rollups as recoverable,
+		// so the production wiring does not need a second timeframe list.
+		derivedTimeframes = r.Status.Snapshot().RecoveredTimeframes
+	}
+	if len(derivedTimeframes) == 0 {
+		return 0, nil
+	}
+
 	location, err := time.LoadLocation(definition.Timezone)
 	if err != nil {
 		return 0, fmt.Errorf("load recovery calendar timezone: %w", err)
@@ -196,7 +212,7 @@ func (r *IntradayRecovery) repairDerivedFromCanonical(
 		{15, "15m"}, {30, "30m"}, {45, "45m"},
 		{60, "1h"}, {120, "2h"}, {180, "3h"}, {240, "4h"},
 	} {
-		if !timeframeListed(r.DerivedTimeframes, target.timeframe) {
+		if !timeframeListed(derivedTimeframes, target.timeframe) {
 			continue
 		}
 		rollups, aggregateErr := aggregateMinuteBars(
@@ -219,7 +235,7 @@ func (r *IntradayRecovery) repairDerivedFromCanonical(
 		}
 	}
 
-	if timeframeListed(r.DerivedTimeframes, "1D") {
+	if timeframeListed(derivedTimeframes, "1D") {
 		daily := aggregateDailyBars(canonical1m, definition, to)
 		counts, changed, repairErr := repairer.repairBars(from, to, daily)
 		if repairErr != nil {
