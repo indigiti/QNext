@@ -1,0 +1,35 @@
+name: Q6 Quant Intelligence
+
+on:
+  pull_request:
+    paths:
+      - "services/intelligence/**"
+      - ".github/workflows/q6-intelligence-learning.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/intelligence/**"
+      - ".github/workflows/q6-intelligence-learning.yml"
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile intelligence runtime
+        run: python -m compileall -q services/intelligence/qnext_intelligence services/intelligence/tests
+      - name: Intelligence certification
+        env:
+          PYTHONPATH: services/intelligence
+        run: python -m unittest discover -s services/intelligence/tests -v
+      - name: Learning CLI surface
+        env:
+          PYTHONPATH: services/intelligence
+        run: |
+          python -m qnext_intelligence.learning_cli --help
+          python -m qnext_intelligence.learning_cli train --help
+          python -m qnext_intelligence.learning_cli promote --help
+          python -m qnext_intelligence.learning_cli rollback --help
