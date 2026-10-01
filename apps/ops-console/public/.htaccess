@@ -1,0 +1,11 @@
+Options -MultiViews
+DirectoryIndex index.html
+
+RewriteEngine On
+RewriteBase /qnext/admin/
+
+# Keep the Admin API bridge and built assets as real files/directories.
+RewriteCond %{REQUEST_URI} !^/qnext/admin/api/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(?:dashboard|market-data|candles-history|synthetic|indicators-intelligence|runtime|releases|diagnostics|settings|security)/?$ index.html [L]
