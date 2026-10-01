@@ -19,7 +19,7 @@ type AsyncHistoryWriter interface {
 	AppendBarAsync(domain.Bar) error
 }
 
-type CarryHealth func(instrumentID string, lastTick domain.Tick, at time.Time) bool
+type CarryHealth = func(instrumentID string, lastTick domain.Tick, at time.Time) bool
 
 type SubminuteSnapshot struct {
 	Enabled             bool              `json:"enabled"`
@@ -74,11 +74,8 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 			hasOneMinute = true
 			subminuteDerived = append(subminuteDerived, timeframe)
 		case strings.HasSuffix(timeframe, "s"):
-			// Less common second intervals remain direct. 15s/30s and 1m are
-			// deliberately derived from the durable 5s source of truth.
 			direct = append(direct, timeframe)
 		case timeframe == "1W" || strings.HasSuffix(timeframe, "M"):
-			// Calendar week/month intervals are low-cardinality and stay tick-built.
 			direct = append(direct, timeframe)
 		default:
 			derived = append(derived, timeframe)
@@ -88,8 +85,6 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 		return nil, errors.New("1m is required when derived candle timeframes are enabled")
 	}
 	if len(subminuteDerived) > 0 && !hasFiveSeconds {
-		// 5s is an internal formation interval. It does not need to be exposed
-		// in the chart-timeframe menu to be persisted and used for repair.
 		direct = append([]string{"5s"}, direct...)
 		hasFiveSeconds = true
 	}
@@ -147,10 +142,11 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 	return updates, nil
 }
 
-// AdvanceClock closes canonical 5s buckets from an independent trusted clock.
-// Carry-forward is only allowed when the caller's health predicate confirms
-// that the feed is healthy; otherwise the interval is left missing so a real
-// outage is never disguised as flat market data.
+// AdvanceClock closes canonical 5s buckets from a trusted live market clock.
+// With a nil predicate the built-in guard only carries when the last good tick
+// is at most eight seconds old. If the upstream stops, no market-clock calls
+// occur; after a longer reconnect gap the 5s holes remain explicit and 1m can
+// be repaired from upstream history instead of fabricating sub-minute OHLC.
 func (p *Pipeline) AdvanceClock(at time.Time, healthy CarryHealth) ([]domain.Bar, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -162,7 +158,7 @@ func (p *Pipeline) AdvanceClock(at time.Time, healthy CarryHealth) ([]domain.Bar
 	var updates []domain.Bar
 	var fiveSecondUpdates []domain.Bar
 	for instrumentID, lastTick := range p.lastTicks {
-		carry := false
+		carry := defaultCarryHealthy(lastTick, at.UTC())
 		if healthy != nil {
 			carry = healthy(instrumentID, lastTick, at.UTC())
 		}
@@ -185,6 +181,18 @@ func (p *Pipeline) AdvanceClock(at time.Time, healthy CarryHealth) ([]domain.Bar
 	}
 	updates = append(updates, derivedUpdates...)
 	return updates, nil
+}
+
+func defaultCarryHealthy(lastTick domain.Tick, at time.Time) bool {
+	if lastTick.EventTime.IsZero() || lastTick.Price <= 0 || at.Before(lastTick.EventTime) {
+		return false
+	}
+	if lastTick.Quality == domain.QualityInvalid ||
+		lastTick.Quality == domain.QualityDegraded ||
+		lastTick.Quality == domain.QualityStale {
+		return false
+	}
+	return at.Sub(lastTick.EventTime.UTC()) <= 8*time.Second
 }
 
 func (p *Pipeline) applyFiveSecondUpdates(fiveSecondUpdates []domain.Bar) ([]domain.Bar, error) {
