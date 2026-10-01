@@ -2,9 +2,11 @@ package runtime
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 )
 
 type SyntheticAssembler interface {
@@ -19,6 +21,12 @@ type ClockPipeline interface {
 	AdvanceClock(time.Time, func(string, domain.Tick, time.Time) bool) ([]domain.Bar, error)
 }
 
+type SubminuteTelemetrySource interface {
+	SubminuteTelemetry() any
+}
+
+var subminuteTelemetryOnce sync.Once
+
 type MarketSink struct {
 	Pipeline          TickPipeline
 	Synthetic         SyntheticAssembler
@@ -31,6 +39,12 @@ type MarketSink struct {
 func (s *MarketSink) Handle(tick domain.Tick) error {
 	if s.Pipeline == nil {
 		return errors.New("canonical tick pipeline is required")
+	}
+
+	if source, ok := s.Pipeline.(SubminuteTelemetrySource); ok {
+		subminuteTelemetryOnce.Do(func() {
+			observability.SetSubminuteSource(source.SubminuteTelemetry)
+		})
 	}
 
 	if s.Observer != nil {
