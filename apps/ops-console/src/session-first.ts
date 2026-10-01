@@ -39,6 +39,15 @@ function clearBrowserToken(): void {
   }
 }
 
+function patchBootstrapCopy(): void {
+  const button = document.querySelector<HTMLButtonElement>('#save-token');
+  if (!button || button.textContent?.trim() !== 'Initialize') return;
+  const label = document.querySelector<HTMLLabelElement>('label[for="token"]');
+  const input = document.querySelector<HTMLInputElement>('#token');
+  if (label) label.textContent = 'First-time bootstrap token';
+  if (input) input.placeholder = 'Enter configured QNEXT_OPS_BOOTSTRAP_TOKEN';
+}
+
 async function exchangeToken(base: URL, token: string): Promise<boolean> {
   if (sessionExchange) return sessionExchange;
 
@@ -71,7 +80,6 @@ async function exchangeToken(base: URL, token: string): Promise<boolean> {
 
 function requestParts(input: RequestInfo | URL, init?: RequestInit): {
   headers: Headers;
-  method: string;
   route: string | null;
 } {
   const request = input instanceof Request ? input : null;
@@ -79,11 +87,9 @@ function requestParts(input: RequestInfo | URL, init?: RequestInit): {
   if (init?.headers) {
     new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   }
-  const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
   const url = adminURL(input);
   return {
     headers,
-    method,
     route: url?.searchParams.get('route') ?? null,
   };
 }
@@ -109,7 +115,7 @@ export function installSessionFirstFetch(): void {
 
     const established = await exchangeToken(base, token);
     if (!established) {
-      // Preserve the existing error path without repeatedly exposing the token.
+      // Preserve the normal 403 UI without repeatedly exposing the raw token.
       headers.delete(TOKEN_HEADER);
       return nativeFetch(input, {
         ...init,
@@ -131,3 +137,5 @@ export function installSessionFirstFetch(): void {
 }
 
 installSessionFirstFetch();
+patchBootstrapCopy();
+window.setInterval(patchBootstrapCopy, 250);
