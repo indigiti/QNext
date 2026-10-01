@@ -8,6 +8,8 @@ use RuntimeException;
 
 final class OpsConfig
 {
+    private const ADMIN_RESET_WINDOW_SECONDS = 600;
+
     public function __construct(
         public readonly string $privateRoot,
         public readonly string $publicRoot,
@@ -46,11 +48,14 @@ final class OpsConfig
             @chmod($helper, 0750);
         }
 
+        $legacySuppressed = is_file($privateRoot . '/secrets/ops-legacy-admin-token.disabled');
+        $adminToken = $legacySuppressed ? '' : self::value('QNEXT_OPS_ADMIN_TOKEN');
+
         return new self(
             $privateRoot,
             $publicRoot,
             rtrim(self::value('QNEXT_MARKET_CORE_URL', 'http://127.0.0.1:18080'), '/'),
-            self::value('QNEXT_OPS_ADMIN_TOKEN'),
+            $adminToken,
             $helper,
             rtrim(self::value('QNEXT_SYN_PLUS_PAPER_URL', 'http://127.0.0.1:18082'), '/'),
         );
@@ -102,6 +107,31 @@ final class OpsConfig
     public function adminResetWindowPath(): string
     {
         return $this->privateRoot . '/run/admin-auth-reset-window';
+    }
+
+    public function legacyAdminTokenSuppressionPath(): string
+    {
+        return $this->privateRoot . '/secrets/ops-legacy-admin-token.disabled';
+    }
+
+    public function legacyAdminTokenSuppressed(): bool
+    {
+        return is_file($this->legacyAdminTokenSuppressionPath());
+    }
+
+    public function adminResetWindowActive(?int $now = null): bool
+    {
+        $path = $this->adminResetWindowPath();
+        if (!is_file($path)) {
+            return false;
+        }
+        $raw = trim((string) file_get_contents($path));
+        if (!ctype_digit($raw)) {
+            return false;
+        }
+        $openedAt = (int) $raw;
+        $current = $now ?? time();
+        return $openedAt <= $current && ($current - $openedAt) <= self::ADMIN_RESET_WINDOW_SECONDS;
     }
 
     public function releasesRoot(): string
