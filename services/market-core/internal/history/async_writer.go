@@ -184,6 +184,11 @@ func (w *AsyncWriter) persist(request persistRequest) {
 	for {
 		err := w.writeFn(request.bar)
 		if err == nil {
+			// This process already placed the final in its RAM cache before
+			// queuing persistence. Record the resulting file fingerprint so the
+			// current-day reader stays on the fast RAM path. A different process
+			// appending later changes the fingerprint and triggers a refresh.
+			w.store.refreshDiskFingerprint(request.bar)
 			w.writes.Add(1)
 			w.lastFlushAtMS.Store(time.Now().UTC().UnixMilli())
 			w.errMu.Lock()
