@@ -14,136 +14,120 @@ final class IntelligenceControl
 
     public function status(): array
     {
-        $status = $this->runCli(['status']);
-        $status['history'] = $this->readJsonl($this->storageRoot() . '/models/promotion_events.jsonl');
-        return $status;
+        $root = $this->storageRoot();
+        $models = $root . '/models';
+        return [
+            'production' => $this->readJson($models . '/production.json'),
+            'candidates' => $this->readJsonl($models . '/candidates.jsonl'),
+            'history' => array_slice($this->readJsonl($models . '/promotion_events.jsonl'), -50),
+            'data' => [
+                'features' => $this->countJsonl($root . '/features.jsonl'),
+                'predictions' => $this->countJsonl($root . '/predictions.jsonl'),
+                'outcomes' => $this->countJsonl($root . '/outcomes.jsonl'),
+            ],
+            'operation' => $this->operationStatus(),
+        ];
     }
 
     public function train(array $payload): array
     {
-        $arguments = ['train'];
-        $this->appendInt($arguments, '--min-samples', $payload['minSamples'] ?? 60, 30, 100000);
-        $this->appendInt($arguments, '--min-test-samples', $payload['minTestSamples'] ?? 12, 6, 50000);
-        $this->appendFloat($arguments, '--min-average-return-improvement', $payload['minAverageReturnImprovement'] ?? 0.0, -1.0, 1.0);
-        $this->appendFloat($arguments, '--max-accuracy-regression', $payload['maxAccuracyRegression'] ?? 0.02, 0.0, 1.0);
-        $this->appendFloat($arguments, '--max-drawdown-slack', $payload['maxDrawdownSlack'] ?? 0.01, 0.0, 10.0);
-        return $this->runCli($arguments, 180.0);
+        return $this->queue('train', [
+            'minSamples' => $this->intValue($payload['minSamples'] ?? 60, 'minSamples', 30, 100000),
+            'minTestSamples' => $this->intValue($payload['minTestSamples'] ?? 12, 'minTestSamples', 6, 50000),
+            'minAverageReturnImprovement' => $this->floatValue($payload['minAverageReturnImprovement'] ?? 0.0, 'minAverageReturnImprovement', -1.0, 1.0),
+            'maxAccuracyRegression' => $this->floatValue($payload['maxAccuracyRegression'] ?? 0.02, 'maxAccuracyRegression', 0.0, 1.0),
+            'maxDrawdownSlack' => $this->floatValue($payload['maxDrawdownSlack'] ?? 0.01, 'maxDrawdownSlack', 0.0, 10.0),
+        ]);
     }
 
     public function promote(array $payload): array
     {
-        return $this->runCli([
-            'promote',
-            '--candidate-id', $this->requiredToken($payload, 'candidateId', 96),
-            '--expected-model-hash', $this->requiredHash($payload, 'expectedModelHash'),
-            '--approved-by', $this->requiredText($payload, 'approvedBy', 120),
-            '--note', $this->optionalText($payload['note'] ?? '', 500),
+        return $this->queue('promote', [
+            'candidateId' => $this->requiredToken($payload, 'candidateId', 96),
+            'expectedModelHash' => $this->requiredHash($payload, 'expectedModelHash'),
+            'approvedBy' => $this->requiredText($payload, 'approvedBy', 120),
+            'note' => $this->optionalText($payload['note'] ?? '', 500),
         ]);
     }
 
     public function rollback(array $payload): array
     {
-        $arguments = [
-            'rollback',
-            '--approved-by', $this->requiredText($payload, 'approvedBy', 120),
-            '--note', $this->optionalText($payload['note'] ?? '', 500),
-        ];
+        $candidateId = null;
         if (isset($payload['candidateId']) && $payload['candidateId'] !== null && $payload['candidateId'] !== '') {
-            $arguments[] = '--candidate-id';
-            $arguments[] = $this->requiredToken($payload, 'candidateId', 96);
+            $candidateId = $this->requiredToken($payload, 'candidateId', 96);
         }
-        return $this->runCli($arguments);
+        return $this->queue('rollback', [
+            'candidateId' => $candidateId,
+            'approvedBy' => $this->requiredText($payload, 'approvedBy', 120),
+            'note' => $this->optionalText($payload['note'] ?? '', 500),
+        ]);
     }
 
-    private function runCli(array $arguments, float $timeoutSeconds = 30.0): array
+    private function queue(string $action, array $payload): array
     {
-        $packageRoot = $this->packageRoot();
-        $storageRoot = $this->storageRoot();
-        if (!is_dir($packageRoot . '/qnext_intelligence')) {
-            throw new RuntimeException('Quant Intelligence runtime is not deployed');
+        $requestPath = $this->requestPath();
+        if (is_file($requestPath) && filesize($requestPath) > 0) {
+            throw new RuntimeException('a Quant Intelligence action is already queued');
         }
-        if (!is_dir($storageRoot) && !@mkdir($storageRoot, 0750, true) && !is_dir($storageRoot)) {
-            throw new RuntimeException('cannot create Quant Intelligence storage root');
-        }
-
-        $command = ['python3', '-m', 'qnext_intelligence.learning_cli', ...$arguments, '--storage-root', $storageRoot];
-        $environment = [];
-        foreach (array_merge($_SERVER, $_ENV) as $key => $value) {
-            if (is_string($key) && is_string($value)) {
-                $environment[$key] = $value;
-            }
-        }
-        $environment['PYTHONPATH'] = $packageRoot;
-
-        $descriptorSpec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $process = proc_open($command, $descriptorSpec, $pipes, null, $environment, ['bypass_shell' => true]);
-        if (!is_resource($process)) {
-            throw new RuntimeException('cannot start Quant Intelligence runtime');
-        }
-        fclose($pipes[0]);
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-        $stdout = '';
-        $stderr = '';
-        $deadline = microtime(true) + $timeoutSeconds;
-        $exitCode = null;
-        while (true) {
-            $stdout .= stream_get_contents($pipes[1]) ?: '';
-            $stderr .= stream_get_contents($pipes[2]) ?: '';
-            $status = proc_get_status($process);
-            if (!($status['running'] ?? false)) {
-                $exitCode = (int) ($status['exitcode'] ?? 1);
-                break;
-            }
-            if (microtime(true) >= $deadline) {
-                proc_terminate($process, 15);
-                usleep(200000);
-                $status = proc_get_status($process);
-                if ($status['running'] ?? false) {
-                    proc_terminate($process, 9);
-                }
-                fclose($pipes[1]);
-                fclose($pipes[2]);
-                proc_close($process);
-                throw new RuntimeException('Quant Intelligence action timed out');
-            }
-            usleep(20000);
-        }
-        $stdout .= stream_get_contents($pipes[1]) ?: '';
-        $stderr .= stream_get_contents($pipes[2]) ?: '';
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($process);
-
-        if ($exitCode !== 0) {
-            $message = trim($stderr) ?: trim($stdout) ?: 'Quant Intelligence action failed';
-            throw new RuntimeException(substr($message, 0, 1000));
-        }
-        $decoded = json_decode(trim($stdout), true);
-        if (!is_array($decoded)) {
-            throw new RuntimeException('Quant Intelligence returned invalid JSON');
-        }
-        return $decoded;
-    }
-
-    private function packageRoot(): string
-    {
-        $candidates = [
-            $this->config->privateRoot . '/intelligence',
-            $this->config->privateRoot . '/private/intelligence',
-            $this->config->privateRoot . '/current/private/intelligence',
+        $request = [
+            'schema' => 'QNEXT.INTELLIGENCE.REQUEST/1',
+            'request_id' => bin2hex(random_bytes(12)),
+            'action' => $action,
+            'requested_at_ms' => (int) floor(microtime(true) * 1000),
+            'payload' => $payload,
         ];
-        foreach ($candidates as $candidate) {
-            if (is_dir($candidate . '/qnext_intelligence')) {
-                return $candidate;
-            }
+        AtomicFile::writeJson($requestPath, $request);
+        return [
+            'queued' => true,
+            'requestId' => $request['request_id'],
+            'action' => $action,
+        ];
+    }
+
+    private function operationStatus(): array
+    {
+        $queued = $this->readJson($this->requestPath());
+        if (is_array($queued)) {
+            return [
+                'state' => 'QUEUED',
+                'request_id' => $queued['request_id'] ?? null,
+                'action' => $queued['action'] ?? null,
+                'requested_at_ms' => $queued['requested_at_ms'] ?? null,
+            ];
         }
-        return $candidates[0];
+        $result = $this->readJson($this->resultPath());
+        if (is_array($result)) {
+            return $result;
+        }
+        return ['state' => 'IDLE'];
     }
 
     private function storageRoot(): string
     {
         return $this->config->privateRoot . '/storage/intelligence';
+    }
+
+    private function requestPath(): string
+    {
+        return $this->config->privateRoot . '/run/intelligence-request.json';
+    }
+
+    private function resultPath(): string
+    {
+        return $this->config->privateRoot . '/run/intelligence-result.json';
+    }
+
+    private function readJson(string $path): ?array
+    {
+        if (!is_file($path)) {
+            return null;
+        }
+        $raw = file_get_contents($path);
+        if ($raw === false || trim($raw) === '') {
+            return null;
+        }
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : null;
     }
 
     private function readJsonl(string $path): array
@@ -167,29 +151,46 @@ final class IntelligenceControl
             }
         }
         fclose($handle);
-        return array_slice($records, -50);
+        return $records;
     }
 
-    private function appendInt(array &$arguments, string $flag, mixed $value, int $min, int $max): void
+    private function countJsonl(string $path): int
+    {
+        if (!is_file($path)) {
+            return 0;
+        }
+        $count = 0;
+        $handle = fopen($path, 'rb');
+        if ($handle === false) {
+            return 0;
+        }
+        while (($line = fgets($handle)) !== false) {
+            if (trim($line) !== '') {
+                $count++;
+            }
+        }
+        fclose($handle);
+        return $count;
+    }
+
+    private function intValue(mixed $value, string $key, int $min, int $max): int
     {
         if (!is_int($value) || $value < $min || $value > $max) {
-            throw new RuntimeException($flag . ' is out of range');
+            throw new RuntimeException($key . ' is out of range');
         }
-        $arguments[] = $flag;
-        $arguments[] = (string) $value;
+        return $value;
     }
 
-    private function appendFloat(array &$arguments, string $flag, mixed $value, float $min, float $max): void
+    private function floatValue(mixed $value, string $key, float $min, float $max): float
     {
         if (!is_int($value) && !is_float($value)) {
-            throw new RuntimeException($flag . ' must be numeric');
+            throw new RuntimeException($key . ' must be numeric');
         }
         $number = (float) $value;
         if (!is_finite($number) || $number < $min || $number > $max) {
-            throw new RuntimeException($flag . ' is out of range');
+            throw new RuntimeException($key . ' is out of range');
         }
-        $arguments[] = $flag;
-        $arguments[] = (string) $number;
+        return $number;
     }
 
     private function requiredToken(array $payload, string $key, int $maxLength): string
