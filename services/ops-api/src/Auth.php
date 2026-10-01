@@ -21,7 +21,9 @@ final class Auth
 
     public function initialized(): bool
     {
-        return $this->legacyExpectedToken !== '' || is_file($this->authPath);
+        return $this->persistedHash() !== ''
+            || $this->recoveryConfigured()
+            || ($this->legacyExpectedToken !== '' && !$this->legacyDisabled());
     }
 
     public function initialize(string $token): void
@@ -32,7 +34,7 @@ final class Auth
         $this->writeToken($token, false, 'initial_setup');
     }
 
-    public function replaceToken(string $token, string $reason = 'recovery'): void
+    public function replaceToken(string $token, string $reason = 'token_rotation'): void
     {
         $this->writeToken($token, true, $reason);
     }
@@ -103,6 +105,69 @@ final class Auth
         return hash_equals($expected, $signature);
     }
 
+    public function generateRecoveryCode(): array
+    {
+        if (!$this->initialized()) {
+            throw new RuntimeException('admin authentication is not initialized');
+        }
+
+        $code = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+        $generatedAt = gmdate(DATE_ATOM);
+        $payload = $this->persistedPayload() ?? [];
+        $payload['schema'] = 'QNEXT.AUTH/2';
+        $payload['initialized'] = true;
+        $payload['recovery_sha256'] = hash('sha256', $code);
+        $payload['recovery_generated_at'] = $generatedAt;
+        $payload['updated_at'] = $generatedAt;
+        if (!array_key_exists('legacy_disabled', $payload)) {
+            $payload['legacy_disabled'] = false;
+        }
+        AtomicFile::writeJson($this->authPath, $payload, 0600);
+
+        return [
+            'code' => $code,
+            'generated_at' => $generatedAt,
+        ];
+    }
+
+    public function recoveryConfigured(): bool
+    {
+        $payload = $this->persistedPayload();
+        $hash = is_array($payload) ? ($payload['recovery_sha256'] ?? null) : null;
+        return is_string($hash) && preg_match('/^[a-f0-9]{64}$/', $hash) === 1;
+    }
+
+    public function recoverWithCode(string $recoveryCode, string $newToken): bool
+    {
+        $recoveryCode = trim($recoveryCode);
+        if ($recoveryCode === '' || strlen($recoveryCode) > 256) {
+            return false;
+        }
+
+        $payload = $this->persistedPayload();
+        $expected = is_array($payload) ? ($payload['recovery_sha256'] ?? null) : null;
+        if (!is_string($expected) || preg_match('/^[a-f0-9]{64}$/', $expected) !== 1) {
+            return false;
+        }
+        if (!hash_equals($expected, hash('sha256', $recoveryCode))) {
+            return false;
+        }
+
+        $this->writeToken($newToken, true, 'web_recovery');
+        return true;
+    }
+
+    public function revokeRecoveryCode(): void
+    {
+        $payload = $this->persistedPayload();
+        if (!is_array($payload)) {
+            return;
+        }
+        unset($payload['recovery_sha256'], $payload['recovery_generated_at']);
+        $payload['updated_at'] = gmdate(DATE_ATOM);
+        AtomicFile::writeJson($this->authPath, $payload, 0600);
+    }
+
     public static function sessionTTLSeconds(): int
     {
         return self::SESSION_TTL_SECONDS;
@@ -126,12 +191,18 @@ final class Auth
             throw new RuntimeException('failed to hash admin token');
         }
 
+        $existing = $this->persistedPayload();
+        $createdAt = is_array($existing) && is_string($existing['created_at'] ?? null)
+            ? $existing['created_at']
+            : gmdate(DATE_ATOM);
+
         AtomicFile::writeJson($this->authPath, [
             'schema' => 'QNEXT.AUTH/2',
             'initialized' => true,
             'token_hash' => $hash,
             'legacy_disabled' => $disableLegacy,
             'reason' => $reason,
+            'created_at' => $createdAt,
             'updated_at' => gmdate(DATE_ATOM),
         ], 0600);
     }
