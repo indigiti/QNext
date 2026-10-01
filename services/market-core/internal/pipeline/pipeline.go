@@ -29,6 +29,7 @@ type SubminuteSnapshot struct {
 	ClockAdvanceCalls   uint64            `json:"clock_advance_calls"`
 	FinalizedByInterval map[string]uint64 `json:"finalized_by_interval,omitempty"`
 	IncompleteBuckets   map[string]uint64 `json:"incomplete_buckets,omitempty"`
+	Integrity           IntegritySnapshot `json:"integrity"`
 }
 
 type Pipeline struct {
@@ -38,6 +39,7 @@ type Pipeline struct {
 	rollups   *rollupEngine
 	subminute *subminuteRollupEngine
 	history   HistoryWriter
+	integrity *integrityLedger
 
 	direct           []string
 	subminuteDerived []string
@@ -100,6 +102,7 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 		rollups:          newRollupEngine("candle-rollup-v2-incremental"),
 		subminute:        newSubminuteRollupEngine(),
 		history:          history,
+		integrity:        newIntegrityLedger(),
 		direct:           append([]string(nil), direct...),
 		subminuteDerived: append([]string(nil), subminuteDerived...),
 		derived:          append([]string(nil), derived...),
@@ -120,6 +123,9 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 	for _, timeframe := range p.direct {
 		bars, err := p.candles.Apply(tick, timeframe)
 		if err != nil {
+			if errors.Is(err, candle.ErrLateTick) {
+				continue
+			}
 			return nil, fmt.Errorf("apply %s candle: %w", timeframe, err)
 		}
 		if timeframe == "5s" {
@@ -142,11 +148,10 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 	return updates, nil
 }
 
-// AdvanceClock closes canonical 5s buckets from a trusted live market clock.
-// With a nil predicate the built-in guard only carries when the last good tick
-// is at most eight seconds old. If the upstream stops, no market-clock calls
-// occur; after a longer reconnect gap the 5s holes remain explicit and 1m can
-// be repaired from upstream history instead of fabricating sub-minute OHLC.
+// AdvanceClock closes canonical 5s buckets from an independent process clock.
+// Carry bars require an explicit health predicate in production. When health
+// is false, empty expected 5s buckets remain absent and are recorded MISSING
+// rather than fabricating flat market data.
 func (p *Pipeline) AdvanceClock(at time.Time, healthy CarryHealth) ([]domain.Bar, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -154,15 +159,16 @@ func (p *Pipeline) AdvanceClock(at time.Time, healthy CarryHealth) ([]domain.Bar
 	if !p.hasCanonical5s || at.IsZero() {
 		return nil, nil
 	}
+	at = at.UTC()
 	p.stats.ClockAdvanceCalls++
 	var updates []domain.Bar
 	var fiveSecondUpdates []domain.Bar
 	for instrumentID, lastTick := range p.lastTicks {
-		carry := defaultCarryHealthy(lastTick, at.UTC())
+		carry := defaultCarryHealthy(lastTick, at)
 		if healthy != nil {
-			carry = healthy(instrumentID, lastTick, at.UTC())
+			carry = healthy(instrumentID, lastTick, at)
 		}
-		bars, err := p.candles.Advance(instrumentID, "5s", at.UTC(), carry)
+		bars, err := p.candles.Advance(instrumentID, "5s", at, carry)
 		if err != nil {
 			return nil, fmt.Errorf("advance 5s candle for %s: %w", instrumentID, err)
 		}
@@ -173,6 +179,9 @@ func (p *Pipeline) AdvanceClock(at time.Time, healthy CarryHealth) ([]domain.Bar
 			p.observeFinal(bar)
 			fiveSecondUpdates = append(fiveSecondUpdates, bar)
 			updates = append(updates, bar)
+		}
+		if !carry {
+			p.observeMissingSince(instrumentID, lastTick, at)
 		}
 	}
 	derivedUpdates, err := p.applyFiveSecondUpdates(fiveSecondUpdates)
@@ -193,6 +202,24 @@ func defaultCarryHealthy(lastTick domain.Tick, at time.Time) bool {
 		return false
 	}
 	return at.Sub(lastTick.EventTime.UTC()) <= 8*time.Second
+}
+
+func (p *Pipeline) observeMissingSince(instrumentID string, lastTick domain.Tick, at time.Time) {
+	open, closeAt, err := candle.Bucket(lastTick.EventTime.UTC(), "5s")
+	if err != nil || !closeAt.After(open) {
+		return
+	}
+	for nextOpen := closeAt; ; nextOpen = nextOpen.Add(5 * time.Second) {
+		nextClose := nextOpen.Add(5 * time.Second)
+		if nextClose.After(at) {
+			break
+		}
+		latest, ok := p.integrity.latest[instrumentID]
+		if ok && latest.OpenTimeMS >= nextOpen.UnixMilli() {
+			continue
+		}
+		p.integrity.observeMissing(instrumentID, nextOpen, nextClose, "FEED_HEALTH_UNCERTAIN")
+	}
 }
 
 func (p *Pipeline) applyFiveSecondUpdates(fiveSecondUpdates []domain.Bar) ([]domain.Bar, error) {
@@ -243,6 +270,7 @@ func (p *Pipeline) observeFinal(bar domain.Bar) {
 		if bar.CarryForward {
 			p.stats.CarryForwardFinals++
 		}
+		p.integrity.observeBar(bar)
 		return
 	}
 	if bar.Timeframe == "15s" || bar.Timeframe == "30s" || bar.Timeframe == "1m" {
@@ -263,6 +291,7 @@ func (p *Pipeline) SubminuteSnapshot() SubminuteSnapshot {
 	for key, value := range p.subminute.incomplete {
 		out.IncompleteBuckets[key] = value
 	}
+	out.Integrity = p.integrity.snapshot()
 	return out
 }
 
