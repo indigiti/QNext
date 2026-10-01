@@ -26,31 +26,15 @@ final class Auth
 
     public function initialize(string $token): void
     {
-        $token = trim($token);
         if ($this->initialized()) {
             throw new RuntimeException('admin token is already initialized');
         }
-        if (strlen($token) < 16) {
-            throw new RuntimeException('admin token must be at least 16 characters');
-        }
-        if (strlen($token) > 512) {
-            throw new RuntimeException('admin token is too long');
-        }
-        if (str_contains($token, "\n") || str_contains($token, "\r") || str_contains($token, "\0")) {
-            throw new RuntimeException('admin token contains invalid control characters');
-        }
+        $this->writeToken($token, false, 'initial_setup');
+    }
 
-        $hash = password_hash($token, PASSWORD_DEFAULT);
-        if (!is_string($hash) || $hash === '') {
-            throw new RuntimeException('failed to hash admin token');
-        }
-
-        AtomicFile::writeJson($this->authPath, [
-            'schema' => 'QNEXT.AUTH/1',
-            'initialized' => true,
-            'token_hash' => $hash,
-            'created_at' => gmdate(DATE_ATOM),
-        ], 0600);
+    public function replaceToken(string $token, string $reason = 'recovery'): void
+    {
+        $this->writeToken($token, true, $reason);
     }
 
     public function authorized(?string $providedToken): bool
@@ -61,6 +45,10 @@ final class Auth
 
         if ($this->authorizedByPersistedHash($providedToken)) {
             return true;
+        }
+
+        if ($this->legacyDisabled()) {
+            return false;
         }
 
         return $this->legacyExpectedToken !== ''
@@ -120,6 +108,34 @@ final class Auth
         return self::SESSION_TTL_SECONDS;
     }
 
+    private function writeToken(string $token, bool $disableLegacy, string $reason): void
+    {
+        $token = trim($token);
+        if (strlen($token) < 16) {
+            throw new RuntimeException('admin token must be at least 16 characters');
+        }
+        if (strlen($token) > 512) {
+            throw new RuntimeException('admin token is too long');
+        }
+        if (str_contains($token, "\n") || str_contains($token, "\r") || str_contains($token, "\0")) {
+            throw new RuntimeException('admin token contains invalid control characters');
+        }
+
+        $hash = password_hash($token, PASSWORD_DEFAULT);
+        if (!is_string($hash) || $hash === '') {
+            throw new RuntimeException('failed to hash admin token');
+        }
+
+        AtomicFile::writeJson($this->authPath, [
+            'schema' => 'QNEXT.AUTH/2',
+            'initialized' => true,
+            'token_hash' => $hash,
+            'legacy_disabled' => $disableLegacy,
+            'reason' => $reason,
+            'updated_at' => gmdate(DATE_ATOM),
+        ], 0600);
+    }
+
     private function authorizedByPersistedHash(string $providedToken): bool
     {
         $hash = $this->persistedHash();
@@ -132,30 +148,42 @@ final class Auth
         if ($hash !== '') {
             return 'persisted:' . $hash;
         }
-        if ($this->legacyExpectedToken !== '') {
+        if ($this->legacyExpectedToken !== '' && !$this->legacyDisabled()) {
             return 'legacy:' . hash('sha256', $this->legacyExpectedToken);
         }
         return '';
     }
 
+    private function legacyDisabled(): bool
+    {
+        $payload = $this->persistedPayload();
+        return is_array($payload) && ($payload['legacy_disabled'] ?? false) === true;
+    }
+
     private function persistedHash(): string
     {
+        $payload = $this->persistedPayload();
+        $hash = is_array($payload) ? ($payload['token_hash'] ?? null) : null;
+        return is_string($hash) ? $hash : '';
+    }
+
+    private function persistedPayload(): ?array
+    {
         if (!is_file($this->authPath)) {
-            return '';
+            return null;
         }
 
         $raw = file_get_contents($this->authPath);
         if ($raw === false || trim($raw) === '') {
-            return '';
+            return null;
         }
 
         try {
             $payload = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
         } catch (JsonException) {
-            return '';
+            return null;
         }
 
-        $hash = is_array($payload) ? ($payload['token_hash'] ?? null) : null;
-        return is_string($hash) ? $hash : '';
+        return is_array($payload) ? $payload : null;
     }
 }
