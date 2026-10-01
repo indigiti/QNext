@@ -112,7 +112,10 @@ try {
     $path = request_path();
 
     if ($method === 'GET' && $path === '/setup-status') {
-        respond(200, ['initialized' => $auth->initialized()]);
+        respond(200, [
+            'initialized' => $auth->initialized(),
+            'recovery_configured' => $auth->recoveryConfigured(),
+        ]);
     }
 
     if ($method === 'POST' && $path === '/setup') {
@@ -143,6 +146,26 @@ try {
         ]);
     }
 
+    if ($method === 'POST' && $path === '/auth/recover') {
+        $body = request_body();
+        $recoveryCode = $body['recovery_code'] ?? null;
+        $newToken = $body['new_token'] ?? null;
+        if (!is_string($recoveryCode) || !is_string($newToken)) {
+            respond(400, ['error' => 'recovery_code and new_token are required']);
+        }
+        if (!$auth->recoverWithCode($recoveryCode, $newToken)) {
+            usleep(350000);
+            clear_admin_session_cookie();
+            respond(403, ['error' => 'forbidden']);
+        }
+        set_admin_session_cookie($auth->issueSession(), Auth::sessionTTLSeconds());
+        respond(200, [
+            'authenticated' => true,
+            'recovery_consumed' => true,
+            'expires_in_seconds' => Auth::sessionTTLSeconds(),
+        ]);
+    }
+
     if ($method === 'DELETE' && $path === '/session') {
         clear_admin_session_cookie();
         respond(200, ['authenticated' => false]);
@@ -154,6 +177,19 @@ try {
     $sessionAuthorized = $auth->authorizedSession(is_string($session) ? $session : null);
     if (!$headerAuthorized && !$sessionAuthorized) {
         respond(403, ['error' => 'forbidden']);
+    }
+
+    if ($method === 'POST' && $path === '/auth/recovery-code') {
+        $recovery = $auth->generateRecoveryCode();
+        respond(201, [
+            'recovery_code' => $recovery['code'],
+            'generated_at' => $recovery['generated_at'],
+        ]);
+    }
+
+    if ($method === 'DELETE' && $path === '/auth/recovery-code') {
+        $auth->revokeRecoveryCode();
+        respond(200, ['recovery_configured' => false]);
     }
 
     $controller = new OpsController($config);
