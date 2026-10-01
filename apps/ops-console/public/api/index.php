@@ -31,6 +31,35 @@ function bridge_value(string $key): string
     return '';
 }
 
+function bridge_route(): string
+{
+    $route = $_GET['route'] ?? '';
+    return is_string($route) ? $route : '';
+}
+
+function guard_first_admin_setup(): void
+{
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST'
+        || bridge_route() !== '/setup') {
+        return;
+    }
+
+    $expected = bridge_value('QNEXT_OPS_BOOTSTRAP_TOKEN');
+    if ($expected === '') {
+        bridge_fail(503, 'QNext first-time Admin bootstrap token is not configured');
+    }
+
+    $raw = file_get_contents('php://input');
+    $payload = is_string($raw) && trim($raw) !== '' ? json_decode($raw, true) : null;
+    $provided = is_array($payload) ? ($payload['token'] ?? null) : null;
+    if (!is_string($provided) || !hash_equals($expected, trim($provided))) {
+        usleep(350000);
+        bridge_fail(403, 'forbidden');
+    }
+}
+
+guard_first_admin_setup();
+
 $publicQnextRoot = dirname(__DIR__, 2);
 $privateRoot = rtrim(bridge_value('QNEXT_PRIVATE_ROOT'), '/');
 
