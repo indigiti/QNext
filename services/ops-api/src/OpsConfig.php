@@ -99,6 +99,11 @@ final class OpsConfig
         return $this->privateRoot . '/secrets/ops-auth.json';
     }
 
+    public function adminResetWindowPath(): string
+    {
+        return $this->privateRoot . '/run/admin-auth-reset-window';
+    }
+
     public function releasesRoot(): string
     {
         return $this->privateRoot . '/releases';
