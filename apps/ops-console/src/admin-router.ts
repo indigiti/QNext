@@ -1,4 +1,5 @@
 import './admin-polish.css';
+import './admin-route-fixes.css';
 
 export {};
 
@@ -35,6 +36,40 @@ const ADMIN_BASE = '/qnext/admin/';
 const QNEXT_API_PREFIX = '/qnext/api/v1/';
 const BROKEN_ADMIN_PUBLIC_API_PREFIX = '/qnext/admin/api/v1/';
 
+function normalizedRoute(pathname = window.location.pathname): string {
+  if (!pathname.startsWith(ADMIN_BASE)) return '';
+  return pathname.slice(ADMIN_BASE.length).replace(/^\/+|\/+$/g, '');
+}
+
+function viewFromLocation(): OpsView {
+  const route = normalizedRoute();
+  const fromPath = viewByRoute.get(route);
+  if (fromPath) return fromPath;
+
+  const legacy = window.location.hash.replace(/^#/, '') as OpsView;
+  if (legacy && routeByView[legacy]) return legacy;
+  return 'dashboard';
+}
+
+function prettyURL(view: OpsView): string {
+  const route = routeByView[view];
+  return `${ADMIN_BASE}${route}/${window.location.search}`;
+}
+
+// admin-shell.ts still owns the actual view switch. Prime its legacy hash input
+// before it mounts so a direct pretty-route request never paints Dashboard first.
+// The hash is removed again as soon as the shell is ready.
+function primeShellRouteFromPath(): void {
+  const route = normalizedRoute();
+  const view = viewByRoute.get(route);
+  if (!view) return;
+  const expected = `#${view}`;
+  if (window.location.hash === expected) return;
+  history.replaceState(history.state, '', `${window.location.pathname}${window.location.search}${expected}`);
+}
+
+primeShellRouteFromPath();
+
 function installFetchSafetyNet(): void {
   const tagged = window as Window & { __qnextPrettyRouteFetchInstalled?: boolean };
   if (tagged.__qnextPrettyRouteFetchInstalled) return;
@@ -61,26 +96,6 @@ function installFetchSafetyNet(): void {
 }
 
 installFetchSafetyNet();
-
-function normalizedRoute(pathname = window.location.pathname): string {
-  if (!pathname.startsWith(ADMIN_BASE)) return '';
-  return pathname.slice(ADMIN_BASE.length).replace(/^\/+|\/+$/g, '');
-}
-
-function viewFromLocation(): OpsView {
-  const route = normalizedRoute();
-  const fromPath = viewByRoute.get(route);
-  if (fromPath) return fromPath;
-
-  const legacy = window.location.hash.replace(/^#/, '') as OpsView;
-  if (legacy && routeByView[legacy]) return legacy;
-  return 'dashboard';
-}
-
-function prettyURL(view: OpsView): string {
-  const route = routeByView[view];
-  return `${ADMIN_BASE}${route}/${window.location.search}`;
-}
 
 let suppressNavigationCapture = false;
 

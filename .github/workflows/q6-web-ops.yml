@@ -35,7 +35,15 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: test -f dist/api/index.php
+      - name: Verify packaged Admin routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/api/index.php
+          for route in dashboard market-data candles-history synthetic indicators-intelligence runtime releases diagnostics settings security; do
+            test -s "dist/${route}/index.html"
+            grep -Fq '/qnext/admin/assets/' "dist/${route}/index.html"
+          done
 
   php-api:
     runs-on: ubuntu-latest
