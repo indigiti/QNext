@@ -399,7 +399,7 @@ function applyView(view: View, updateHash: boolean): void {
 
   document.querySelector('#ops-sidebar')?.classList.remove('open');
   if (updateHash) history.replaceState(null, '', `#${view}`);
-  window.scrollTo({ top: 0, behavior: 'instant' });
+  window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 function viewFromHash(): View {
@@ -449,15 +449,23 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
   });
 }
 
+function mutationShouldRefresh(mutation: MutationRecord, grid: HTMLElement): boolean {
+  const target = mutation.target instanceof Element
+    ? mutation.target
+    : mutation.target.parentElement;
+  if (target?.closest('#ops-dashboard-card')) return false;
+
+  if (mutation.target === grid) {
+    const added = Array.from(mutation.addedNodes).filter((node): node is HTMLElement => node instanceof HTMLElement);
+    if (added.length > 0 && added.every((node) => node.id === 'ops-dashboard-card')) return false;
+  }
+  return true;
+}
+
 function installMutationSync(grid: HTMLElement): void {
   let applying = false;
   const observer = new MutationObserver((mutations) => {
-    if (applying) return;
-    const relevant = mutations.some((mutation) =>
-      Array.from(mutation.addedNodes).some((node) => node instanceof HTMLElement)
-      || mutation.target instanceof HTMLElement,
-    );
-    if (!relevant) return;
+    if (applying || !mutations.some((mutation) => mutationShouldRefresh(mutation, grid))) return;
     applying = true;
     classifyCards();
     grid.querySelectorAll<HTMLElement>('.card').forEach((card) => card.classList.add('ops-managed-card'));
