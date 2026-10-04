@@ -49,6 +49,9 @@ func TestApplyVolumeDoesNotChangeOHLC(t *testing.T) {
 	if got.Volume != 125 {
 		t.Fatalf("unexpected proxy volume: %v", got.Volume)
 	}
+	if got.AuthorityProvider != "upstox" {
+		t.Fatalf("volume overlay changed price authority: %s", got.AuthorityProvider)
+	}
 }
 
 func TestApplyVolumeQueuesUntilPriceBucketExists(t *testing.T) {
