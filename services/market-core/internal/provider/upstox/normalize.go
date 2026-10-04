@@ -207,18 +207,18 @@ func (n *Normalizer) NormalizeEnvelope(
 		cumulativeVolume, openInterest := providerLiquidity(feed)
 
 		ticks = append(ticks, domain.Tick{
-			InstrumentID:    instrument.ID,
-			Provider:        ProviderName,
-			Price:           price,
-			Quantity:        quantity,
+			InstrumentID:     instrument.ID,
+			Provider:         ProviderName,
+			Price:            price,
+			Quantity:         quantity,
 			CumulativeVolume: cumulativeVolume,
 			OpenInterest:     openInterest,
-			EventTime:       marketTime,
-			TradeTime:     tradeTime,
-			ReceivedTime:  marketTime,
-			ProcessedTime: processedAt.UTC(),
-			Sequence:      nextSequence(),
-			Quality:       domain.QualityGood,
+			EventTime:        marketTime,
+			TradeTime:        tradeTime,
+			ReceivedTime:     marketTime,
+			ProcessedTime:    processedAt.UTC(),
+			Sequence:         nextSequence(),
+			Quality:          domain.QualityGood,
 		})
 	}
 	return ticks, nil
