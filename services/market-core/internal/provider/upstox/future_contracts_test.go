@@ -23,7 +23,7 @@ func TestFutureContractsClient(t *testing.T) {
 			if req.Header.Get("Authorization") != "Bearer token" {
 				t.Fatalf("missing auth header")
 			}
-			body := "{"status":"success","data":[{"name":"NIFTY","segment":"NSE_FO","exchange":"NSE","expiry":"2026-10-29","instrument_key":"NSE_FO|100","trading_symbol":"NIFTY FUT 29 OCT 26","instrument_type":"FUT","underlying_key":"NSE_INDEX|Nifty 50","underlying_symbol":"NIFTY","lot_size":65},{"name":"NIFTY","segment":"NSE_FO","exchange":"NSE","expiry":"2026-11-26","instrument_key":"NSE_FO|101","trading_symbol":"NIFTY FUT 26 NOV 26","instrument_type":"FUT","underlying_key":"NSE_INDEX|Nifty 50","underlying_symbol":"NIFTY","lot_size":65}]}"
+			body := `{"status":"success","data":[{"name":"NIFTY","segment":"NSE_FO","exchange":"NSE","expiry":"2026-10-29","instrument_key":"NSE_FO|100","trading_symbol":"NIFTY FUT 29 OCT 26","instrument_type":"FUT","underlying_key":"NSE_INDEX|Nifty 50","underlying_symbol":"NIFTY","lot_size":65},{"name":"NIFTY","segment":"NSE_FO","exchange":"NSE","expiry":"2026-11-26","instrument_key":"NSE_FO|101","trading_symbol":"NIFTY FUT 26 NOV 26","instrument_type":"FUT","underlying_key":"NSE_INDEX|Nifty 50","underlying_symbol":"NIFTY","lot_size":65}]}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(body)),
