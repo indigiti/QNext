@@ -204,12 +204,16 @@ func (n *Normalizer) NormalizeEnvelope(
 			return nil, errors.New("invalid Upstox volume for " + providerKey)
 		}
 
+		cumulativeVolume, openInterest := providerLiquidity(feed)
+
 		ticks = append(ticks, domain.Tick{
-			InstrumentID:  instrument.ID,
-			Provider:      ProviderName,
-			Price:         price,
-			Quantity:      quantity,
-			EventTime:     marketTime,
+			InstrumentID:    instrument.ID,
+			Provider:        ProviderName,
+			Price:           price,
+			Quantity:        quantity,
+			CumulativeVolume: cumulativeVolume,
+			OpenInterest:     openInterest,
+			EventTime:       marketTime,
 			TradeTime:     tradeTime,
 			ReceivedTime:  marketTime,
 			ProcessedTime: processedAt.UTC(),
@@ -218,6 +222,16 @@ func (n *Normalizer) NormalizeEnvelope(
 		})
 	}
 	return ticks, nil
+}
+
+func providerLiquidity(feed Feed) (float64, float64) {
+	if feed.FullFeed != nil {
+		return float64(feed.FullFeed.VTT), feed.FullFeed.OI
+	}
+	if feed.FirstLevelWithGreeks != nil {
+		return float64(feed.FirstLevelWithGreeks.VTT), feed.FirstLevelWithGreeks.OI
+	}
+	return 0, 0
 }
 
 func (n *Normalizer) normalizedQuantity(
@@ -231,15 +245,9 @@ func (n *Normalizer) normalizedQuantity(
 		return 0, err
 	}
 
-	var cumulativeVTT int64
-	hasVTT := false
-	if feed.FullFeed != nil && feed.FullFeed.VTT > 0 {
-		cumulativeVTT = feed.FullFeed.VTT
-		hasVTT = true
-	} else if feed.FirstLevelWithGreeks != nil && feed.FirstLevelWithGreeks.VTT > 0 {
-		cumulativeVTT = feed.FirstLevelWithGreeks.VTT
-		hasVTT = true
-	}
+	cumulativeVolume, _ := providerLiquidity(feed)
+	cumulativeVTT := int64(cumulativeVolume)
+	hasVTT := cumulativeVTT > 0
 
 	session := marketTime.In(time.FixedZone("IST", 5*60*60+30*60)).Format("2006-01-02")
 
