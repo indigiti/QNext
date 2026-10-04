@@ -536,7 +536,10 @@ export class QNextProvider {
         return;
       }
       try {
+        const to = Date.now();
         const bars = await this.getBars(subscription.ticker, subscription.timeframe, {
+          from: to - livePollingLookbackMs(subscription.timeframe, 2),
+          to,
           limit: 2,
         });
         subscription.pollFailures = 0;
@@ -726,21 +729,41 @@ function subscriptionKey(instrumentID: string, timeframe: string): string {
 }
 
 function defaultHistoryLookbackMs(timeframe: string, limit: number): number {
-  const duration = timeframeDurationMs(timeframe);
-  const requested = duration * limit * 8;
+  const normalized = timeframe.trim();
+  const requested = rawHistoryLookbackMs(normalized, limit);
   const day = 86_400_000;
-  const unit = timeframe.trim().slice(-1);
+  const unit = normalized.slice(-1);
+
+  // 15s/30s bars are formed locally from the canonical 5s stream. A purely
+  // wall-clock lookback can land entirely inside a weekend/holiday and return
+  // no seed bars even though valid sub-minute history exists in the store.
+  // Keep enough calendar padding to cross normal non-trading gaps while the
+  // caller still trims the response to the requested bar count.
+  const floor =
+    normalized === '15s' || normalized === '30s'
+      ? 7 * day
+      : 0;
 
   const cap =
     unit === 's'
-      ? 3 * day
+      ? 14 * day
       : unit === 'm'
         ? 31 * day
         : unit === 'h'
           ? 90 * day
           : 366 * day;
 
-  return Math.min(requested, cap);
+  return Math.min(Math.max(requested, floor), cap);
+}
+
+function livePollingLookbackMs(timeframe: string, limit: number): number {
+  // REST fallback runs frequently, so do not apply the multi-day chart-history
+  // padding here. Poll only a small recent window for the latest forming bar.
+  return rawHistoryLookbackMs(timeframe, limit);
+}
+
+function rawHistoryLookbackMs(timeframe: string, limit: number): number {
+  return timeframeDurationMs(timeframe) * Math.max(limit, 1) * 8;
 }
 
 function timeframeDurationMs(timeframe: string): number {
