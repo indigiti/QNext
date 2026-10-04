@@ -36,6 +36,30 @@ func testNiftyRegistry(t *testing.T) *symbol.Registry {
 	return registry
 }
 
+func testFutureRegistry(t *testing.T) *symbol.Registry {
+	t.Helper()
+	registry := symbol.NewRegistry()
+	if err := registry.Register(symbol.Instrument{
+		ID:         "NSE_FO:NIFTY-FUT",
+		Symbol:     "NIFTY-FUT",
+		Name:       "Nifty Futures",
+		AssetClass: "FUTURE",
+		Exchange:   "NSE",
+		Currency:   "INR",
+		Timezone:   "Asia/Kolkata",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.RegisterProvider(symbol.ProviderInstrument{
+		Provider:     ProviderName,
+		InstrumentID: "NSE_FO:NIFTY-FUT",
+		ProviderKey:  "NSE_FO|99999",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return registry
+}
+
 func TestNormalizeLTPCEnvelope(t *testing.T) {
 	registry := testNiftyRegistry(t)
 
@@ -90,6 +114,170 @@ func TestNormalizeLTPCEnvelope(t *testing.T) {
 	}
 	if tick.ReceivedTime.UnixMilli() != 1740729566039 {
 		t.Fatalf("unexpected received time: %v", tick.ReceivedTime)
+	}
+}
+
+func TestNormalizeUsesPositiveVTTDeltaForVolume(t *testing.T) {
+	registry := testFutureRegistry(t)
+	normalizer, err := NewNormalizer(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 9, 5, 9, 15, 0, 0, time.FixedZone("IST", 5*60*60+30*60)).UTC()
+	sequence := uint64(0)
+	nextSeq := func() uint64 {
+		sequence++
+		return sequence
+	}
+
+	cases := []struct {
+		name string
+		at   time.Time
+		vtt  int64
+		want float64
+	}{
+		{name: "baseline", at: base.Add(time.Second), vtt: 1000, want: 0},
+		{name: "positive delta", at: base.Add(2 * time.Second), vtt: 1025, want: 25},
+		{name: "duplicate cumulative volume", at: base.Add(3 * time.Second), vtt: 1025, want: 0},
+		{name: "provider reset", at: base.Add(4 * time.Second), vtt: 5, want: 0},
+		{name: "delta after reset", at: base.Add(5 * time.Second), vtt: 12, want: 7},
+	}
+
+	for index, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ltpc := &LTPC{
+				LTP: 22000 + float64(index),
+				LTT: formatMillis(tc.at),
+				LTQ: "999",
+			}
+			envelope := DecodedEnvelope{
+				Type:      "live_feed",
+				CurrentTS: formatMillis(tc.at),
+				Feeds: map[string]Feed{
+					"NSE_FO|99999": {
+						LTPC:     ltpc,
+						FullFeed: &MarketState{LTPC: cloneLTPC(ltpc), VTT: tc.vtt, OI: 4321},
+					},
+				},
+			}
+			ticks, normalizeErr := normalizer.NormalizeEnvelope(
+				envelope,
+				tc.at.Add(time.Millisecond),
+				nextSeq,
+			)
+			if normalizeErr != nil {
+				t.Fatal(normalizeErr)
+			}
+			if len(ticks) != 1 {
+				t.Fatalf("expected one tick, got %d", len(ticks))
+			}
+			if ticks[0].Quantity != tc.want {
+				t.Fatalf("unexpected VTT-derived quantity: got %v want %v", ticks[0].Quantity, tc.want)
+			}
+			if ticks[0].CumulativeVolume != float64(tc.vtt) || ticks[0].OpenInterest != 4321 {
+				t.Fatalf("missing liquidity metadata: %+v", ticks[0])
+			}
+		})
+	}
+}
+
+func TestNormalizeResetsVTTBaselineAcrossSessionDate(t *testing.T) {
+	registry := testFutureRegistry(t)
+	normalizer, err := NewNormalizer(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	location := time.FixedZone("IST", 5*60*60+30*60)
+	first := time.Date(2026, 9, 5, 15, 29, 0, 0, location).UTC()
+	second := time.Date(2026, 9, 6, 9, 15, 1, 0, location).UTC()
+	sequence := uint64(0)
+	nextSeq := func() uint64 {
+		sequence++
+		return sequence
+	}
+
+	normalize := func(at time.Time, vtt int64) float64 {
+		ltpc := &LTPC{LTP: 22000, LTT: formatMillis(at), LTQ: "10"}
+		ticks, normalizeErr := normalizer.NormalizeEnvelope(
+			DecodedEnvelope{
+				Type:      "live_feed",
+				CurrentTS: formatMillis(at),
+				Feeds: map[string]Feed{
+					"NSE_FO|99999": {
+						LTPC:     ltpc,
+						FullFeed: &MarketState{LTPC: cloneLTPC(ltpc), VTT: vtt},
+					},
+				},
+			},
+			at.Add(time.Millisecond),
+			nextSeq,
+		)
+		if normalizeErr != nil {
+			t.Fatal(normalizeErr)
+		}
+		return ticks[0].Quantity
+	}
+
+	if got := normalize(first, 50000); got != 0 {
+		t.Fatalf("first session baseline should not emit volume: %v", got)
+	}
+	if got := normalize(first.Add(time.Second), 50020); got != 20 {
+		t.Fatalf("unexpected first-session delta: %v", got)
+	}
+	if got := normalize(second, 100); got != 0 {
+		t.Fatalf("new session must establish a fresh baseline: %v", got)
+	}
+}
+
+func TestNormalizeDeduplicatesLTQFallbackByTradeTime(t *testing.T) {
+	registry := testFutureRegistry(t)
+	normalizer, err := NewNormalizer(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 9, 5, 9, 15, 0, 0, time.FixedZone("IST", 5*60*60+30*60)).UTC()
+	tradeAt := base.Add(time.Second)
+	sequence := uint64(0)
+	nextSeq := func() uint64 {
+		sequence++
+		return sequence
+	}
+
+	normalize := func(marketAt, lastTradeAt time.Time, ltq string) float64 {
+		ticks, normalizeErr := normalizer.NormalizeEnvelope(
+			DecodedEnvelope{
+				Type:      "live_feed",
+				CurrentTS: formatMillis(marketAt),
+				Feeds: map[string]Feed{
+					"NSE_FO|99999": {
+						LTPC: &LTPC{
+							LTP: 22000,
+							LTT: formatMillis(lastTradeAt),
+							LTQ: ltq,
+						},
+					},
+				},
+			},
+			marketAt.Add(time.Millisecond),
+			nextSeq,
+		)
+		if normalizeErr != nil {
+			t.Fatal(normalizeErr)
+		}
+		return ticks[0].Quantity
+	}
+
+	if got := normalize(base.Add(2*time.Second), tradeAt, "25"); got != 25 {
+		t.Fatalf("first LTQ observation should count once: %v", got)
+	}
+	if got := normalize(base.Add(3*time.Second), tradeAt, "25"); got != 0 {
+		t.Fatalf("repeated LTT/LTQ must not double-count volume: %v", got)
+	}
+	if got := normalize(base.Add(4*time.Second), tradeAt.Add(time.Second), "30"); got != 30 {
+		t.Fatalf("new trade timestamp should count LTQ: %v", got)
 	}
 }
 

@@ -17,10 +17,12 @@ const (
 )
 
 type Tick struct {
-	InstrumentID string
-	Provider     string
-	Price        float64
-	Quantity     float64
+	InstrumentID     string
+	Provider         string
+	Price            float64
+	Quantity         float64
+	CumulativeVolume float64
+	OpenInterest     float64
 	// EventTime is the provider market-data clock used for sequencing and
 	// candle bucketing. It must advance with fresh market-data messages even
 	// when the last traded time does not (notably for index feeds).
