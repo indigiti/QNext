@@ -17,8 +17,8 @@ const (
 )
 
 type Tick struct {
-	InstrumentID string
-	Provider     string
+	InstrumentID     string
+	Provider         string
 	Price            float64
 	Quantity         float64
 	CumulativeVolume float64
