@@ -199,6 +199,7 @@ func (n *Normalizer) NormalizeEnvelope(
 			feed,
 			marketTime,
 			tradeTime,
+			!quoteDriven,
 		)
 		if quantityErr != nil {
 			return nil, errors.New("invalid Upstox volume for " + providerKey)
@@ -239,6 +240,7 @@ func (n *Normalizer) normalizedQuantity(
 	feed Feed,
 	marketTime time.Time,
 	tradeTime time.Time,
+	allowLTQ bool,
 ) (float64, error) {
 	ltq, err := parseOptionalNonNegativeFloat(feed.LTPC.LTQ)
 	if err != nil {
@@ -283,10 +285,11 @@ func (n *Normalizer) normalizedQuantity(
 		return float64(delta), nil
 	}
 
-	// LTQ is only a fallback for feeds without VTT. Upstox can repeat the same
-	// last-trade fields across multiple market updates; count LTQ once per LTT
-	// so candle volume is not multiplied by quote/update frequency.
-	if ltq <= 0 || tradeTime.IsZero() {
+	// LTQ is only a fallback for trade-driven feeds without VTT. Quote-driven
+	// option updates can repeat the last trade while bid/ask changes, so replaying
+	// LTQ there would fabricate volume. For eligible LTPC feeds, count LTQ once
+	// per LTT so candle volume is not multiplied by update frequency.
+	if !allowLTQ || ltq <= 0 || tradeTime.IsZero() {
 		n.volume[instrumentID] = state
 		return 0, nil
 	}
