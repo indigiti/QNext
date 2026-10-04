@@ -157,7 +157,7 @@ func TestNormalizeUsesPositiveVTTDeltaForVolume(t *testing.T) {
 				Feeds: map[string]Feed{
 					"NSE_FO|99999": {
 						LTPC:     ltpc,
-						FullFeed: &MarketState{LTPC: cloneLTPC(ltpc), VTT: tc.vtt},
+						FullFeed: &MarketState{LTPC: cloneLTPC(ltpc), VTT: tc.vtt, OI: 4321},
 					},
 				},
 			}
@@ -174,6 +174,9 @@ func TestNormalizeUsesPositiveVTTDeltaForVolume(t *testing.T) {
 			}
 			if ticks[0].Quantity != tc.want {
 				t.Fatalf("unexpected VTT-derived quantity: got %v want %v", ticks[0].Quantity, tc.want)
+			}
+			if ticks[0].CumulativeVolume != float64(tc.vtt) || ticks[0].OpenInterest != 4321 {
+				t.Fatalf("missing liquidity metadata: %+v", ticks[0])
 			}
 		})
 	}
