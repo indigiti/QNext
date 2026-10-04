@@ -28,6 +28,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/stream"
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
 	"github.com/indigiti/QNext/services/market-core/internal/synthetic"
+	"github.com/indigiti/QNext/services/market-core/internal/volumeproxy"
 )
 
 var (
@@ -455,11 +456,43 @@ func runMarket(
 		syntheticEngines = append(syntheticEngines, assembler)
 	}
 
+	proxyMarkets := make([]volumeproxy.Market, 0, len(markets))
+	for _, market := range markets {
+		proxyMarkets = append(proxyMarkets, volumeproxy.Market{
+			Symbol:             market.Symbol,
+			Exchange:           market.Exchange,
+			CalendarID:         market.CalendarID,
+			TargetInstrumentID: market.Underlying.InstrumentID,
+		})
+	}
+
+	var volumeRouter qruntime.VolumeProxyRouter
+	proxyManager, proxyErr := volumeproxy.New(
+		upstox.FutureContractsClient{},
+		accessToken,
+		registry,
+		subscriptions,
+		proxyMarkets,
+	)
+	if proxyErr != nil {
+		log.Printf("index futures volume proxy unavailable: %v", proxyErr)
+	} else {
+		volumeRouter = proxyManager
+		go func() {
+			if refreshErr := proxyManager.Refresh(ctx, time.Now().UTC()); refreshErr != nil &&
+				ctx.Err() == nil {
+				log.Printf("index futures volume proxy refresh: %v", refreshErr)
+			}
+			proxyManager.Run(ctx)
+		}()
+	}
+
 	marketSink := &qruntime.MarketSink{
 		Pipeline:          canonicalPipeline,
 		Synthetics:        syntheticEngines,
 		Publisher:         broker,
 		DirectInstruments: directInstruments,
+		VolumeProxy:       volumeRouter,
 		Observer:          feedTracker.Observe,
 	}
 	dedupe := integrity.NewDedupeSink(8192, marketSink.Handle)

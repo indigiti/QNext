@@ -22,6 +22,14 @@ type ClockPipeline interface {
 	AdvanceClock(time.Time, func(string, domain.Tick, time.Time) bool) ([]domain.Bar, error)
 }
 
+type VolumeOverlayPipeline interface {
+	ApplyVolume(domain.Tick) ([]domain.Bar, error)
+}
+
+type VolumeProxyRouter interface {
+	Route(domain.Tick) (domain.Tick, bool)
+}
+
 type SubminuteTelemetrySource interface {
 	SubminuteTelemetry() any
 }
@@ -34,6 +42,7 @@ type MarketSink struct {
 	Synthetics        []SyntheticAssembler
 	Publisher         BarPublisher
 	DirectInstruments map[string]bool
+	VolumeProxy       VolumeProxyRouter
 	Observer          func(domain.Tick)
 
 	// CarryHealthy is the authoritative gate for zero-volume 5s carry bars.
@@ -69,6 +78,20 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 
 	if s.Observer != nil {
 		s.Observer(tick)
+	}
+
+	if s.VolumeProxy != nil {
+		if volumeTick, ok := s.VolumeProxy.Route(tick); ok {
+			volumePipeline, supported := s.Pipeline.(VolumeOverlayPipeline)
+			if !supported {
+				return errors.New("canonical tick pipeline does not support volume overlays")
+			}
+			bars, err := volumePipeline.ApplyVolume(volumeTick)
+			if err != nil {
+				return err
+			}
+			s.publishBars(bars)
+		}
 	}
 
 	if len(s.DirectInstruments) == 0 || s.DirectInstruments[tick.InstrumentID] {
