@@ -265,9 +265,6 @@ func (e *Engine) ApplyVolume(tick domain.Tick, timeframe string) ([]domain.Bar, 
 		}
 		if openTime.Equal(current.OpenTime) {
 			current.Volume += tick.Quantity
-			if tick.Provider != "" {
-				current.AuthorityProvider = tick.Provider
-			}
 			if tick.Sequence > current.SourceSequence {
 				current.SourceSequence = tick.Sequence
 			}
