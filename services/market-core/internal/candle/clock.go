@@ -71,6 +71,7 @@ func (e *Engine) Advance(instrumentID, timeframe string, at time.Time, carryForw
 			SyntheticVersion:    current.SyntheticVersion,
 			CreatedAt:           at.UTC(),
 		}
+		e.consumePendingVolume(&next)
 		e.bars[key] = next
 		updates = append(updates, next)
 		if next.CloseTime.After(at.UTC()) {
