@@ -148,6 +148,43 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 	return updates, nil
 }
 
+// ApplyVolume overlays a volume delta onto the target instrument without
+// changing its canonical price state or carry-forward health clock.
+func (p *Pipeline) ApplyVolume(tick domain.Tick) ([]domain.Bar, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var updates []domain.Bar
+	var fiveSecondUpdates []domain.Bar
+
+	for _, timeframe := range p.direct {
+		bars, err := p.candles.ApplyVolume(tick, timeframe)
+		if err != nil {
+			if errors.Is(err, candle.ErrLateTick) {
+				continue
+			}
+			return nil, fmt.Errorf("apply %s volume overlay: %w", timeframe, err)
+		}
+		if timeframe == "5s" {
+			fiveSecondUpdates = append(fiveSecondUpdates, bars...)
+		}
+		for _, bar := range bars {
+			if err := p.persistFinal(bar); err != nil {
+				return nil, err
+			}
+			p.observeFinal(bar)
+			updates = append(updates, bar)
+		}
+	}
+
+	derivedUpdates, err := p.applyFiveSecondUpdates(fiveSecondUpdates)
+	if err != nil {
+		return nil, err
+	}
+	updates = append(updates, derivedUpdates...)
+	return updates, nil
+}
+
 // AdvanceClock closes canonical 5s buckets from an independent process clock.
 // Carry bars require an explicit health predicate in production. When health
 // is false, empty expected 5s buckets remain absent and are recorded MISSING
