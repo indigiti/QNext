@@ -21,15 +21,17 @@ type timeframeSpec struct {
 }
 
 type Engine struct {
-	mu      sync.Mutex
-	version string
-	bars    map[string]domain.Bar
+	mu            sync.Mutex
+	version       string
+	bars          map[string]domain.Bar
+	pendingVolume map[string]float64
 }
 
 func New(version string) *Engine {
 	return &Engine{
-		version: version,
-		bars:    make(map[string]domain.Bar),
+		version:       version,
+		bars:          make(map[string]domain.Bar),
+		pendingVolume: make(map[string]float64),
 	}
 }
 
@@ -193,6 +195,7 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 	current, exists := e.bars[key]
 	if !exists {
 		bar := newBar(tick, timeframe, openTime, closeTime, e.version)
+		e.consumePendingVolume(&bar)
 		e.bars[key] = bar
 		return []domain.Bar{bar}, nil
 	}
@@ -208,6 +211,8 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 		// from the first real observation rather than the previous close.
 		if current.CarryForward && !current.Final {
 			observed := newBar(tick, timeframe, openTime, closeTime, e.version)
+			observed.Volume += current.Volume
+			e.consumePendingVolume(&observed)
 			e.bars[key] = observed
 			return []domain.Bar{observed}, nil
 		}
@@ -225,8 +230,69 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 
 	current.Final = true
 	next := newBar(tick, timeframe, openTime, closeTime, e.version)
+	e.consumePendingVolume(&next)
 	e.bars[key] = next
 	return []domain.Bar{current, next}, nil
+}
+
+// ApplyVolume overlays a traded-volume delta onto a canonical price candle
+// without changing its OHLC. If price data for the bucket has not arrived yet,
+// the delta is held until the corresponding candle is created.
+func (e *Engine) ApplyVolume(tick domain.Tick, timeframe string) ([]domain.Bar, error) {
+	if tick.InstrumentID == "" || tick.EventTime.IsZero() {
+		return nil, errors.New("volume tick requires instrument and event time")
+	}
+	if tick.Quantity < 0 {
+		return nil, errors.New("volume tick quantity cannot be negative")
+	}
+	if tick.Quantity == 0 {
+		return nil, nil
+	}
+
+	openTime, _, err := Bucket(tick.EventTime, timeframe)
+	if err != nil {
+		return nil, err
+	}
+	key := tick.InstrumentID + "|" + timeframe
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	current, exists := e.bars[key]
+	if exists {
+		if openTime.Before(current.OpenTime) {
+			return nil, ErrLateTick
+		}
+		if openTime.Equal(current.OpenTime) {
+			current.Volume += tick.Quantity
+			if tick.Provider != "" {
+				current.AuthorityProvider = tick.Provider
+			}
+			if tick.Sequence > current.SourceSequence {
+				current.SourceSequence = tick.Sequence
+			}
+			e.bars[key] = current
+			return []domain.Bar{current}, nil
+		}
+	}
+
+	e.pendingVolume[volumeBucketKey(tick.InstrumentID, timeframe, openTime)] += tick.Quantity
+	return nil, nil
+}
+
+func (e *Engine) consumePendingVolume(bar *domain.Bar) {
+	if bar == nil || bar.InstrumentID == "" || bar.OpenTime.IsZero() {
+		return
+	}
+	key := volumeBucketKey(bar.InstrumentID, bar.Timeframe, bar.OpenTime)
+	if pending := e.pendingVolume[key]; pending > 0 {
+		bar.Volume += pending
+		delete(e.pendingVolume, key)
+	}
+}
+
+func volumeBucketKey(instrumentID, timeframe string, openTime time.Time) string {
+	return instrumentID + "|" + timeframe + "|" + strconv.FormatInt(openTime.UnixMilli(), 10)
 }
 
 func newBar(tick domain.Tick, timeframe string, openTime, closeTime time.Time, version string) domain.Bar {
