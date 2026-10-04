@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -98,9 +99,19 @@ type DecodedEnvelope struct {
 type Normalizer struct {
 	registry *symbol.Registry
 
+	volumeMu sync.Mutex
+	volume   map[string]tradeVolumeState
+
 	microprice atomic.Uint64
 	midpoint   atomic.Uint64
 	ltpOption  atomic.Uint64
+}
+
+type tradeVolumeState struct {
+	session        string
+	cumulativeVTT  int64
+	cumulativeSeen bool
+	lastTradeMS    int64
 }
 
 type OptionQuoteStats struct {
@@ -121,7 +132,10 @@ func NewNormalizer(registry *symbol.Registry) (*Normalizer, error) {
 	if registry == nil {
 		return nil, errors.New("symbol registry is required")
 	}
-	normalizer := &Normalizer{registry: registry}
+	normalizer := &Normalizer{
+		registry: registry,
+		volume:   make(map[string]tradeVolumeState),
+	}
 	observability.SetQuotePricingSource(func() any { return normalizer.QuoteStats() })
 	return normalizer, nil
 }
@@ -180,12 +194,14 @@ func (n *Normalizer) NormalizeEnvelope(
 			return nil, errors.New("invalid Upstox ltt for " + providerKey)
 		}
 
-		quantity := float64(0)
-		if !quoteDriven {
-			quantity, err = parseOptionalNonNegativeFloat(feed.LTPC.LTQ)
-			if err != nil {
-				return nil, errors.New("invalid Upstox ltq for " + providerKey)
-			}
+		quantity, quantityErr := n.normalizedQuantity(
+			instrument.ID,
+			feed,
+			marketTime,
+			tradeTime,
+		)
+		if quantityErr != nil {
+			return nil, errors.New("invalid Upstox volume for " + providerKey)
 		}
 
 		ticks = append(ticks, domain.Tick{
@@ -202,6 +218,78 @@ func (n *Normalizer) NormalizeEnvelope(
 		})
 	}
 	return ticks, nil
+}
+
+func (n *Normalizer) normalizedQuantity(
+	instrumentID string,
+	feed Feed,
+	marketTime time.Time,
+	tradeTime time.Time,
+) (float64, error) {
+	ltq, err := parseOptionalNonNegativeFloat(feed.LTPC.LTQ)
+	if err != nil {
+		return 0, err
+	}
+
+	var cumulativeVTT int64
+	hasVTT := false
+	if feed.FullFeed != nil && feed.FullFeed.VTT > 0 {
+		cumulativeVTT = feed.FullFeed.VTT
+		hasVTT = true
+	} else if feed.FirstLevelWithGreeks != nil && feed.FirstLevelWithGreeks.VTT > 0 {
+		cumulativeVTT = feed.FirstLevelWithGreeks.VTT
+		hasVTT = true
+	}
+
+	session := marketTime.In(time.FixedZone("IST", 5*60*60+30*60)).Format("2006-01-02")
+
+	n.volumeMu.Lock()
+	defer n.volumeMu.Unlock()
+
+	state := n.volume[instrumentID]
+	if state.session != session {
+		state = tradeVolumeState{session: session}
+	}
+
+	// VTT is cumulative exchange-traded volume for the session. Once available,
+	// use only its positive delta. The first observation establishes a baseline,
+	// and decreases (session reset/reconnect/provider correction) reset that
+	// baseline instead of fabricating a large candle volume.
+	if hasVTT {
+		if !state.cumulativeSeen || cumulativeVTT < state.cumulativeVTT {
+			state.cumulativeVTT = cumulativeVTT
+			state.cumulativeSeen = true
+			if !tradeTime.IsZero() {
+				state.lastTradeMS = tradeTime.UnixMilli()
+			}
+			n.volume[instrumentID] = state
+			return 0, nil
+		}
+		delta := cumulativeVTT - state.cumulativeVTT
+		state.cumulativeVTT = cumulativeVTT
+		state.cumulativeSeen = true
+		if !tradeTime.IsZero() {
+			state.lastTradeMS = tradeTime.UnixMilli()
+		}
+		n.volume[instrumentID] = state
+		return float64(delta), nil
+	}
+
+	// LTQ is only a fallback for feeds without VTT. Upstox can repeat the same
+	// last-trade fields across multiple market updates; count LTQ once per LTT
+	// so candle volume is not multiplied by quote/update frequency.
+	if ltq <= 0 || tradeTime.IsZero() {
+		n.volume[instrumentID] = state
+		return 0, nil
+	}
+	tradeMS := tradeTime.UnixMilli()
+	if tradeMS == state.lastTradeMS {
+		n.volume[instrumentID] = state
+		return 0, nil
+	}
+	state.lastTradeMS = tradeMS
+	n.volume[instrumentID] = state
+	return ltq, nil
 }
 
 func (n *Normalizer) recordOptionPriceSource(source optionPriceSource) {
