@@ -122,6 +122,24 @@ func main() {
 		chartTimeframes = config.EffectiveChartTimeframes()
 	}
 
+	volumeAliases := make(map[string]string)
+	volumeMarkets := marketconfig.DefaultMarkets()
+	if config != nil {
+		volumeMarkets = config.EffectiveMarkets()
+	}
+	niftyVolumeSource := "NSE:NIFTY50"
+	for _, market := range volumeMarkets {
+		if strings.EqualFold(strings.TrimSpace(market.Symbol), "NIFTY") {
+			niftyVolumeSource = market.Underlying.InstrumentID
+			break
+		}
+	}
+	synPlusID := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID"))
+	if synPlusID == "" {
+		synPlusID = "QNEXT:NIFTY-SYN+"
+	}
+	volumeAliases[synPlusID] = niftyVolumeSource
+
 	handler := httpapi.New(store, httpapi.Options{
 		Version:         version,
 		Commit:          commit,
@@ -129,6 +147,7 @@ func main() {
 		StreamHandler:   stream.NewWebSocketHandler(broker),
 		ChartTimeframes: chartTimeframes,
 		LiveBars:        broker,
+		VolumeAliases:   volumeAliases,
 		Symbols:         registry,
 		Calendars:       calendars,
 		ResilienceStatus: func() any {
