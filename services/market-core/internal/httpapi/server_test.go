@@ -50,6 +50,76 @@ func TestBarsEndpoint(t *testing.T) {
 	}
 }
 
+type keyedHistory struct {
+	bars map[string][]domain.Bar
+}
+
+func (h keyedHistory) LoadRange(instrumentID, timeframe string, _ time.Time, _ time.Time) ([]domain.Bar, error) {
+	return append([]domain.Bar(nil), h.bars[instrumentID+"|"+timeframe]...), nil
+}
+
+func TestBarsEndpointOverlaysConfiguredProxyVolume(t *testing.T) {
+	at := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
+	history := keyedHistory{bars: map[string][]domain.Bar{
+		"QNEXT:NIFTY-SYN+|15s": {{
+			InstrumentID: "QNEXT:NIFTY-SYN+",
+			Timeframe:    "15s",
+			OpenTime:     at,
+			Open:         25101,
+			High:         25105,
+			Low:          25099,
+			Close:        25103,
+			Volume:       0,
+			Final:        true,
+			Quality:      domain.QualityGood,
+		}},
+		"NSE:NIFTY50|15s": {{
+			InstrumentID: "NSE:NIFTY50",
+			Timeframe:    "15s",
+			OpenTime:     at,
+			Open:         25098,
+			High:         25102,
+			Low:          25097,
+			Close:        25100,
+			Volume:       3770,
+			Final:        true,
+			Quality:      domain.QualityGood,
+		}},
+	}}
+
+	handler := New(history, Options{
+		VolumeAliases: map[string]string{
+			"QNEXT:NIFTY-SYN+": "NSE:NIFTY50",
+		},
+	})
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/bars?instrument_id=QNEXT%3ANIFTY-SYN%2B&timeframe=15s&from_ms="+
+			strconv.FormatInt(at.Add(-time.Minute).UnixMilli(), 10)+
+			"&to_ms="+strconv.FormatInt(at.Add(time.Minute).UnixMilli(), 10),
+		nil,
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload barsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Bars) != 1 {
+		t.Fatalf("unexpected bars: %+v", payload.Bars)
+	}
+	if payload.Bars[0].Volume != 3770 {
+		t.Fatalf("expected mirrored NIFTY proxy volume, got %+v", payload.Bars[0])
+	}
+	if payload.Bars[0].Close != 25103 {
+		t.Fatalf("volume overlay changed SYN+ price: %+v", payload.Bars[0])
+	}
+}
+
 func TestBarsEndpointRejectsInvalidQuery(t *testing.T) {
 	handler := New(fakeHistory{}, Options{})
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/bars", nil)

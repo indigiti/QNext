@@ -31,15 +31,24 @@ type WebSocketHandler struct {
 }
 
 type synPlusShadowBridge struct {
-	broker       *Broker
-	engine       *candle.Engine
-	instrumentID string
-	timeframes   []string
-	sequence     atomic.Uint64
+	broker         *Broker
+	engine         *candle.Engine
+	instrumentID   string
+	volumeSourceID string
+	timeframes     []string
+	sequence       atomic.Uint64
 
 	mu         sync.RWMutex
 	latest     research.SynPlusSnapshot
 	receivedAt time.Time
+
+	volumeMu     sync.Mutex
+	volumeMirror map[string]synPlusVolumeMirror
+}
+
+type synPlusVolumeMirror struct {
+	openTime time.Time
+	volume   float64
 }
 
 type clientMessage struct {
@@ -97,16 +106,27 @@ func newSynPlusShadowBridge(broker *Broker) *synPlusShadowBridge {
 		instrumentID = "QNEXT:NIFTY-SYN+"
 	}
 	timeframes := marketconfig.DefaultChartTimeframes()
+	markets := marketconfig.DefaultMarkets()
 	if path := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG")); path != "" {
 		if config, err := marketconfig.Load(path); err == nil {
 			timeframes = config.EffectiveChartTimeframes()
+			markets = config.EffectiveMarkets()
+		}
+	}
+	volumeSourceID := "NSE:NIFTY50"
+	for _, market := range markets {
+		if strings.EqualFold(strings.TrimSpace(market.Symbol), "NIFTY") {
+			volumeSourceID = market.Underlying.InstrumentID
+			break
 		}
 	}
 	return &synPlusShadowBridge{
-		broker:       broker,
-		engine:       candle.New("candle-v2-session-aligned-shadow"),
-		instrumentID: instrumentID,
-		timeframes:   append([]string(nil), timeframes...),
+		broker:         broker,
+		engine:         candle.New("candle-v2-session-aligned-shadow"),
+		instrumentID:   instrumentID,
+		volumeSourceID: volumeSourceID,
+		timeframes:     append([]string(nil), timeframes...),
+		volumeMirror:   make(map[string]synPlusVolumeMirror),
 	}
 }
 
@@ -313,8 +333,53 @@ func (b *synPlusShadowBridge) observe(snapshot research.SynPlusSnapshot) error {
 		for _, bar := range bars {
 			b.broker.PublishBar(bar)
 		}
+
+		if b.volumeSourceID == "" {
+			continue
+		}
+		source, ok := b.broker.LatestBar(b.volumeSourceID, timeframe)
+		if !ok {
+			continue
+		}
+		openTime, _, bucketErr := candle.Bucket(tick.EventTime, timeframe)
+		if bucketErr != nil || !source.OpenTime.Equal(openTime) {
+			continue
+		}
+		delta := b.proxyVolumeDelta(timeframe, source)
+		if delta <= 0 {
+			continue
+		}
+		volumeTick := tick
+		volumeTick.Provider = "qnext-syn-plus-volume-proxy"
+		volumeTick.Quantity = delta
+		volumeBars, volumeErr := b.engine.ApplyVolume(volumeTick, timeframe)
+		if volumeErr != nil {
+			return volumeErr
+		}
+		for _, bar := range volumeBars {
+			b.broker.PublishBar(bar)
+		}
 	}
 	return nil
+}
+
+func (b *synPlusShadowBridge) proxyVolumeDelta(timeframe string, source domain.Bar) float64 {
+	b.volumeMu.Lock()
+	defer b.volumeMu.Unlock()
+
+	previous := b.volumeMirror[timeframe]
+	delta := source.Volume
+	if previous.openTime.Equal(source.OpenTime) {
+		delta = source.Volume - previous.volume
+		if delta < 0 {
+			delta = 0
+		}
+	}
+	b.volumeMirror[timeframe] = synPlusVolumeMirror{
+		openTime: source.OpenTime,
+		volume:   source.Volume,
+	}
+	return delta
 }
 
 func (b *synPlusShadowBridge) status() any {
@@ -345,6 +410,7 @@ func (b *synPlusShadowBridge) status() any {
 		"ltp_legs":                  latest.LTPLegs,
 		"median_absolute_deviation": latest.MedianAbsoluteDeviation,
 		"chart_timeframes":          append([]string(nil), b.timeframes...),
+		"volume_source":             b.volumeSourceID,
 	}
 }
 
