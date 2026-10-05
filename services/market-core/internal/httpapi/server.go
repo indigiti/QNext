@@ -34,6 +34,7 @@ type Options struct {
 	HistoricalRepair       func(context.Context, int, []string, string) (any, error)
 	HistoricalRepairStatus func() any
 	ChartTimeframes        []string
+	VolumeAliases          map[string]string
 }
 
 type Server struct {
@@ -266,6 +267,10 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if sourceID := strings.TrimSpace(s.options.VolumeAliases[instrumentID]); sourceID != "" {
+		s.overlayVolume(bars, sourceID, timeframe, fromMS, toMS)
+	}
+
 	response := barsResponse{Bars: make([]barResponse, 0, len(bars))}
 	for _, bar := range bars {
 		response.Bars = append(response.Bars, barResponse{
@@ -282,6 +287,55 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) overlayVolume(
+	bars []domain.Bar,
+	sourceID string,
+	timeframe string,
+	fromMS int64,
+	toMS int64,
+) {
+	if len(bars) == 0 || s.history == nil {
+		return
+	}
+
+	sourceBars, err := s.history.LoadRange(
+		sourceID,
+		timeframe,
+		time.UnixMilli(fromMS).UTC(),
+		time.UnixMilli(toMS).UTC(),
+	)
+	if err != nil {
+		return
+	}
+	if s.options.LiveBars != nil {
+		if live, ok := s.options.LiveBars.LatestBar(sourceID, timeframe); ok &&
+			!live.OpenTime.Before(time.UnixMilli(fromMS).UTC()) &&
+			live.OpenTime.Before(time.UnixMilli(toMS).UTC()) {
+			replaced := false
+			for i := range sourceBars {
+				if sourceBars[i].OpenTime.Equal(live.OpenTime) {
+					sourceBars[i] = live
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				sourceBars = append(sourceBars, live)
+			}
+		}
+	}
+
+	volumeByOpen := make(map[int64]float64, len(sourceBars))
+	for _, source := range sourceBars {
+		volumeByOpen[source.OpenTime.UnixMilli()] = source.Volume
+	}
+	for i := range bars {
+		if volume, ok := volumeByOpen[bars[i].OpenTime.UnixMilli()]; ok {
+			bars[i].Volume = volume
+		}
+	}
 }
 
 func (s *Server) symbols(w http.ResponseWriter, r *http.Request) {
