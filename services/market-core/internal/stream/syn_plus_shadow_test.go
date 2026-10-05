@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/indigiti/QNext/services/market-core/internal/candle"
+	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/feedstatus"
 	"github.com/indigiti/QNext/services/market-core/internal/research"
 )
@@ -19,11 +21,30 @@ func TestSynPlusShadowBridgeAcceptsAuthenticatedSnapshot(t *testing.T) {
 	broker := NewBroker(32, 8)
 	handler := NewWebSocketHandler(broker)
 
+	snapshotAt := time.Date(2026, 9, 5, 4, 4, 7, 0, time.UTC)
+	open15, _, err := candle.Bucket(snapshotAt, "15s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker.PublishBar(domain.Bar{
+		InstrumentID:      "NSE:NIFTY50",
+		Timeframe:         "15s",
+		OpenTime:          open15,
+		CloseTime:         open15.Add(15 * time.Second),
+		Open:              22580,
+		High:              22585,
+		Low:               22579,
+		Close:             22584,
+		Volume:            3770,
+		Quality:           domain.QualityGood,
+		AuthorityProvider: "upstox",
+	})
+
 	snapshot := research.SynPlusSnapshot{
 		Schema:             research.SynPlusSnapshotSchema,
 		InstrumentID:       "QNEXT:NIFTY-SYN+",
 		Version:            "nifty-syn-plus-v1",
-		SnapshotAtMS:       time.Now().UTC().UnixMilli(),
+		SnapshotAtMS:       snapshotAt.UnixMilli(),
 		SourceCurrentTSMS:  time.Now().UTC().UnixMilli(),
 		Expiry:             "2026-10-01",
 		ATM:                25000,
@@ -48,8 +69,12 @@ func TestSynPlusShadowBridgeAcceptsAuthenticatedSnapshot(t *testing.T) {
 		t.Fatalf("expected 202, got %d: %s", response.Code, response.Body.String())
 	}
 
-	if _, ok := broker.LatestBar("QNEXT:NIFTY-SYN+", "15s"); !ok {
+	bar, ok := broker.LatestBar("QNEXT:NIFTY-SYN+", "15s")
+	if !ok {
 		t.Fatal("expected live SYN+ 15s bar")
+	}
+	if bar.Volume != 3770 {
+		t.Fatalf("expected mirrored NIFTY proxy volume, got %+v", bar)
 	}
 	telemetry := feed.Snapshot()
 	instrument, ok := telemetry.Instruments["QNEXT:NIFTY-SYN+"]
