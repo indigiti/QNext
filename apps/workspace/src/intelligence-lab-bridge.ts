@@ -2,6 +2,10 @@ import {
   captureActiveChartLabSnapshot,
   type LabChartSnapshot,
 } from './intelligence-lab-snapshot';
+import {
+  augmentPineIntelligenceContracts,
+  type LabHistoryFetcher,
+} from './pine-intelligence-contract';
 
 export const INTELLIGENCE_LAB_PENDING_KEY = 'qnext-intelligence-lab-pending-v1';
 
@@ -24,6 +28,7 @@ interface WorkspaceLike {
 export function mountIntelligenceLabBridge(
   workspace: WorkspaceLike,
   resolveInstrumentID?: (symbol: string) => Promise<string>,
+  fetchBars?: LabHistoryFetcher,
 ): () => void {
   const existing = document.querySelector<HTMLDivElement>('#qnext-intelligence-lab-bridge');
   existing?.remove();
@@ -68,13 +73,26 @@ export function mountIntelligenceLabBridge(
     button.disabled = true;
     status.textContent = 'Capturing enabled indicators…';
     try {
-      const snapshot = await captureActiveChartLabSnapshot(
+      let snapshot = await captureActiveChartLabSnapshot(
         workspace,
         Date.now(),
         resolveInstrumentID,
       );
+      const missingHistory = snapshot.indicators.filter(
+        (indicator) =>
+          indicator.language === 'pine' &&
+          indicator.historical_feature_names.length === 0,
+      );
+      if (fetchBars && missingHistory.length > 0) {
+        status.textContent = 'Building Pine feature contracts…';
+        snapshot = await augmentPineIntelligenceContracts(snapshot, fetchBars);
+      }
       persistPending(snapshot);
-      status.textContent = `${snapshot.indicators.length} indicators · queueing…`;
+      const covered = snapshot.indicators.filter(
+        (indicator) => indicator.historical_feature_names.length > 0,
+      ).length;
+      status.textContent =
+        `${snapshot.indicators.length} indicators · ${covered} covered · queueing…`;
 
       const response = await fetch('/qnext/admin/api/index.php?route=%2Fintelligence-lab%2Fimport', {
         method: 'POST',
