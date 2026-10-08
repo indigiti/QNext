@@ -137,7 +137,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 		ok, reasons := s.options.Readiness()
 		if !ok {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-				"status": "not_ready",
+				"status":  "not_ready",
 				"reasons": reasons,
 			})
 			return
