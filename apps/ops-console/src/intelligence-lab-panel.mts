@@ -33,9 +33,18 @@ type LabExperiment = {
   candidates?: Array<Record<string, unknown>>;
 };
 
+type LabMLRuntime = {
+  state?: 'READY' | 'NEEDS_BOOTSTRAP' | 'UNAVAILABLE' | 'FAILED' | 'UNKNOWN';
+  message?: string;
+  python?: string;
+  wheelhouse_fingerprint?: string;
+  updated_at_ms?: number;
+};
+
 type LabStatus = {
   experiments: LabExperiment[];
   operation?: LabOperation;
+  ml_runtime?: LabMLRuntime;
 };
 
 type QueueResponse = { queued: boolean; requestId: string; action: string };
@@ -161,7 +170,9 @@ function render(status: LabStatus): void {
   const snapshot = pendingSnapshot();
   const busy = status.operation?.state === 'QUEUED';
 
-  state.textContent = operationLabel(status.operation);
+  const runtimeState = status.ml_runtime?.state ?? 'UNKNOWN';
+  const runtimeMessage = status.ml_runtime?.message ?? '';
+  state.textContent = `${operationLabel(status.operation)} · ML ${runtimeState}${runtimeMessage ? ` · ${runtimeMessage}` : ''}`;
   pending.innerHTML = snapshot ? `
     <div class="line">
       <div>
