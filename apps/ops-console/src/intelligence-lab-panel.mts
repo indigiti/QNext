@@ -120,7 +120,11 @@ function card(experiment: LabExperiment, busy: boolean): string {
           <div><span>Max DD</span><strong>${num(metrics.max_drawdown)}</strong></div>
           <div><span>Examples</span><strong>${metrics.historical_examples ?? '—'}</strong></div>
           <div><span>Features</span><strong>${metrics.feature_count ?? '—'}</strong></div>
+          <div><span>Indicator coverage</span><strong>${pct(metrics.indicator_coverage_ratio)}</strong></div>
         </div>
+        ${experiment.backtest?.reasons?.length
+          ? `<div class="muted qil-warning">${experiment.backtest.reasons.map(html).join(' · ')}</div>`
+          : ''}
       ` : '<p class="muted">No Lab backtest yet.</p>'}
       <div class="actions">
         <button class="qil-backtest" type="button" ${canBacktest ? '' : 'disabled'}>Run backtest</button>
@@ -246,6 +250,7 @@ function mount(): void {
     #intelligence-lab-card .qil-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.75rem 0}
     #intelligence-lab-card .qil-metrics div{display:flex;flex-direction:column;gap:.2rem}
     #intelligence-lab-card .qil-horizon-label{display:flex;align-items:center;gap:.4rem;color:var(--muted,#8b98a5)}
+    #intelligence-lab-card .qil-warning{margin:.6rem 0;padding:.55rem .65rem;border:1px solid rgba(245,158,11,.25);border-radius:.45rem}
     #intelligence-lab-card #qil-horizon{width:72px}
     @media(max-width:900px){#intelligence-lab-card .qil-metrics{grid-template-columns:1fr 1fr}}
   `;
