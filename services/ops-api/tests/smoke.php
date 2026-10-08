@@ -6,10 +6,12 @@ use QNext\Ops\AtomicFile;
 use QNext\Ops\Auth;
 use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
+use QNext\Ops\IntelligenceLabControl;
 use QNext\Ops\ReleaseCatalog;
 use QNext\Ops\ServiceControl;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/src/IntelligenceLabControl.php';
 
 function expect(bool $condition, string $message): void
 {
@@ -134,6 +136,48 @@ expect(
     'active cron heartbeat should take precedence over direct process control'
 );
 $flatController = new OpsController($flatConfig);
+
+$labControl = new IntelligenceLabControl($flatConfig);
+$labStatus = $labControl->status();
+expect(
+    ($labStatus['experiments'] ?? null) === []
+    && str_ends_with((string) ($labStatus['storage_root'] ?? ''), '/storage/intelligence-lab'),
+    'Intelligence Lab status should use isolated storage'
+);
+$labSnapshot = [
+    'schema' => 'QNEXT.INTELLIGENCE.LAB.CHART_SNAPSHOT/1',
+    'feature_schema_version' => 'qnext-chart-indicators-v1',
+    'created_at_ms' => 1800000000000,
+    'instrument_id' => 'QNEXT:NIFTY',
+    'timeframe' => '1m',
+    'indicator_configuration_hash' => str_repeat('a', 64),
+    'indicators' => [[
+        'instance_id' => 'ema-1',
+        'title' => 'Adaptive EMA',
+        'kind' => 'script',
+        'source_hash' => str_repeat('b', 64),
+        'configuration_hash' => str_repeat('c', 64),
+        'inputs' => [],
+    ]],
+    'feature_rows' => [[
+        'bar_time_ms' => 1799999940000,
+        'features' => ['indicator.ema_1.plot.ema' => 100.0],
+    ]],
+    'current_features' => ['indicator.ema_1.plot.ema' => 100.0],
+];
+$labQueued = $labControl->importSnapshot(['snapshot' => $labSnapshot]);
+expect(
+    ($labQueued['queued'] ?? false) === true
+    && is_file($flatRoot . '/run/intelligence-lab-request.json'),
+    'Intelligence Lab import should use its own queue'
+);
+$labRequest = json_decode(file_get_contents($flatRoot . '/run/intelligence-lab-request.json') ?: '{}', true);
+expect(
+    ($labRequest['schema'] ?? '') === 'QNEXT.INTELLIGENCE.LAB.REQUEST/1'
+    && ($labRequest['action'] ?? '') === 'import',
+    'Intelligence Lab queue must be schema-bound and action-bound'
+);
+unlink($flatRoot . '/run/intelligence-lab-request.json');
 $seeded = $flatController->getConfig();
 expect(
     isset($seeded['timeframes']) && $seeded['timeframes'] === ['1m'],
