@@ -148,6 +148,7 @@ final class IntelligenceLabControl
                     'indicator_configuration_hash' => $manifest['indicator_configuration_hash'] ?? '',
                     'feature_schema_version' => $manifest['feature_schema_version'] ?? '',
                     'horizon_bars' => $config['horizon_bars'] ?? 0,
+                    'started_at_ms' => $config['started_at_ms'] ?? 0,
                 ];
             }
         }
