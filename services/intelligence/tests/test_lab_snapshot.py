@@ -130,6 +130,10 @@ class IntelligenceLabSnapshotTests(unittest.TestCase):
         self.assertEqual(first.direction_actual, "DOWN")
         self.assertAlmostEqual(first.mfe, 0.02)
         self.assertAlmostEqual(first.mae, -0.02)
+        self.assertEqual(first.mfe_bar, 1)
+        self.assertEqual(first.mae_bar, 2)
+        self.assertEqual(first.future_high_excursions, (0.02, 0.0))
+        self.assertEqual(first.future_low_excursions, (0.0, -0.02))
 
         digest = historical_dataset_hash(imported, examples)
         self.assertRegex(digest, r"^[a-f0-9]{64}$")
