@@ -87,14 +87,22 @@ class IntelligenceLabTests(unittest.TestCase):
             registry = IntelligenceLabRegistry(root / "lab", production_root=root / "prod")
             experiment = registry.create(self.make_experiment())
 
-            unchanged = registry.record_backtest(
-                self.evaluation(experiment.experiment_id, "BACKTEST", passed=False)
-            )
+            failed = self.evaluation(experiment.experiment_id, "BACKTEST", passed=False)
+            unchanged = registry.record_backtest(failed)
             self.assertEqual(unchanged.lifecycle_state, "EXPERIMENT")
             self.assertEqual(
                 registry.get(experiment.experiment_id).lifecycle_state,
                 "EXPERIMENT",
             )
+
+            # Re-running the same immutable failed result is idempotent and does not
+            # block the experiment from a later attempt with different settings.
+            retry = registry.record_backtest(failed)
+            self.assertEqual(retry.lifecycle_state, "EXPERIMENT")
+            attempts = list(
+                (root / "lab" / "experiments" / experiment.experiment_id / "results" / "backtests").glob("*.json")
+            )
+            self.assertEqual(len(attempts), 1)
 
     def test_duplicate_create_is_idempotent_but_conflicts_fail_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
