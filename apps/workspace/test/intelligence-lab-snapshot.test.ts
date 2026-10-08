@@ -11,7 +11,15 @@ describe('Intelligence Lab chart snapshot', () => {
       getState: () => ({
         activeCellId: 'chart-1',
         charts: [
-          { id: 'chart-1', symbol: 'NSE:NIFTY', timeframe: '1m' },
+          {
+            id: 'chart-1',
+            symbol: 'NSE:NIFTY',
+            timeframe: '1m',
+            indicators: {
+              manifest: [{ name: 'Adaptive EMA', inputs: { emaLength: 34 } }],
+              natives: [],
+            },
+          },
           { id: 'chart-2', symbol: 'NSE:BANKNIFTY', timeframe: '5m' },
         ],
       }),
@@ -23,7 +31,6 @@ describe('Intelligence Lab chart snapshot', () => {
             visible: true,
             nativeType: 'adaptive-ema-qalg',
             inputs: [{ key: 'emaLength', defval: 20 }],
-            inputValues: () => ({ emaLength: 34 }),
             context: async () => ({
               meta: { language: 'qnext' },
               plots: {
