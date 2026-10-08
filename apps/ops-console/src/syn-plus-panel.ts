@@ -78,7 +78,6 @@ type PaperEnvelope = {
 function opsAPI() {
   return new OpsAPI({
     base: window.__QNEXT_OPS_CONFIG__?.apiBase,
-    token: sessionStorage.getItem('qnext-ops-token') ?? '',
   });
 }
 
@@ -350,9 +349,6 @@ async function requestPaper(payload?: Record<string, unknown>): Promise<PaperSta
     headers: {
       Accept: 'application/json',
       ...(payload ? { 'Content-Type': 'application/json' } : {}),
-      ...(sessionStorage.getItem('qnext-ops-token')
-        ? { 'X-QNext-Ops-Token': sessionStorage.getItem('qnext-ops-token') ?? '' }
-        : {}),
     },
     credentials: 'same-origin',
     body: payload ? JSON.stringify(payload) : undefined,
