@@ -241,6 +241,18 @@ try {
     if ($method === 'POST' && $path === '/intelligence-lab/backtest') {
         respond(200, $intelligenceLab->backtest(request_body()));
     }
+    if ($method === 'POST' && $path === '/intelligence-lab/shadow/start') {
+        respond(200, $intelligenceLab->startShadow(request_body()));
+    }
+    if ($method === 'POST' && $path === '/intelligence-lab/shadow/certify') {
+        respond(200, $intelligenceLab->certifyShadow(request_body()));
+    }
+    if ($method === 'GET' && $path === '/intelligence-lab/shadow-targets') {
+        respond(200, $intelligenceLab->shadowTargets());
+    }
+    if ($method === 'POST' && $path === '/intelligence-lab/shadow-observation') {
+        respond(200, $intelligenceLab->submitShadowObservation(request_body()));
+    }
     if ($method === 'GET' && $path === '/syn-plus-paper') {
         respond(200, $paper->status());
     }
