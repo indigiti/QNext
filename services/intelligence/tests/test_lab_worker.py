@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -307,6 +308,116 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
                         ).glob("*.json")
                     )
                 ),
+                1,
+            )
+            self.assertFalse(
+                (production_root / "models" / "production.json").exists()
+            )
+
+    def test_certified_advisory_observation_uses_selected_lab_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lab_root = root / "storage" / "intelligence-lab"
+            production_root = root / "storage" / "intelligence"
+            snapshot = chart_snapshot()
+
+            imported = process_request(
+                self.request("import", {"snapshot": snapshot}),
+                storage_root=lab_root,
+                production_root=production_root,
+                market_core_url="http://market-core",
+            )
+            experiment_id = imported["result"]["experiment"]["experiment_id"]
+
+            with patch(
+                "qnext_intelligence.lab_worker.MarketCoreHistoryClient",
+                FakeHistoryClient,
+            ):
+                backtest = process_request(
+                    self.request(
+                        "backtest",
+                        {
+                            "experimentId": experiment_id,
+                            "horizonBars": 1,
+                            "minSamples": 60,
+                            "minTestSamples": 12,
+                            "minAverageReturnImprovement": -1.0,
+                            "maxAccuracyRegression": 1.0,
+                            "maxDrawdownSlack": 10.0,
+                        },
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+            self.assertEqual(
+                backtest["result"]["experiment"]["lifecycle_state"],
+                "BACKTESTED",
+            )
+
+            experiment_root = lab_root / "experiments" / experiment_id
+            manifest_path = experiment_root / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["lifecycle_state"] = "CERTIFIED"
+            manifest_path.write_text(
+                json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            results_root = experiment_root / "results"
+            shadow_record = {
+                "schema": "QNEXT.INTELLIGENCE.LAB.EVALUATION/1",
+                "experiment_id": experiment_id,
+                "phase": "SHADOW",
+                "evaluated_at_ms": 6_000_000,
+                "dataset_hash": "d" * 64,
+                "model_spec_hash": backtest["result"]["evaluation"]["model_spec_hash"],
+                "gate_passed": True,
+                "metrics": {"samples": 30.0},
+                "reasons": [],
+            }
+            (results_root / "shadow.json").write_text(
+                json.dumps(shadow_record, sort_keys=True, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+
+            final_rows = snapshot["feature_rows"][-30:]
+            with patch(
+                "qnext_intelligence.lab_worker.MarketCoreHistoryClient",
+                FakeHistoryClient,
+            ):
+                advised = process_request(
+                    self.request(
+                        "advisory-observation",
+                        {
+                            "experimentId": experiment_id,
+                            "indicatorConfigurationHash": "a" * 64,
+                            "featureSchemaVersion": "qnext-chart-indicators-v1",
+                            "barTimeMs": final_rows[-1]["bar_time_ms"],
+                            "createdAtMs": 7_000_000,
+                            "featureRows": final_rows,
+                            "currentFeatures": final_rows[-1]["features"],
+                        },
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+
+            self.assertEqual(advised["state"], "SUCCESS")
+            advisory = advised["result"]["advisory"]
+            self.assertIn(advisory["decision"], {"BUY", "SELL", "NO_TRADE"})
+            self.assertAlmostEqual(
+                sum(advisory["probabilities"].values()),
+                1.0,
+                places=6,
+            )
+            self.assertNotIn("features", advisory)
+            self.assertNotIn("model_payload", advisory)
+            self.assertTrue(
+                (experiment_root / "advisory" / "latest.json").is_file()
+            )
+            self.assertEqual(
+                len(list((experiment_root / "advisory" / "observations").glob("*.json"))),
                 1,
             )
             self.assertFalse(
