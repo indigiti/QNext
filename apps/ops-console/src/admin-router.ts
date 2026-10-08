@@ -8,7 +8,9 @@ type OpsView =
   | 'market'
   | 'candles'
   | 'synthetic'
-  | 'trading'
+  | 'indicators'
+  | 'intelligence'
+  | 'lab'
   | 'runtime'
   | 'releases'
   | 'diagnostics'
@@ -20,7 +22,9 @@ const routeByView: Record<OpsView, string> = {
   market: 'market-data',
   candles: 'candles-history',
   synthetic: 'synthetic',
-  trading: 'indicators-intelligence',
+  indicators: 'indicators',
+  intelligence: 'intelligence',
+  lab: 'intelligence-lab',
   runtime: 'runtime',
   releases: 'releases',
   diagnostics: 'diagnostics',
@@ -31,6 +35,7 @@ const routeByView: Record<OpsView, string> = {
 const viewByRoute = new Map<string, OpsView>(
   Object.entries(routeByView).map(([view, route]) => [route, view as OpsView]),
 );
+viewByRoute.set('indicators-intelligence', 'intelligence');
 
 const ADMIN_BASE = '/qnext/admin/';
 const QNEXT_API_PREFIX = '/qnext/api/v1/';
