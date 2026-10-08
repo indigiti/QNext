@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install Lab ML dependencies
+        run: python -m pip install --disable-pip-version-check -e './services/intelligence[lab-ml]'
       - name: Compile intelligence runtime
         run: python -m compileall -q services/intelligence/qnext_intelligence services/intelligence/tests
       - name: Intelligence certification

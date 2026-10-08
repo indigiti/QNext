@@ -8,6 +8,7 @@ import {
 } from './charts/lightweight-workspace';
 import { QNextProvider } from './qnext-provider';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
+import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
 import './style.css';
 
 declare global {
@@ -161,6 +162,13 @@ async function bootstrapVela(timeframes: string[]) {
   });
 
   window.__QNEXT_WORKSPACE__ = workspace;
+  const labResolverProvider = createProvider();
+  mountIntelligenceLabBridge(
+    workspace as unknown as Parameters<typeof mountIntelligenceLabBridge>[0],
+    (symbol) => labResolverProvider.resolveInstrumentID(symbol),
+    (instrumentID, timeframe, range) =>
+      labResolverProvider.getBars(instrumentID, timeframe, range),
+  );
 }
 
 async function bootstrapLightweight(

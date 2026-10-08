@@ -92,6 +92,10 @@ CRON_HEARTBEAT="$PRIVATE_ROOT/run/cron-heartbeat"
 INTELLIGENCE_REQUEST="$PRIVATE_ROOT/run/intelligence-request.json"
 INTELLIGENCE_RESULT="$PRIVATE_ROOT/run/intelligence-result.json"
 INTELLIGENCE_LOG="$PRIVATE_ROOT/logs/intelligence.log"
+INTELLIGENCE_LAB_REQUEST="$PRIVATE_ROOT/run/intelligence-lab-request.json"
+INTELLIGENCE_LAB_RESULT="$PRIVATE_ROOT/run/intelligence-lab-result.json"
+INTELLIGENCE_LAB_LOG="$PRIVATE_ROOT/logs/intelligence-lab.log"
+INTELLIGENCE_LAB_PYTHON_HELPER="$PAYLOAD_PRIVATE/deploy/qnext-intelligence-lab-python"
 LOCK_DIR="$PRIVATE_ROOT/run/supervisor.lock"
 MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:18080}"
 
@@ -459,9 +463,57 @@ process_intelligence_request() {
   rm -f "$INTELLIGENCE_REQUEST"
 }
 
+process_intelligence_lab_request() {
+  [[ -s "$INTELLIGENCE_LAB_REQUEST" ]] || return 0
+
+  local intelligence_root="$PAYLOAD_PRIVATE/intelligence"
+  local lab_python="python3"
+  local isolated_python=""
+  local lab_action=""
+
+  if [[ ! -d "$intelligence_root/qnext_intelligence" ]]; then
+    printf '%s\n' '{"state":"FAILED","action":"unknown","request_id":"","completed_at_ms":0,"error":"Intelligence Lab runtime is not deployed"}' > "$INTELLIGENCE_LAB_RESULT"
+    rm -f "$INTELLIGENCE_LAB_REQUEST"
+    return 0
+  fi
+
+  lab_action="$(python3 - "$INTELLIGENCE_LAB_REQUEST" <<'PY' 2>/dev/null || true
+import json
+import sys
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as handle:
+        value = json.load(handle)
+    print(str(value.get("action", "")))
+except Exception:
+    pass
+PY
+)"
+
+  if [[ "$lab_action" == "backtest" && -x "$INTELLIGENCE_LAB_PYTHON_HELPER" ]]; then
+    if isolated_python="$(QNEXT_PRIVATE_ROOT="$PRIVATE_ROOT" "$INTELLIGENCE_LAB_PYTHON_HELPER" bootstrap 2>>"$INTELLIGENCE_LAB_LOG")" \
+        && [[ -x "$isolated_python" ]]; then
+      lab_python="$isolated_python"
+      echo "Intelligence Lab using isolated ML runtime: $lab_python" >>"$INTELLIGENCE_LAB_LOG"
+    else
+      echo "Intelligence Lab ML runtime unavailable; using Ridge-safe system Python fallback" >>"$INTELLIGENCE_LAB_LOG"
+    fi
+  fi
+
+  if ! PYTHONPATH="$intelligence_root" "$lab_python" -m qnext_intelligence.lab_worker \
+      --request "$INTELLIGENCE_LAB_REQUEST" \
+      --result "$INTELLIGENCE_LAB_RESULT" \
+      --storage-root "$PRIVATE_ROOT/storage/intelligence-lab" \
+      --production-root "$PRIVATE_ROOT/storage/intelligence" \
+      --market-core-url "$MARKET_URL" >>"$INTELLIGENCE_LAB_LOG" 2>&1; then
+    echo "Intelligence Lab queued action failed; see $INTELLIGENCE_LAB_LOG" >>"$INTELLIGENCE_LAB_LOG"
+  fi
+  rm -f "$INTELLIGENCE_LAB_REQUEST"
+}
+
 reconcile() {
   date +%s > "$CRON_HEARTBEAT"
   process_intelligence_request
+  process_intelligence_lab_request
 
   local request=""
   if [[ -s "$CONTROL_REQUEST" ]]; then

@@ -64,6 +64,20 @@ jobs:
           bash -n deploy/qnext-ops-helper
           bash -n deploy/qnext-ops-web
           bash -n deploy/qnext-ops-user
+          bash -n deploy/qnext-intelligence-lab-python
+      - name: Lab ML runtime fallback smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          if QNEXT_PRIVATE_ROOT="$root" bash deploy/qnext-intelligence-lab-python status; then
+            echo "empty Lab ML runtime unexpectedly reported READY" >&2
+            exit 1
+          fi
+          test -s "$root/run/intelligence-lab-python.json"
+          grep -Fq '"state":"UNAVAILABLE"' "$root/run/intelligence-lab-python.json"
+          rm -rf "$root"
+
       - name: PHP smoke
         run: |
           php services/ops-api/tests/smoke.php
@@ -74,6 +88,42 @@ jobs:
         run: |
           set -euo pipefail
           ! grep -R -E 'shell_exec\(|passthru\(|system\(|exec\(' services/ops-api
+
+  lab-ml-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build local Lab ML wheelhouse
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          mkdir -p "$root/intelligence-lab-wheels"
+          printf '%s\n'             'scikit-learn==1.9.1'             'lightgbm==4.7.0'             > "$root/intelligence-lab-wheels/requirements.lock"
+          python -m pip download             --disable-pip-version-check             --only-binary=:all:             --dest "$root/intelligence-lab-wheels"             -r "$root/intelligence-lab-wheels/requirements.lock"
+          (
+            cd "$root/intelligence-lab-wheels"
+            sha256sum requirements.lock *.whl > wheelhouse.sha256
+            sha256sum -c wheelhouse.sha256
+          )
+          QNEXT_PRIVATE_ROOT="$root"             QNEXT_LAB_BOOTSTRAP_PYTHON=python             deploy/qnext-intelligence-lab-python bootstrap > "$root/python-path"
+          lab_python="$(cat "$root/python-path")"
+          test -x "$lab_python"
+          "$lab_python" - <<'PY'
+          import lightgbm
+          import sklearn
+          assert sklearn.__version__ == "1.9.1"
+          assert lightgbm.__version__ == "4.7.0"
+          PY
+          second="$(
+            QNEXT_PRIVATE_ROOT="$root"               QNEXT_LAB_BOOTSTRAP_PYTHON=python               deploy/qnext-intelligence-lab-python bootstrap
+          )"
+          test "$second" = "$lab_python"
+          grep -Fq '"state":"READY"' "$root/run/intelligence-lab-python.json"
+          rm -rf "$root"
 
   release-contract:
     runs-on: ubuntu-latest
@@ -94,3 +144,6 @@ jobs:
           grep -q 'QNEXT.RELEASE/1' .github/workflows/qnext-release.yml
           test -x deploy/qnext-ops-helper
           test -x deploy/qnext-ops-web
+          test -f deploy/qnext-intelligence-lab-python
+          grep -q 'intelligence-lab-wheels' .github/workflows/qnext-release.yml
+          grep -q 'qnext-intelligence-lab-python' .github/workflows/qnext-release.yml

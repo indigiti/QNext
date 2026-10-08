@@ -127,6 +127,10 @@ export class QNextProvider {
     this.pollIntervalMs = options.pollIntervalMs ?? 250;
   }
 
+  async resolveInstrumentID(ticker: string): Promise<string> {
+    return (await this.resolveInstrument(ticker)).instrument_id;
+  }
+
   async listSymbols() {
     const symbols = await this.loadSymbols();
     const order = new Map(

@@ -28,6 +28,9 @@ class HistoryClientTests(unittest.TestCase):
         self.assertEqual(timeframe_to_milliseconds("1m"), 60_000)
         self.assertEqual(timeframe_to_milliseconds("3m"), 180_000)
         self.assertEqual(timeframe_to_milliseconds("1h"), 3_600_000)
+        self.assertEqual(timeframe_to_milliseconds("1D"), 86_400_000)
+        self.assertEqual(timeframe_to_milliseconds("1W"), 7 * 86_400_000)
+        self.assertEqual(timeframe_to_milliseconds("1M"), 30 * 86_400_000)
         with self.assertRaises(ValueError):
             timeframe_to_milliseconds("0m")
 

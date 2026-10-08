@@ -9,6 +9,12 @@ description = "Leakage-safe deterministic intelligence runtime for QNext canonic
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+lab-ml = [
+  "scikit-learn==1.9.1",
+  "lightgbm==4.7.0",
+]
+
 [project.scripts]
 qnext-intelligence = "qnext_intelligence.cli:main"
 

@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 use QNext\Ops\Auth;
 use QNext\Ops\IntelligenceControl;
+use QNext\Ops\IntelligenceLabControl;
 use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
 use QNext\Ops\PaperProxy;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/src/IntelligenceControl.php';
+require_once dirname(__DIR__) . '/src/IntelligenceLabControl.php';
 
 const QNEXT_OPS_SESSION_COOKIE = 'qnext_ops_session';
 
@@ -195,6 +197,7 @@ try {
     $controller = new OpsController($config);
     $paper = new PaperProxy($config->paperRuntimeUrl);
     $intelligence = new IntelligenceControl($config);
+    $intelligenceLab = new IntelligenceLabControl($config);
 
     if ($method === 'GET' && $path === '/status') {
         respond(200, $controller->status());
@@ -219,6 +222,15 @@ try {
     }
     if ($method === 'POST' && $path === '/intelligence/rollback') {
         respond(200, $intelligence->rollback(request_body()));
+    }
+    if ($method === 'GET' && $path === '/intelligence-lab') {
+        respond(200, $intelligenceLab->status());
+    }
+    if ($method === 'POST' && $path === '/intelligence-lab/import') {
+        respond(200, $intelligenceLab->importSnapshot(request_body()));
+    }
+    if ($method === 'POST' && $path === '/intelligence-lab/backtest') {
+        respond(200, $intelligenceLab->backtest(request_body()));
     }
     if ($method === 'GET' && $path === '/syn-plus-paper') {
         respond(200, $paper->status());

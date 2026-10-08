@@ -220,9 +220,70 @@ export class QNextIndicatorEngine implements ScriptingEngine {
               time: point.time,
               value: point.value,
             })),
+            PRICE: bars.map((bar, index) => ({
+              time: bar.time,
+              value: result.source[index] ?? null,
+            })),
+            ATR: bars.map((bar, index) => ({
+              time: bar.time,
+              value: result.atr[index] ?? null,
+            })),
+            STDDEV: bars.map((bar, index) => ({
+              time: bar.time,
+              value: result.stddev[index] ?? null,
+            })),
+            TREND: bars.map((bar, index) => ({
+              time: bar.time,
+              value: result.trend[index] ?? 0,
+            })),
+            EMA_DISTANCE_PCT: bars.map((bar, index) => {
+              const price = result.source[index];
+              const ema = result.ema[index];
+              return {
+                time: bar.time,
+                value:
+                  price !== undefined && ema !== undefined && ema !== 0
+                    ? (price / ema) - 1
+                    : null,
+              };
+            }),
+            EMA_SLOPE_PCT: bars.map((bar, index) => {
+              const current = result.ema[index];
+              const previous = index > 0 ? result.ema[index - 1] : undefined;
+              return {
+                time: bar.time,
+                value:
+                  current !== undefined && previous !== undefined && previous !== 0
+                    ? (current / previous) - 1
+                    : null,
+              };
+            }),
+            ATR_PCT: bars.map((bar, index) => {
+              const price = result.source[index];
+              const atr = result.atr[index];
+              return {
+                time: bar.time,
+                value:
+                  price !== undefined && price !== 0 && atr !== null && atr !== undefined
+                    ? atr / price
+                    : null,
+              };
+            }),
+            STDDEV_PCT: bars.map((bar, index) => {
+              const ema = result.ema[index];
+              const stddev = result.stddev[index];
+              return {
+                time: bar.time,
+                value:
+                  ema !== undefined && ema !== 0 && stddev !== null && stddev !== undefined
+                    ? stddev / ema
+                    : null,
+              };
+            }),
           },
           variables: {
             trend: result.trend.at(-1) ?? 0,
+            intelligenceFeatureContract: 1,
             ...values,
           },
           warnings: [],
