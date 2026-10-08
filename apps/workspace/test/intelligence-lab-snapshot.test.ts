@@ -58,10 +58,17 @@ describe('Intelligence Lab chart snapshot', () => {
       },
     };
 
-    const snapshot = await captureActiveChartLabSnapshot(workspace, 1_800_000_120_000);
+    const snapshot = await captureActiveChartLabSnapshot(
+      workspace,
+      1_800_000_120_000,
+      async (symbol) => {
+        expect(symbol).toBe('NSE:NIFTY');
+        return 'NSE:NIFTY50';
+      },
+    );
 
     expect(snapshot.schema).toBe(LAB_CHART_SNAPSHOT_SCHEMA);
-    expect(snapshot.instrument_id).toBe('NSE:NIFTY');
+    expect(snapshot.instrument_id).toBe('NSE:NIFTY50');
     expect(snapshot.timeframe).toBe('1m');
     expect(snapshot.indicators).toHaveLength(1);
     expect(snapshot.indicators[0]?.instance_id).toBe('ema-1');
