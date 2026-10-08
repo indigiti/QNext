@@ -310,6 +310,36 @@ class IntelligenceLabRegistry:
         )
         return selection_id
 
+    def save_recommendation_artifact(
+        self,
+        experiment_id: str,
+        recommendation: Mapping[str, Any],
+    ) -> str:
+        self.get(experiment_id)
+        recommendation_id = str(recommendation.get("recommendation_id", ""))
+        self._validate_id(recommendation_id)
+        material = dict(recommendation)
+        immutable_path = (
+            self._experiment_dir(experiment_id)
+            / "results"
+            / "recommendations"
+            / f"{recommendation_id}.json"
+        )
+        if immutable_path.exists():
+            with immutable_path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing != material:
+                raise ValueError("recommendation id already exists with different content")
+        else:
+            self._write_json(immutable_path, material, overwrite=False)
+
+        self._write_json(
+            self._experiment_dir(experiment_id) / "results" / "recommendation.json",
+            material,
+            overwrite=True,
+        )
+        return recommendation_id
+
     def save_candidate_artifact(
         self,
         experiment_id: str,
