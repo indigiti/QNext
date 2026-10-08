@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from statistics import pstdev
 import time
 from typing import Any, Mapping, Sequence
 
@@ -60,13 +61,47 @@ def _import_snapshot(
     }
 
 
-def _common_feature_names(examples: Sequence[HistoricalLabExample]) -> tuple[str, ...]:
+def _selected_feature_names(
+    examples: Sequence[HistoricalLabExample],
+    *,
+    min_coverage: float = 0.80,
+    max_features: int = 96,
+) -> tuple[str, ...]:
     if not examples:
         return ()
-    names = set(examples[0].features)
-    for example in examples[1:]:
-        names.intersection_update(example.features)
-    return tuple(sorted(names))
+
+    counts: dict[str, int] = {}
+    values: dict[str, list[float]] = {}
+    for example in examples:
+        for name, value in example.features.items():
+            counts[name] = counts.get(name, 0) + 1
+            values.setdefault(name, []).append(float(value))
+
+    eligible: list[str] = []
+    minimum = max(1, int(len(examples) * min_coverage))
+    for name, count in counts.items():
+        column = values.get(name, [])
+        if count < minimum or len(column) < 2:
+            continue
+        if pstdev(column) <= 1e-12:
+            continue
+        eligible.append(name)
+
+    def priority(name: str) -> tuple[int, str]:
+        if name.startswith("market."):
+            return (0, name)
+        if name.endswith(".delta_1"):
+            return (2, name)
+        if name.endswith(".delta_3"):
+            return (3, name)
+        if name.endswith(".z20"):
+            return (4, name)
+        return (1, name)
+
+    selected = tuple(sorted(eligible, key=priority)[:max_features])
+    if not selected:
+        raise ValueError("historical examples have no stable non-constant features")
+    return selected
 
 
 def _learning_records(
@@ -74,16 +109,19 @@ def _learning_records(
     feature_schema_version: str,
     examples: Sequence[HistoricalLabExample],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    names = _common_feature_names(examples)
-    if not names:
-        raise ValueError("historical examples have no common indicator features")
+    names = _selected_feature_names(examples)
 
     features: list[dict[str, Any]] = []
     predictions: list[dict[str, Any]] = []
     outcomes: list[dict[str, Any]] = []
 
-    for index, example in enumerate(examples):
+    accepted_index = 0
+    for example in examples:
+        if any(name not in example.features for name in names):
+            continue
         values = {name: float(example.features[name]) for name in names}
+        index = accepted_index
+        accepted_index += 1
         snapshot_hash = stable_hash({
             "experiment_id": experiment_id,
             "bar_time_ms": example.bar_time_ms,
