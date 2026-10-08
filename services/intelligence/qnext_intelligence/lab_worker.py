@@ -255,16 +255,23 @@ def _backtest(
     candidate_record = candidate.to_record()
     registry.save_candidate_artifact(experiment_id, candidate_record)
 
-    ml_candidate = train_ml_challenger(
-        dataset,
-        ridge_validation_metrics=candidate.validation_metrics,
-        ridge_test_metrics=candidate.test_metrics,
-        created_at_ms=created_at_ms,
-        min_test_samples=min_test_samples,
-        min_average_return_improvement=float(payload.get("minAverageReturnImprovement", 0.0)),
-        max_accuracy_regression=float(payload.get("maxAccuracyRegression", 0.02)),
-        max_drawdown_slack=float(payload.get("maxDrawdownSlack", 0.01)),
-    )
+    ml_candidate = None
+    ml_error = ""
+    try:
+        ml_candidate = train_ml_challenger(
+            dataset,
+            ridge_validation_metrics=candidate.validation_metrics,
+            ridge_test_metrics=candidate.test_metrics,
+            created_at_ms=created_at_ms,
+            min_test_samples=min_test_samples,
+            min_average_return_improvement=float(payload.get("minAverageReturnImprovement", 0.0)),
+            max_accuracy_regression=float(payload.get("maxAccuracyRegression", 0.02)),
+            max_drawdown_slack=float(payload.get("maxDrawdownSlack", 0.01)),
+        )
+    except Exception as error:
+        # Lab ML is optional and must never make the deterministic ridge
+        # benchmark or production intelligence unavailable.
+        ml_error = str(error)[:500]
     ml_record = ml_candidate.to_record() if ml_candidate is not None else None
     if ml_record is not None:
         registry.save_candidate_artifact(experiment_id, ml_record)
@@ -328,6 +335,7 @@ def _backtest(
         "ml_candidate": ml_record,
         "selected_algorithm": selected_algorithm,
         "ml_dependencies": dependency_status(),
+        "ml_error": ml_error,
         "indicator_feature_counts": indicator_feature_counts,
         "missing_indicators": list(missing_indicators),
         "feature_names": list(dataset.feature_names),
