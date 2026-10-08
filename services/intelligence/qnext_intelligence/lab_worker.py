@@ -66,6 +66,7 @@ def _import_snapshot(
 def _selected_feature_names(
     examples: Sequence[HistoricalLabExample],
     *,
+    indicator_ids: Sequence[str] = (),
     min_coverage: float = 0.80,
     max_features: int = 96,
 ) -> tuple[str, ...]:
@@ -100,10 +101,29 @@ def _selected_feature_names(
             return (4, name)
         return (1, name)
 
-    selected = tuple(sorted(eligible, key=priority)[:max_features])
+    ordered = sorted(eligible, key=priority)
+    mandatory: list[str] = []
+    for indicator_id in indicator_ids:
+        prefix = f"indicator.{_safe_feature_part(indicator_id)}."
+        candidates = [name for name in ordered if name.startswith(prefix)]
+        if candidates:
+            mandatory.append(candidates[0])
+
+    mandatory = list(dict.fromkeys(mandatory))
+    if len(mandatory) > max_features:
+        raise ValueError("max feature limit cannot represent every enabled indicator")
+
+    selected = mandatory[:]
+    for name in ordered:
+        if name in selected:
+            continue
+        if len(selected) >= max_features:
+            break
+        selected.append(name)
+
     if not selected:
         raise ValueError("historical examples have no stable non-constant features")
-    return selected
+    return tuple(selected)
 
 
 def _safe_feature_part(value: str) -> str:
@@ -130,8 +150,10 @@ def _learning_records(
     experiment_id: str,
     feature_schema_version: str,
     examples: Sequence[HistoricalLabExample],
+    *,
+    indicator_ids: Sequence[str] = (),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    names = _selected_feature_names(examples)
+    names = _selected_feature_names(examples, indicator_ids=indicator_ids)
 
     features: list[dict[str, Any]] = []
     predictions: list[dict[str, Any]] = []
@@ -236,6 +258,7 @@ def _backtest(
         experiment_id,
         imported.feature_schema_version,
         examples,
+        indicator_ids=imported.indicator_ids,
     )
     dataset = build_learning_dataset(
         feature_records,
