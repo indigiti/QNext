@@ -256,7 +256,7 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 	// This is a read-window guard, not a backfill/storage retention policy.
 	if toMS-fromMS > maxHistoryReadWindow(timeframe).Milliseconds() {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
-			"error": "history_window_too_large",
+			"error":         "history_window_too_large",
 			"max_window_ms": maxHistoryReadWindow(timeframe).Milliseconds(),
 		})
 		return
