@@ -1,3 +1,5 @@
+export {};
+
 type SetupStatus = {
   initialized: boolean;
   recovery_configured?: boolean;
