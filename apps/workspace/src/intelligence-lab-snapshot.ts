@@ -56,6 +56,7 @@ interface WorkspaceLike {
 }
 
 type ContextLike = {
+  language?: unknown;
   meta?: { language?: unknown };
   plots?: Record<string, unknown>;
   variables?: Record<string, unknown>;
@@ -76,18 +77,18 @@ export async function captureActiveChartLabSnapshot(
   const currentFeatures: Record<string, number> = {};
 
   for (const handle of handles) {
-    const context = await handle.context(['meta', 'plots', 'variables']) as ContextLike | null;
+    const context = await handle.context(['language', 'meta', 'plots', 'variables']) as ContextLike | null;
     const source = typeof handle.source === 'string' ? handle.source : undefined;
     const nativeType = typeof handle.nativeType === 'string' ? handle.nativeType : undefined;
     const sourceMaterial = source ?? `native:${nativeType ?? handle.title}`;
     const sourceHash = await sha256Hex(sourceMaterial);
-    const inputs = resolveInputValues(handle);
+    const inputs = resolveInputValues(handle, persistedInputDeltas(market.chartState, handle));
 
     const descriptorMaterial = {
       instance_id: handle.id,
       title: handle.title,
       kind: source ? 'script' : 'native',
-      language: stringValue(context?.meta?.language),
+      language: stringValue(context?.language) ?? stringValue(context?.meta?.language),
       native_type: nativeType,
       source_hash: sourceHash,
       inputs,
@@ -142,7 +143,7 @@ export async function captureActiveChartLabSnapshot(
   };
 }
 
-function activeMarketFromState(state: unknown): { symbol: string; timeframe: string } {
+function activeMarketFromState(state: unknown): { symbol: string; timeframe: string; chartState: Record<string, any> } {
   if (!isRecord(state) || !Array.isArray(state.charts) || state.charts.length === 0) {
     throw new Error('Vela workspace state does not contain a chart');
   }
@@ -160,10 +161,37 @@ function activeMarketFromState(state: unknown): { symbol: string; timeframe: str
   if (!symbol || !timeframe) {
     throw new Error('Vela active chart is missing symbol or timeframe');
   }
-  return { symbol, timeframe };
+  return { symbol, timeframe, chartState: chart };
 }
 
-function resolveInputValues(handle: IndicatorHandleLike): Record<string, string | number | boolean> {
+function persistedInputDeltas(
+  chartState: Record<string, any>,
+  handle: IndicatorHandleLike,
+): Record<string, unknown> {
+  const indicators = isRecord(chartState.indicators) ? chartState.indicators : null;
+  if (!indicators) return {};
+
+  const sourceEntries = handle.source !== undefined
+    ? (Array.isArray(indicators.manifest) ? indicators.manifest : [])
+    : (Array.isArray(indicators.natives) ? indicators.natives : []);
+
+  for (const entry of sourceEntries) {
+    if (typeof entry === 'string') {
+      if (entry === handle.title) return {};
+      continue;
+    }
+    if (!isRecord(entry)) continue;
+    const identity = handle.source !== undefined ? entry.name : entry.type;
+    if (identity !== handle.title) continue;
+    return isRecord(entry.inputs) ? entry.inputs : {};
+  }
+  return {};
+}
+
+function resolveInputValues(
+  handle: IndicatorHandleLike,
+  persisted: Record<string, unknown> = {},
+): Record<string, string | number | boolean> {
   let values: Record<string, unknown> = {};
   try {
     const provided = handle.inputValues?.();
@@ -174,7 +202,11 @@ function resolveInputValues(handle: IndicatorHandleLike): Record<string, string 
 
   const resolved: Record<string, string | number | boolean> = {};
   for (const input of handle.inputs ?? []) {
-    const value = input.key in values ? values[input.key] : input.defval;
+    const value = input.key in values
+      ? values[input.key]
+      : input.key in persisted
+        ? persisted[input.key]
+        : input.defval;
     if (
       typeof value === 'string' ||
       typeof value === 'boolean' ||
