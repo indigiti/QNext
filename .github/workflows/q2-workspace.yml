@@ -95,8 +95,13 @@ jobs:
       - name: Build static workspace
         run: npm run build
 
-      - name: Validate paper marker endpoint syntax
-        run: php -l public/api/v1/paper-markers/index.php
+      - name: Validate chart-side PHP endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l public/api/v1/paper-markers/index.php
+          php -l public/api/v1/intelligence-advisory/index.php
+          test -f dist/api/v1/intelligence-advisory/index.php
 
       - name: Validate indicator deployment-root and Pine manifest
         shell: bash
