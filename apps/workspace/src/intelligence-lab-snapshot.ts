@@ -1,5 +1,5 @@
 export const LAB_CHART_SNAPSHOT_SCHEMA = 'QNEXT.INTELLIGENCE.LAB.CHART_SNAPSHOT/1';
-export const LAB_FEATURE_SCHEMA_VERSION = 'qnext-chart-indicators-v1';
+export const LAB_FEATURE_SCHEMA_VERSION = 'qnext-chart-indicators-v2';
 
 export interface LabIndicatorDescriptor {
   instance_id: string;
