@@ -89,8 +89,8 @@ export async function captureActiveChartLabContext(
     instance_id: string;
     title: string;
     kind: 'script' | 'native';
-    language: string;
-    native_type: string;
+    language?: string;
+    native_type?: string;
     source_hash: string;
     inputs: Record<string, string | number | boolean>;
     configuration_hash: string;
@@ -107,8 +107,8 @@ export async function captureActiveChartLabContext(
       instance_id: handle.id,
       title: handle.title,
       kind: source ? 'script' as const : 'native' as const,
-      language: stringValue(context?.language) ?? stringValue(context?.meta?.language) ?? '',
-      native_type: nativeType ?? '',
+      language: stringValue(context?.language) ?? stringValue(context?.meta?.language),
+      native_type: nativeType,
       source_hash: sourceHash,
       inputs,
     };
@@ -122,7 +122,16 @@ export async function captureActiveChartLabContext(
   const indicatorConfigurationHash = await sha256Hex(canonicalJson({
     instrument_id: instrumentID,
     timeframe: market.timeframe,
-    indicators: descriptors,
+    indicators: descriptors.map((descriptor) => ({
+      instance_id: descriptor.instance_id,
+      title: descriptor.title,
+      kind: descriptor.kind,
+      language: descriptor.language ?? '',
+      native_type: descriptor.native_type ?? '',
+      source_hash: descriptor.source_hash,
+      inputs: descriptor.inputs,
+      configuration_hash: descriptor.configuration_hash,
+    })),
   }));
 
   return {
