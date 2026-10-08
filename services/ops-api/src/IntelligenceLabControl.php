@@ -47,6 +47,11 @@ final class IntelligenceLabControl
             'production_storage_root' => $this->productionStorageRoot(),
             'experiments' => $experiments,
             'operation' => $this->operationStatus(),
+            'ml_runtime' => $this->readJson($this->mlRuntimeStatusPath()) ?? [
+                'schema' => 'QNEXT.INTELLIGENCE.LAB.PYTHON/1',
+                'state' => 'UNKNOWN',
+                'message' => 'isolated Lab ML runtime has not been checked yet',
+            ],
         ];
     }
 
@@ -150,6 +155,11 @@ final class IntelligenceLabControl
     private function resultPath(): string
     {
         return $this->config->privateRoot . '/run/intelligence-lab-result.json';
+    }
+
+    private function mlRuntimeStatusPath(): string
+    {
+        return $this->config->privateRoot . '/run/intelligence-lab-python.json';
     }
 
     private function readJson(string $path): ?array
