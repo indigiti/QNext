@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${QNEXT_PRIVATE_ROOT:-}" ]]; then
+  QNEXT_PRIVATE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
+PRIVATE_ROOT="${QNEXT_PRIVATE_ROOT%/}"
+CURRENT_PRIVATE=""
+
+if [[ -L "$PRIVATE_ROOT/current" ]]; then
+  current_target="$(readlink -f "$PRIVATE_ROOT/current" 2>/dev/null || true)"
+  if [[ -n "$current_target" && -d "$current_target/private" ]]; then
+    CURRENT_PRIVATE="$current_target/private"
+  fi
+fi
+
+PAYLOAD_PRIVATE="$PRIVATE_ROOT"
+if [[ -n "$CURRENT_PRIVATE" ]]; then
+  PAYLOAD_PRIVATE="$CURRENT_PRIVATE"
+elif [[ -d "$PRIVATE_ROOT/private/intelligence-lab-wheels" ]]; then
+  PAYLOAD_PRIVATE="$PRIVATE_ROOT/private"
+fi
+
+WHEEL_ROOT="$PAYLOAD_PRIVATE/intelligence-lab-wheels"
+LOCK_FILE="$WHEEL_ROOT/requirements.lock"
+MANIFEST_FILE="$WHEEL_ROOT/wheelhouse.sha256"
+RUNTIME_ROOT="$PRIVATE_ROOT/runtime"
+VENV_ROOT="$RUNTIME_ROOT/intelligence-lab-venv"
+MARKER_FILE="$VENV_ROOT/qnext-wheelhouse.sha256"
+STATUS_FILE="$PRIVATE_ROOT/run/intelligence-lab-python.json"
+PYTHON_BIN="${QNEXT_LAB_BOOTSTRAP_PYTHON:-python3.11}"
+
+mkdir -p "$RUNTIME_ROOT" "$PRIVATE_ROOT/run"
+
+json_status() {
+  local state="$1"
+  local message="$2"
+  local python_path="${3:-}"
+  local fingerprint="${4:-}"
+  python3 - "$STATUS_FILE" "$state" "$message" "$python_path" "$fingerprint" <<'PY'
+import json
+import os
+import sys
+import time
+
+path, state, message, python_path, fingerprint = sys.argv[1:6]
+payload = {
+    "schema": "QNEXT.INTELLIGENCE.LAB.PYTHON/1",
+    "state": state,
+    "message": message,
+    "python": python_path,
+    "wheelhouse_fingerprint": fingerprint,
+    "updated_at_ms": int(time.time() * 1000),
+}
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, sort_keys=True, separators=(",", ":"))
+    handle.write("\n")
+    handle.flush()
+    os.fsync(handle.fileno())
+os.replace(tmp, path)
+PY
+}
+
+fingerprint() {
+  [[ -s "$MANIFEST_FILE" ]] || return 1
+  sha256sum "$MANIFEST_FILE" | awk '{print $1}'
+}
+
+venv_ready() {
+  local expected
+  expected="$(fingerprint || true)"
+  [[ -n "$expected" ]] || return 1
+  [[ -x "$VENV_ROOT/bin/python" ]] || return 1
+  [[ -s "$MARKER_FILE" ]] || return 1
+  [[ "$(tr -d '\r\n' < "$MARKER_FILE")" == "$expected" ]] || return 1
+  "$VENV_ROOT/bin/python" - <<'PY' >/dev/null 2>&1
+import lightgbm
+import sklearn
+PY
+}
+
+status() {
+  if venv_ready; then
+    local fp
+    fp="$(fingerprint)"
+    json_status "READY" "isolated Lab ML runtime is ready" "$VENV_ROOT/bin/python" "$fp"
+    echo "$VENV_ROOT/bin/python"
+    return 0
+  fi
+
+  if [[ ! -d "$WHEEL_ROOT" || ! -s "$LOCK_FILE" || ! -s "$MANIFEST_FILE" ]]; then
+    json_status "UNAVAILABLE" "Lab ML wheelhouse is not deployed" "" ""
+    return 1
+  fi
+
+  if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    json_status "UNAVAILABLE" "Python 3.11 is unavailable; Ridge fallback remains active" "" "$(fingerprint || true)"
+    return 1
+  fi
+
+  json_status "NEEDS_BOOTSTRAP" "isolated Lab ML runtime is not provisioned yet" "" "$(fingerprint || true)"
+  return 1
+}
+
+verify_wheelhouse() {
+  [[ -d "$WHEEL_ROOT" ]] || {
+    echo "Lab ML wheelhouse missing: $WHEEL_ROOT" >&2
+    return 2
+  }
+  [[ -s "$LOCK_FILE" ]] || {
+    echo "Lab ML requirements lock missing" >&2
+    return 2
+  }
+  [[ -s "$MANIFEST_FILE" ]] || {
+    echo "Lab ML wheelhouse manifest missing" >&2
+    return 2
+  }
+
+  (
+    cd "$WHEEL_ROOT"
+    sha256sum -c "$(basename "$MANIFEST_FILE")"
+  )
+}
+
+bootstrap() {
+  if venv_ready; then
+    status
+    return 0
+  fi
+
+  verify_wheelhouse >/dev/null
+  command -v "$PYTHON_BIN" >/dev/null 2>&1 || {
+    json_status "UNAVAILABLE" "Python 3.11 is unavailable; Ridge fallback remains active" "" "$(fingerprint || true)"
+    return 3
+  }
+
+  local expected stage old
+  expected="$(fingerprint)"
+  stage="$RUNTIME_ROOT/intelligence-lab-venv.next.$$"
+  old="$RUNTIME_ROOT/intelligence-lab-venv.old.$$"
+  rm -rf "$stage" "$old"
+
+  if ! "$PYTHON_BIN" -m venv "$stage"; then
+    rm -rf "$stage"
+    json_status "FAILED" "failed to create isolated Lab ML virtual environment" "" "$expected"
+    return 4
+  fi
+
+  if ! "$stage/bin/python" -m pip install       --disable-pip-version-check       --no-index       --find-links "$WHEEL_ROOT"       -r "$LOCK_FILE" >/dev/null; then
+    rm -rf "$stage"
+    json_status "FAILED" "failed to install Lab ML wheelhouse; Ridge fallback remains active" "" "$expected"
+    return 5
+  fi
+
+  if ! "$stage/bin/python" - <<'PY' >/dev/null
+import lightgbm
+import sklearn
+assert sklearn.__version__ == "1.9.1"
+assert lightgbm.__version__ == "4.7.0"
+PY
+  then
+    rm -rf "$stage"
+    json_status "FAILED" "Lab ML dependency verification failed; Ridge fallback remains active" "" "$expected"
+    return 6
+  fi
+
+  printf '%s\n' "$expected" > "$stage/qnext-wheelhouse.sha256"
+
+  if [[ -e "$VENV_ROOT" ]]; then
+    mv "$VENV_ROOT" "$old"
+  fi
+  mv "$stage" "$VENV_ROOT"
+  rm -rf "$old"
+
+  json_status "READY" "isolated Lab ML runtime is ready" "$VENV_ROOT/bin/python" "$expected"
+  echo "$VENV_ROOT/bin/python"
+}
+
+action="${1:-status}"
+case "$action" in
+  status)
+    status
+    ;;
+  bootstrap)
+    bootstrap
+    ;;
+  python)
+    if venv_ready; then
+      echo "$VENV_ROOT/bin/python"
+      exit 0
+    fi
+    exit 1
+    ;;
+  *)
+    echo "unsupported action" >&2
+    exit 2
+    ;;
+esac
