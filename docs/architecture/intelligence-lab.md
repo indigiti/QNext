@@ -262,3 +262,42 @@ CI exercises both paths:
 - real local wheelhouse → isolated venv creation, scikit-learn/LightGBM imports, version checks and idempotent reuse.
 
 The live Go Market Core, Vela workspace, production Intelligence model pointer and production Python dependency set are unaffected.
+
+## Recommendation intelligence
+
+A passing Lab backtest can now emit an immutable recommendation artifact:
+
+```text
+BUY / SELL / NO_TRADE
+calibrated class probabilities
+entry price
+Target 1
+Target 2
+invalidation
+expected side return
+expected horizon in bars
+```
+
+The recommendation remains Lab-only. It is not sent to broker execution, Strategy Paper, production Intelligence, or the chart order path.
+
+### Probability calibration
+
+The selected Ridge/scikit-learn/LightGBM model first produces raw class probabilities. The Lab fits a single temperature-scaling parameter on the chronological validation window only. The untouched test window is then used to report calibrated log loss, Brier score, accuracy, coverage, return and drawdown.
+
+The action threshold is also chosen on validation data. A recommendation becomes `NO_TRADE` when directional probability is below the validation-selected threshold or the calibrated FLAT probability dominates.
+
+### Learned targets and invalidation
+
+For every labelled historical origin, the Lab stores the full future high/low excursion path across the configured horizon. Target and invalidation profiles are learned separately for BUY and SELL from validation-period recommendations:
+
+- Target 1: median favorable excursion;
+- Target 2: 75th-percentile favorable excursion;
+- Invalidation: 75th-percentile adverse excursion;
+- Expected return: median side-normalized terminal return;
+- Expected horizon: median bars to Target 1, falling back to favorable-peak timing when Target 1 is not reached often enough.
+
+The untouched test window reports Target-1-before-invalidation, Target-2-before-invalidation and invalidation-before-Target-1 rates.
+
+Intrabar ordering is deliberately conservative. If a single OHLC bar can touch both the target and invalidation level, the evaluator records invalidation first because tick order is unknown.
+
+Recommendation artifacts include experiment ID, model algorithm/hash, feature schema version, calibration method, decision threshold, latest finalized-bar timestamp and recommendation ID for auditability.
