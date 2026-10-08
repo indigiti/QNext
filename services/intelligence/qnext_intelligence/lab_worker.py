@@ -15,11 +15,13 @@ from .lab import IntelligenceLabRegistry, LabEvaluation
 from .lab_snapshot import (
     HistoricalLabExample,
     build_historical_examples,
+    build_latest_feature_vector,
     historical_dataset_hash,
     import_chart_snapshot,
 )
 from .learning import build_learning_dataset, train_candidate
 from .lab_ml import dependency_status, train_ml_challenger
+from .lab_recommendation import build_recommendation
 
 REQUEST_SCHEMA = "QNEXT.INTELLIGENCE.LAB.REQUEST/1"
 
@@ -305,11 +307,13 @@ def _backtest(
     if ml_record is not None:
         registry.save_candidate_artifact(experiment_id, ml_record)
 
+    selected_model = candidate
     selected_algorithm = candidate.algorithm
     selected_hash = candidate.model_hash
     selected_metrics = candidate.test_metrics
     selected_gate = candidate.promotion_gate
     if ml_candidate is not None and ml_candidate.promotion_gate.passed:
+        selected_model = ml_candidate
         selected_algorithm = ml_candidate.algorithm
         selected_hash = ml_candidate.model_hash
         selected_metrics = ml_candidate.test_metrics
@@ -375,6 +379,27 @@ def _backtest(
     }
     selection_id = registry.save_backtest_selection(experiment_id, selection)
 
+    recommendation_record = None
+    recommendation_error = ""
+    if evaluation.gate_passed:
+        try:
+            current = build_latest_feature_vector(imported, bars)
+            recommendation = build_recommendation(
+                experiment_id=experiment_id,
+                dataset=dataset,
+                historical_examples=examples,
+                current=current,
+                selected_model=selected_model,
+                created_at_ms=created_at_ms,
+            )
+            recommendation_record = recommendation.to_record()
+            registry.save_recommendation_artifact(
+                experiment_id,
+                recommendation_record,
+            )
+        except Exception as error:
+            recommendation_error = str(error)[:500]
+
     return {
         "experiment": updated.to_record(),
         "evaluation": evaluation.to_record(),
@@ -382,6 +407,8 @@ def _backtest(
         "ml_candidate": ml_record,
         "selected_algorithm": selected_algorithm,
         "selection_id": selection_id,
+        "recommendation": recommendation_record,
+        "recommendation_error": recommendation_error,
         "ml_dependencies": dependency_status(),
         "ml_error": ml_error,
         "indicator_feature_counts": indicator_feature_counts,
