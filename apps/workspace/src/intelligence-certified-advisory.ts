@@ -299,7 +299,17 @@ function normalizeAdvisory(value: unknown): CertifiedAdvisory | undefined {
   }
 
   const total = buy + sell + noTrade;
-  if (Math.abs(total - 1.0) > 0.01) return undefined;
+  if (
+    buy < 0 ||
+    buy > 1 ||
+    sell < 0 ||
+    sell > 1 ||
+    noTrade < 0 ||
+    noTrade > 1 ||
+    Math.abs(total - 1.0) > 0.01
+  ) {
+    return undefined;
+  }
 
   return {
     advisoryId,
