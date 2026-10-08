@@ -10,6 +10,7 @@ import { QNextProvider } from './qnext-provider';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
 import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
+import { mountCertifiedAdvisory } from './intelligence-certified-advisory';
 import './style.css';
 
 declare global {
@@ -177,6 +178,11 @@ async function bootstrapVela(timeframes: string[]) {
       labResolverProvider.getCanonicalBars(instrumentID, timeframe, range),
     (instrumentID, timeframe, range) =>
       labResolverProvider.getBars(instrumentID, timeframe, range),
+  );
+  mountCertifiedAdvisory(
+    workspace as unknown as Parameters<typeof mountCertifiedAdvisory>[0],
+    (symbol) => labResolverProvider.resolveInstrumentID(symbol),
+    runtime.apiBase ?? defaultApiBase,
   );
 }
 
