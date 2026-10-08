@@ -107,9 +107,8 @@ final class IntelligenceLabControl
 
     public function startShadow(array $payload): array
     {
-        return $this->queue('start-shadow', [
+        $request = [
             'experimentId' => $this->requiredToken($payload, 'experimentId', 96),
-            'horizonBars' => $this->intValue($payload['horizonBars'] ?? 3, 'horizonBars', 1, 100),
             'minSamples' => $this->intValue($payload['minSamples'] ?? 30, 'minSamples', 12, 100000),
             'maxAccuracyRegression' => $this->floatValue($payload['maxAccuracyRegression'] ?? 0.05, 'maxAccuracyRegression', 0.0, 1.0),
             'maxAverageReturnRegression' => $this->floatValue($payload['maxAverageReturnRegression'] ?? 0.002, 'maxAverageReturnRegression', 0.0, 1.0),
@@ -117,7 +116,11 @@ final class IntelligenceLabControl
             'maxBrier' => $this->floatValue($payload['maxBrier'] ?? 0.35, 'maxBrier', 0.0, 1.0),
             'minCoverage' => $this->floatValue($payload['minCoverage'] ?? 0.10, 'minCoverage', 0.0, 1.0),
             'minTarget1BeforeInvalidation' => $this->floatValue($payload['minTarget1BeforeInvalidation'] ?? 0.30, 'minTarget1BeforeInvalidation', 0.0, 1.0),
-        ]);
+        ];
+        if (array_key_exists('horizonBars', $payload)) {
+            $request['horizonBars'] = $this->intValue($payload['horizonBars'], 'horizonBars', 1, 100);
+        }
+        return $this->queue('start-shadow', $request);
     }
 
     public function certifyShadow(array $payload): array
