@@ -514,8 +514,15 @@ def _start_shadow(
         raise ValueError("Shadow-Live requires calibrated probabilities")
 
     default_horizon = int(selection.get("horizon_bars", 3))
+    requested_horizon = int(payload.get("horizonBars", default_horizon))
+    if requested_horizon != default_horizon:
+        raise ValueError("Shadow-Live horizon must match the backtest horizon")
+    target_profiles = recommendation.get("target_profiles")
+    if not isinstance(target_profiles, Mapping) or not target_profiles:
+        raise ValueError("Shadow-Live requires learned target/invalidation profiles")
+
     material = dict(payload)
-    material.setdefault("horizonBars", default_horizon)
+    material["horizonBars"] = default_horizon
     config = _shadow_config_from_payload(experiment_id, material)
     updated = registry.start_shadow(experiment_id)
     registry.save_shadow_config(experiment_id, config.to_record())
