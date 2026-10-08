@@ -110,8 +110,8 @@ def import_chart_snapshot(payload: Mapping[str, Any]) -> ImportedChartSnapshot:
         indicator_historical_features[instance_id] = names
 
     raw_rows = payload.get("feature_rows")
-    if not isinstance(raw_rows, list) or not raw_rows:
-        raise ValueError("chart snapshot has no historical feature rows")
+    if not isinstance(raw_rows, list):
+        raise ValueError("chart snapshot feature_rows must be a list")
 
     rows: list[LabFeatureRow] = []
     previous_time = -1
