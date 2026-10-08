@@ -663,6 +663,12 @@ def _shadow_observation(
     current = build_latest_feature_vector(imported, bars)
     if current.bar_time_ms != expected_bar_time:
         raise ValueError("shadow feature vector is not aligned to the requested finalized bar")
+    if current.as_of_time_ms < config.started_at_ms:
+        return {
+            "ignored": True,
+            "reason": "pre_shadow_bar",
+            "bar_time_ms": current.bar_time_ms,
+        }
 
     selected_model = _load_selected_model(registry, experiment_id)
     recommendation = registry.read_result_record(experiment_id, "recommendation.json")
