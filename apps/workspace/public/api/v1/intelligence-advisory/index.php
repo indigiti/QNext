@@ -119,7 +119,18 @@ foreach (glob($root . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
     $buy = advisory_float($probabilitiesRaw, 'BUY');
     $sell = advisory_float($probabilitiesRaw, 'SELL');
     $noTrade = advisory_float($probabilitiesRaw, 'NO_TRADE');
-    if ($buy === null || $sell === null || $noTrade === null) {
+    if (
+        $buy === null
+        || $sell === null
+        || $noTrade === null
+        || $buy < 0.0
+        || $buy > 1.0
+        || $sell < 0.0
+        || $sell > 1.0
+        || $noTrade < 0.0
+        || $noTrade > 1.0
+        || abs(($buy + $sell + $noTrade) - 1.0) > 0.01
+    ) {
         continue;
     }
 
