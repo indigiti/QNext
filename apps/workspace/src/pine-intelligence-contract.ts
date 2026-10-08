@@ -248,6 +248,7 @@ function normalizeHistory(
     for (const value of raw) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
       const record = value as Record<string, unknown>;
+      if (record.time == null || record.value == null) continue;
       const time = Number(record.time);
       const number = Number(record.value);
       if (Number.isFinite(time) && Number.isFinite(number)) {
@@ -259,7 +260,9 @@ function normalizeHistory(
 
   const offset = Math.max(0, bars.length - raw.length);
   for (let index = 0; index < raw.length; index += 1) {
-    const number = Number(raw[index]);
+    const rawValue = raw[index];
+    if (rawValue == null) continue;
+    const number = Number(rawValue);
     const bar = bars[offset + index];
     if (!bar || !Number.isFinite(number)) continue;
     points.push({ time: bar.time, value: number });
