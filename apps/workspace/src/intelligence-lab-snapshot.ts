@@ -64,6 +64,76 @@ type ContextLike = {
   variables?: Record<string, unknown>;
 };
 
+export interface LabChartContext {
+  feature_schema_version: typeof LAB_FEATURE_SCHEMA_VERSION;
+  instrument_id: string;
+  timeframe: string;
+  indicator_configuration_hash: string;
+  indicator_ids: string[];
+}
+
+export async function captureActiveChartLabContext(
+  workspace: WorkspaceLike,
+  resolveInstrumentID?: (symbol: string) => Promise<string>,
+): Promise<LabChartContext> {
+  const market = activeMarketFromState(workspace.getState());
+  const instrumentID = resolveInstrumentID
+    ? await resolveInstrumentID(market.symbol)
+    : market.symbol;
+  const handles = workspace.chart.indicators().filter((handle) => handle.visible);
+  if (handles.length === 0) {
+    throw new Error('No enabled indicators are present on the active chart');
+  }
+
+  const descriptors: Array<{
+    instance_id: string;
+    title: string;
+    kind: 'script' | 'native';
+    language: string;
+    native_type: string;
+    source_hash: string;
+    inputs: Record<string, string | number | boolean>;
+    configuration_hash: string;
+  }> = [];
+
+  for (const handle of handles) {
+    const context = await handle.context(['language', 'meta']) as ContextLike | null;
+    const source = typeof handle.source === 'string' ? handle.source : undefined;
+    const nativeType = typeof handle.nativeType === 'string' ? handle.nativeType : undefined;
+    const sourceMaterial = source ?? `native:${nativeType ?? handle.title}`;
+    const sourceHash = await sha256Hex(sourceMaterial);
+    const inputs = resolveInputValues(handle, persistedInputDeltas(market.chartState, handle));
+    const descriptorMaterial = {
+      instance_id: handle.id,
+      title: handle.title,
+      kind: source ? 'script' as const : 'native' as const,
+      language: stringValue(context?.language) ?? stringValue(context?.meta?.language) ?? '',
+      native_type: nativeType ?? '',
+      source_hash: sourceHash,
+      inputs,
+    };
+    descriptors.push({
+      ...descriptorMaterial,
+      configuration_hash: await sha256Hex(canonicalJson(descriptorMaterial)),
+    });
+  }
+
+  descriptors.sort((left, right) => left.instance_id.localeCompare(right.instance_id));
+  const indicatorConfigurationHash = await sha256Hex(canonicalJson({
+    instrument_id: instrumentID,
+    timeframe: market.timeframe,
+    indicators: descriptors,
+  }));
+
+  return {
+    feature_schema_version: LAB_FEATURE_SCHEMA_VERSION,
+    instrument_id: instrumentID,
+    timeframe: market.timeframe,
+    indicator_configuration_hash: indicatorConfigurationHash,
+    indicator_ids: descriptors.map((descriptor) => descriptor.instance_id),
+  };
+}
+
 export async function captureActiveChartLabSnapshot(
   workspace: WorkspaceLike,
   createdAtMs = Date.now(),
