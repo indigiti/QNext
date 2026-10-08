@@ -144,6 +144,21 @@ expect(
     && str_ends_with((string) ($labStatus['storage_root'] ?? ''), '/storage/intelligence-lab'),
     'Intelligence Lab status should use isolated storage'
 );
+expect(
+    ($labStatus['ml_runtime']['state'] ?? '') === 'UNKNOWN',
+    'Intelligence Lab ML runtime should be explicit before first bootstrap check'
+);
+AtomicFile::writeJson($flatRoot . '/run/intelligence-lab-python.json', [
+    'schema' => 'QNEXT.INTELLIGENCE.LAB.PYTHON/1',
+    'state' => 'READY',
+    'message' => 'isolated Lab ML runtime is ready',
+    'python' => $flatRoot . '/runtime/intelligence-lab-venv/bin/python',
+]);
+$labStatus = $labControl->status();
+expect(
+    ($labStatus['ml_runtime']['state'] ?? '') === 'READY',
+    'Intelligence Lab status should expose isolated ML runtime state'
+);
 $labSnapshot = [
     'schema' => 'QNEXT.INTELLIGENCE.LAB.CHART_SNAPSHOT/1',
     'feature_schema_version' => 'qnext-chart-indicators-v1',
