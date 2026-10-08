@@ -12,6 +12,35 @@ type LabEvaluation = {
   reasons?: string[];
 };
 
+type LabRecommendation = {
+  recommendation_id?: string;
+  as_of_time_ms?: number;
+  model_algorithm?: string;
+  probability_calibrated?: boolean;
+  decision_threshold?: number;
+  entry_price?: number;
+  decision?: 'BUY' | 'SELL' | 'NO_TRADE';
+  probabilities?: { BUY?: number; SELL?: number; NO_TRADE?: number };
+  target1_price?: number | null;
+  target2_price?: number | null;
+  invalidation_price?: number | null;
+  expected_return_pct?: number | null;
+  expected_horizon_bars?: number | null;
+  calibration?: {
+    method?: string;
+    temperature?: number;
+    test_log_loss?: number;
+    test_brier?: number;
+  };
+  target_profile?: {
+    samples?: number;
+    test_samples?: number;
+    test_target1_before_invalidation?: number;
+    test_target2_before_invalidation?: number;
+    test_invalidation_before_target1?: number;
+  } | null;
+};
+
 type LabSelection = {
   selected_algorithm?: string;
   ml_family?: string;
@@ -30,6 +59,7 @@ type LabExperiment = {
   lifecycle_state: string;
   backtest?: LabEvaluation | null;
   selection?: LabSelection | null;
+  recommendation?: LabRecommendation | null;
   candidates?: Array<Record<string, unknown>>;
 };
 
