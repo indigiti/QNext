@@ -170,6 +170,35 @@ function card(experiment: LabExperiment, busy: boolean): string {
           ? `<div class="muted qil-warning">ML fallback: ${html(experiment.selection.ml_error)}</div>`
           : ''}
       ` : ''}
+      ${experiment.recommendation ? `
+        <div class="qil-recommendation">
+          <div class="line">
+            <div>
+              <span class="muted">Latest Lab recommendation</span>
+              <div class="qil-decision">${html(experiment.recommendation.decision ?? '—')}</div>
+            </div>
+            <div class="qil-probabilities">
+              <span>BUY <strong>${pct(experiment.recommendation.probabilities?.BUY)}</strong></span>
+              <span>SELL <strong>${pct(experiment.recommendation.probabilities?.SELL)}</strong></span>
+              <span>NO TRADE <strong>${pct(experiment.recommendation.probabilities?.NO_TRADE)}</strong></span>
+            </div>
+          </div>
+          <div class="qil-levels">
+            <div><span>Entry</span><strong>${num(experiment.recommendation.entry_price, 2)}</strong></div>
+            <div><span>Target 1</span><strong>${num(experiment.recommendation.target1_price ?? undefined, 2)}</strong></div>
+            <div><span>Target 2</span><strong>${num(experiment.recommendation.target2_price ?? undefined, 2)}</strong></div>
+            <div><span>Invalidation</span><strong>${num(experiment.recommendation.invalidation_price ?? undefined, 2)}</strong></div>
+            <div><span>Expected return</span><strong>${pct(experiment.recommendation.expected_return_pct ?? undefined)}</strong></div>
+            <div><span>Expected horizon</span><strong>${num(experiment.recommendation.expected_horizon_bars ?? undefined, 1)} bars</strong></div>
+          </div>
+          <div class="muted qil-rec-meta">
+            Calibrated: ${experiment.recommendation.probability_calibrated ? 'YES' : 'NO'}
+            · Brier ${num(experiment.recommendation.calibration?.test_brier, 4)}
+            · T1-before-invalidation ${pct(experiment.recommendation.target_profile?.test_target1_before_invalidation)}
+            · T2-before-invalidation ${pct(experiment.recommendation.target_profile?.test_target2_before_invalidation)}
+          </div>
+        </div>
+      ` : ''}
       ${experiment.backtest ? `
         <div class="qil-metrics">
           <div><span>Accuracy</span><strong>${pct(metrics.accuracy)}</strong></div>
@@ -308,12 +337,18 @@ function mount(): void {
     #intelligence-lab-card .qil-pending{margin:1rem 0;padding:.8rem;border:1px solid rgba(255,255,255,.08);border-radius:.6rem}
     #intelligence-lab-card .qil-indicators{margin:.6rem 0;word-break:break-word}
     #intelligence-lab-card .qil-selection{margin:.45rem 0;padding-top:.45rem;border-top:1px solid rgba(255,255,255,.06)}
+    #intelligence-lab-card .qil-recommendation{margin:.75rem 0;padding:.8rem;border:1px solid rgba(99,102,241,.22);border-radius:.6rem;background:rgba(99,102,241,.035)}
+    #intelligence-lab-card .qil-decision{font-size:1.35rem;font-weight:800;margin-top:.15rem}
+    #intelligence-lab-card .qil-probabilities{display:flex;gap:.7rem;flex-wrap:wrap;font-size:.74rem}
+    #intelligence-lab-card .qil-levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.7rem 0}
+    #intelligence-lab-card .qil-levels div{display:flex;flex-direction:column;gap:.15rem}
+    #intelligence-lab-card .qil-rec-meta{font-size:.7rem}
     #intelligence-lab-card .qil-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.75rem 0}
     #intelligence-lab-card .qil-metrics div{display:flex;flex-direction:column;gap:.2rem}
     #intelligence-lab-card .qil-horizon-label{display:flex;align-items:center;gap:.4rem;color:var(--muted,#8b98a5)}
     #intelligence-lab-card .qil-warning{margin:.6rem 0;padding:.55rem .65rem;border:1px solid rgba(245,158,11,.25);border-radius:.45rem}
     #intelligence-lab-card #qil-horizon{width:72px}
-    @media(max-width:900px){#intelligence-lab-card .qil-metrics{grid-template-columns:1fr 1fr}}
+    @media(max-width:900px){#intelligence-lab-card .qil-metrics,#intelligence-lab-card .qil-levels{grid-template-columns:1fr 1fr}}
   `;
   document.head.append(style);
 
