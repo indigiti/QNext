@@ -92,6 +92,9 @@ CRON_HEARTBEAT="$PRIVATE_ROOT/run/cron-heartbeat"
 INTELLIGENCE_REQUEST="$PRIVATE_ROOT/run/intelligence-request.json"
 INTELLIGENCE_RESULT="$PRIVATE_ROOT/run/intelligence-result.json"
 INTELLIGENCE_LOG="$PRIVATE_ROOT/logs/intelligence.log"
+INTELLIGENCE_LAB_REQUEST="$PRIVATE_ROOT/run/intelligence-lab-request.json"
+INTELLIGENCE_LAB_RESULT="$PRIVATE_ROOT/run/intelligence-lab-result.json"
+INTELLIGENCE_LAB_LOG="$PRIVATE_ROOT/logs/intelligence-lab.log"
 LOCK_DIR="$PRIVATE_ROOT/run/supervisor.lock"
 MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:18080}"
 
@@ -459,9 +462,31 @@ process_intelligence_request() {
   rm -f "$INTELLIGENCE_REQUEST"
 }
 
+process_intelligence_lab_request() {
+  [[ -s "$INTELLIGENCE_LAB_REQUEST" ]] || return 0
+
+  local intelligence_root="$PAYLOAD_PRIVATE/intelligence"
+  if [[ ! -d "$intelligence_root/qnext_intelligence" ]]; then
+    printf '%s\n' '{"state":"FAILED","action":"unknown","request_id":"","completed_at_ms":0,"error":"Intelligence Lab runtime is not deployed"}' > "$INTELLIGENCE_LAB_RESULT"
+    rm -f "$INTELLIGENCE_LAB_REQUEST"
+    return 0
+  fi
+
+  if ! PYTHONPATH="$intelligence_root" python3 -m qnext_intelligence.lab_worker \
+      --request "$INTELLIGENCE_LAB_REQUEST" \
+      --result "$INTELLIGENCE_LAB_RESULT" \
+      --storage-root "$PRIVATE_ROOT/storage/intelligence-lab" \
+      --production-root "$PRIVATE_ROOT/storage/intelligence" \
+      --market-core-url "$MARKET_URL" >>"$INTELLIGENCE_LAB_LOG" 2>&1; then
+    echo "Intelligence Lab queued action failed; see $INTELLIGENCE_LAB_LOG" >>"$INTELLIGENCE_LAB_LOG"
+  fi
+  rm -f "$INTELLIGENCE_LAB_REQUEST"
+}
+
 reconcile() {
   date +%s > "$CRON_HEARTBEAT"
   process_intelligence_request
+  process_intelligence_lab_request
 
   local request=""
   if [[ -s "$CONTROL_REQUEST" ]]; then
