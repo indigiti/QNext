@@ -24,10 +24,21 @@ valid_version() {
   [[ "$1" =~ ^[A-Za-z0-9._-]{1,80}$ ]]
 }
 
+wait_ready() {
+  local attempt
+  for attempt in {1..30}; do
+    if curl --fail --silent --show-error --max-time 2 "$QNEXT_MARKET_CORE_URL/ready" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  curl --fail --silent --show-error --max-time 3 "$QNEXT_MARKET_CORE_URL/ready" >/dev/null
+}
+
 smoke() {
   curl --fail --silent --show-error --max-time 3 "$QNEXT_MARKET_CORE_URL/health" >/dev/null
-  curl --fail --silent --show-error --max-time 3 "$QNEXT_MARKET_CORE_URL/ready" >/dev/null
   curl --fail --silent --show-error --max-time 3 "$QNEXT_MARKET_CORE_URL/version" >/dev/null
+  wait_ready
 }
 
 status() {
