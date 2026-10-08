@@ -20,6 +20,46 @@ describe('OpsAPI', () => {
     ]);
   });
 
+  it('uses the HttpOnly session cookie without a raw browser token', async () => {
+    const calls: Array<{ url: string; token: string | null; credentials?: RequestCredentials }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({
+        url: String(input),
+        token: headers.get('X-QNext-Ops-Token'),
+        credentials: init?.credentials,
+      });
+      return new Response(JSON.stringify({
+        release: { current: 'r1', available: ['r1'] },
+        service: { ok: true, state: 'active' },
+        marketCore: {
+          health: { ok: true },
+          ready: { ok: true },
+          version: { ok: true },
+        },
+        storageRoot: '/private/storage',
+        configPath: '/private/config/q1-market.json',
+        host: {
+          processControl: false,
+          cronControl: true,
+          controlMode: 'cron',
+          helperAvailable: true,
+          helperPath: '/private/deploy/qnext-ops-user',
+          cronCommand: '* * * * *',
+        },
+      }), { status: 200 });
+    };
+
+    const api = new OpsAPI({ fetcher });
+    await api.status();
+
+    expect(calls).toEqual([{
+      url: '/qnext/admin/api/index.php?route=%2Fstatus',
+      token: null,
+      credentials: 'same-origin',
+    }]);
+  });
+
   it('sends the staging token and parses status', async () => {
     const calls: Array<{ url: string; token: string | null }> = [];
     const fetcher: typeof fetch = async (input, init) => {
