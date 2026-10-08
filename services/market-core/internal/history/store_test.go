@@ -63,3 +63,29 @@ func TestStoreRejectsFormingBar(t *testing.T) {
 		t.Fatal("expected forming bar persistence to fail")
 	}
 }
+
+
+func TestStoreLocksHistoryPerPartition(t *testing.T) {
+	store := New(t.TempDir())
+	blockedDay := time.Date(2026, 9, 23, 3, 45, 0, 0, time.UTC)
+	writeDay := blockedDay.Add(24 * time.Hour)
+
+	blockedPath := store.dayPath("NSE:NIFTY50", "30s", blockedDay)
+	lock := store.fileLock(blockedPath)
+	lock.Lock()
+	defer lock.Unlock()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- store.AppendBar(testBar(writeDay, 25110, 0))
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(750 * time.Millisecond):
+		t.Fatal("append to a different history partition was blocked by an unrelated file lock")
+	}
+}
