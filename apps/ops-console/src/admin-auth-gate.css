@@ -1,0 +1,168 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #eef2f8;
+  background: #080b11;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body,
+#app {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(65, 94, 190, .22), transparent 34rem),
+    #080b11;
+}
+
+.admin-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.admin-gate-card {
+  width: min(460px, 100%);
+  padding: 1.5rem;
+  border: 1px solid #252e3d;
+  border-radius: 18px;
+  background: rgba(14, 19, 27, .96);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .34);
+}
+
+.admin-gate-brand {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+}
+
+.admin-gate-mark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid #405b9d;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #203a7a, #111a35);
+  color: #dce6ff;
+  font-weight: 850;
+}
+
+.admin-gate-eyebrow {
+  margin: 0 0 .25rem;
+  color: #829ef0;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.admin-gate h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.admin-gate-copy {
+  margin: 1.2rem 0;
+  color: #909caf;
+  font-size: .84rem;
+  line-height: 1.55;
+}
+
+.admin-gate-form {
+  display: grid;
+  gap: .65rem;
+}
+
+.admin-gate-form label {
+  color: #a7b1c0;
+  font-size: .76rem;
+  font-weight: 700;
+}
+
+.admin-gate-form input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #2b3545;
+  border-radius: 10px;
+  outline: 0;
+  padding: .7rem .8rem;
+  color: #f4f7fb;
+  background: #0b1017;
+}
+
+.admin-gate-form input:focus {
+  border-color: #5975c5;
+  box-shadow: 0 0 0 3px rgba(89, 117, 197, .12);
+}
+
+.admin-gate-form button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  padding: .7rem 1rem;
+  background: #315dff;
+  color: #fff;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.admin-gate-form button.secondary {
+  background: #202839;
+}
+
+.admin-gate-form button:disabled {
+  cursor: progress;
+  opacity: .55;
+}
+
+.admin-gate-message {
+  min-height: 1.2rem;
+  margin-top: .8rem;
+  color: #8b97a9;
+  font-size: .76rem;
+}
+
+.admin-gate-message.bad {
+  color: #ff95a2;
+}
+
+.admin-gate-recovery {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #252e3d;
+}
+
+.admin-gate-recovery summary {
+  cursor: pointer;
+  color: #aab5c7;
+  font-size: .78rem;
+}
+
+.admin-gate-recovery .admin-gate-form {
+  margin-top: .9rem;
+}
+
+.admin-gate-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem .7rem;
+  margin-top: 1.1rem;
+  padding-top: .9rem;
+  border-top: 1px solid #202937;
+  color: #667386;
+  font-size: .65rem;
+}
+
+html.ops-authenticated body {
+  background: #080a0f;
+}
