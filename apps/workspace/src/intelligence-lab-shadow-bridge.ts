@@ -31,6 +31,7 @@ interface ShadowTarget {
   indicator_configuration_hash: string;
   feature_schema_version: string;
   horizon_bars: number;
+  started_at_ms: number;
 }
 
 type CanonicalBarFetcher = (
@@ -140,7 +141,9 @@ export function mountIntelligenceLabShadowBridge(
       }
 
       const pendingTargets = matching.filter(
-        (target) => (lastQueued[target.experiment_id] ?? 0) < latest.time,
+        (target) =>
+          latest.time >= target.started_at_ms - timeframeMs(active.timeframe) &&
+          (lastQueued[target.experiment_id] ?? 0) < latest.time,
       );
       if (pendingTargets.length === 0) {
         setStatus(status, `Shadow: captured ${formatTime(latest.time)}`);
@@ -287,7 +290,8 @@ function isShadowTarget(value: unknown): value is ShadowTarget {
     typeof value.timeframe === 'string' &&
     typeof value.indicator_configuration_hash === 'string' &&
     typeof value.feature_schema_version === 'string' &&
-    typeof value.horizon_bars === 'number'
+    typeof value.horizon_bars === 'number' &&
+    typeof value.started_at_ms === 'number'
   );
 }
 
@@ -316,6 +320,17 @@ function saveLastQueued(value: Record<string, number>): void {
   } catch {
     // Shadow de-duplication is also enforced server-side.
   }
+}
+
+function timeframeMs(value: string): number {
+  const match = value.trim().match(/^(\d+)(s|m|h|D)$/);
+  if (!match) return 60_000;
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (unit === 's') return amount * 1_000;
+  if (unit === 'm') return amount * 60_000;
+  if (unit === 'h') return amount * 3_600_000;
+  return amount * 86_400_000;
 }
 
 function formatTime(value: number): string {
