@@ -329,14 +329,16 @@ function saveLastQueued(value: Record<string, number>): void {
 }
 
 function timeframeMs(value: string): number {
-  const match = value.trim().match(/^(\d+)(s|m|h|D)$/);
+  const match = value.trim().match(/^(\d+)(s|m|h|D|W|M)$/);
   if (!match) return 60_000;
   const amount = Number(match[1]);
   const unit = match[2];
   if (unit === 's') return amount * 1_000;
   if (unit === 'm') return amount * 60_000;
   if (unit === 'h') return amount * 3_600_000;
-  return amount * 86_400_000;
+  if (unit === 'D') return amount * 86_400_000;
+  if (unit === 'W') return amount * 7 * 86_400_000;
+  return amount * 30 * 86_400_000;
 }
 
 function formatTime(value: number): string {
