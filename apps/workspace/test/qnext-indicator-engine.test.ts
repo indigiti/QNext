@@ -81,7 +81,8 @@ describe('QNextIndicatorEngine', () => {
     expect(model.fills).toHaveLength(1);
     expect(model.barColors.length).toBeGreaterThan(0);
 
-    const context = await session.getContext([
+    expect(session.getContext).toBeTypeOf('function');
+    const context = await session.getContext!([
       'plots',
       'variables',
     ] as never);
