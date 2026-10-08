@@ -346,6 +346,14 @@ function hide(root: HTMLElement): void {
 }
 
 function finiteNumber(value: unknown): number | undefined {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === 'boolean' ||
+    value === ''
+  ) {
+    return undefined;
+  }
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
 }
