@@ -377,8 +377,6 @@ def _backtest(
         "feature_names": list(dataset.feature_names),
         "evaluated_at_ms": created_at_ms,
     }
-    selection_id = registry.save_backtest_selection(experiment_id, selection)
-
     recommendation_record = None
     recommendation_error = ""
     if evaluation.gate_passed:
@@ -399,6 +397,14 @@ def _backtest(
             )
         except Exception as error:
             recommendation_error = str(error)[:500]
+
+    selection["recommendation_id"] = (
+        recommendation_record.get("recommendation_id", "")
+        if isinstance(recommendation_record, Mapping)
+        else ""
+    )
+    selection["recommendation_error"] = recommendation_error
+    selection_id = registry.save_backtest_selection(experiment_id, selection)
 
     return {
         "experiment": updated.to_record(),
