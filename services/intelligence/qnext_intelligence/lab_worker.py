@@ -198,6 +198,12 @@ def _backtest(
         raise ValueError("stored snapshot market does not match experiment")
     if imported.indicator_configuration_hash != experiment.indicator_configuration_hash:
         raise ValueError("stored snapshot configuration does not match experiment")
+    if not imported.feature_rows:
+        missing = ", ".join(imported.indicator_ids)
+        raise ValueError(
+            "experiment has no historical indicator features; "
+            f"feature contracts are required for: {missing}"
+        )
 
     horizon_bars = int(payload.get("horizonBars", 3))
     if horizon_bars < 1 or horizon_bars > 100:
