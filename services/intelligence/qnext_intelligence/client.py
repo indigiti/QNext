@@ -9,7 +9,7 @@ from .domain import Bar
 
 
 def timeframe_to_milliseconds(timeframe: str) -> int:
-    value = timeframe.strip().lower()
+    value = timeframe.strip()
     if len(value) < 2:
         raise ValueError("invalid timeframe")
     try:
@@ -25,6 +25,10 @@ def timeframe_to_milliseconds(timeframe: str) -> int:
         "m": 60_000,
         "h": 3_600_000,
         "d": 86_400_000,
+        "D": 86_400_000,
+        "w": 7 * 86_400_000,
+        "W": 7 * 86_400_000,
+        "M": 30 * 86_400_000,
     }
     if unit not in multipliers:
         raise ValueError("unsupported timeframe unit")
