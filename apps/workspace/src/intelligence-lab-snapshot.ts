@@ -67,8 +67,12 @@ type ContextLike = {
 export async function captureActiveChartLabSnapshot(
   workspace: WorkspaceLike,
   createdAtMs = Date.now(),
+  resolveInstrumentID?: (symbol: string) => Promise<string>,
 ): Promise<LabChartSnapshot> {
   const market = activeMarketFromState(workspace.getState());
+  const instrumentID = resolveInstrumentID
+    ? await resolveInstrumentID(market.symbol)
+    : market.symbol;
   const handles = workspace.chart.indicators().filter((handle) => handle.visible);
   if (handles.length === 0) {
     throw new Error('No enabled indicators are present on the active chart');
@@ -119,7 +123,7 @@ export async function captureActiveChartLabSnapshot(
 
   descriptors.sort((a, b) => a.instance_id.localeCompare(b.instance_id));
   const configurationHash = await sha256Hex(canonicalJson({
-    instrument_id: market.symbol,
+    instrument_id: instrumentID,
     timeframe: market.timeframe,
     indicators: descriptors.map((descriptor) => ({
       instance_id: descriptor.instance_id,
@@ -137,7 +141,7 @@ export async function captureActiveChartLabSnapshot(
     schema: LAB_CHART_SNAPSHOT_SCHEMA,
     feature_schema_version: LAB_FEATURE_SCHEMA_VERSION,
     created_at_ms: createdAtMs,
-    instrument_id: market.symbol,
+    instrument_id: instrumentID,
     timeframe: market.timeframe,
     indicator_configuration_hash: configurationHash,
     indicators: descriptors,
