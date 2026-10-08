@@ -30,7 +30,18 @@ RUNTIME_ROOT="$PRIVATE_ROOT/runtime"
 VENV_ROOT="$RUNTIME_ROOT/intelligence-lab-venv"
 MARKER_FILE="$VENV_ROOT/qnext-wheelhouse.sha256"
 STATUS_FILE="$PRIVATE_ROOT/run/intelligence-lab-python.json"
-PYTHON_BIN="${QNEXT_LAB_BOOTSTRAP_PYTHON:-python3.11}"
+PYTHON_BIN="${QNEXT_LAB_BOOTSTRAP_PYTHON:-}"
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3.11 >/dev/null 2>&1; then
+    PYTHON_BIN="python3.11"
+  elif command -v python3 >/dev/null 2>&1 \
+      && [[ "$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" == "3.11" ]]; then
+    PYTHON_BIN="python3"
+  else
+    PYTHON_BIN="python3.11"
+  fi
+fi
 
 mkdir -p "$RUNTIME_ROOT" "$PRIVATE_ROOT/run"
 
