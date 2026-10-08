@@ -65,6 +65,19 @@ jobs:
           bash -n deploy/qnext-ops-web
           bash -n deploy/qnext-ops-user
           bash -n deploy/qnext-intelligence-lab-python
+      - name: Lab ML runtime fallback smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          if QNEXT_PRIVATE_ROOT="$root" bash deploy/qnext-intelligence-lab-python status; then
+            echo "empty Lab ML runtime unexpectedly reported READY" >&2
+            exit 1
+          fi
+          test -s "$root/run/intelligence-lab-python.json"
+          grep -Fq '"state":"UNAVAILABLE"' "$root/run/intelligence-lab-python.json"
+          rm -rf "$root"
+
       - name: PHP smoke
         run: |
           php services/ops-api/tests/smoke.php
