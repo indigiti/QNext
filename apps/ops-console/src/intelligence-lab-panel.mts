@@ -63,8 +63,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
   if (init.body) headers.set('Content-Type', 'application/json');
-  const token = sessionStorage.getItem('qnext-ops-token') ?? '';
-  if (token) headers.set('X-QNext-Ops-Token', token);
   const separator = base.includes('?') ? '&' : '?';
   const response = await fetch(base + separator + 'route=' + encodeURIComponent(path), {
     ...init,
@@ -290,10 +288,8 @@ function mount(): void {
   document.head.append(style);
 
   document.querySelector('#qil-refresh')!.addEventListener('click', () => void load());
-  if (sessionStorage.getItem('qnext-ops-token')) void load();
-  window.setInterval(() => {
-    if (sessionStorage.getItem('qnext-ops-token')) void load();
-  }, 5000);
+  void load();
+  window.setInterval(() => void load(), 5000);
 }
 
 mount();
