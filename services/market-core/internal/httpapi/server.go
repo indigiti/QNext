@@ -33,6 +33,7 @@ type Options struct {
 	FeedStatus             func() any
 	HistoricalRepair       func(context.Context, int, []string, string) (any, error)
 	HistoricalRepairStatus func() any
+	Readiness              func() (bool, []string)
 	ChartTimeframes        []string
 	VolumeAliases          map[string]string
 }
@@ -128,7 +129,20 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func (s *Server) ready(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
+	if !requireGET(w, r) {
+		return
+	}
+	if s.options.Readiness != nil {
+		ok, reasons := s.options.Readiness()
+		if !ok {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"status": "not_ready",
+				"reasons": reasons,
+			})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ready"})
 }
 
