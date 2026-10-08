@@ -171,19 +171,28 @@ function persistedInputDeltas(
   const indicators = isRecord(chartState.indicators) ? chartState.indicators : null;
   if (!indicators) return {};
 
-  const sourceEntries = handle.source !== undefined
-    ? (Array.isArray(indicators.manifest) ? indicators.manifest : [])
-    : (Array.isArray(indicators.natives) ? indicators.natives : []);
+  const manifest = Array.isArray(indicators.manifest) ? indicators.manifest : [];
+  const natives = Array.isArray(indicators.natives) ? indicators.natives : [];
+  const ledgers = handle.source !== undefined
+    ? [
+        { entries: manifest, identity: 'name' },
+        { entries: natives, identity: 'type' },
+      ]
+    : [
+        { entries: natives, identity: 'type' },
+        { entries: manifest, identity: 'name' },
+      ];
 
-  for (const entry of sourceEntries) {
-    if (typeof entry === 'string') {
-      if (entry === handle.title) return {};
-      continue;
+  for (const ledger of ledgers) {
+    for (const entry of ledger.entries) {
+      if (typeof entry === 'string') {
+        if (entry === handle.title) return {};
+        continue;
+      }
+      if (!isRecord(entry)) continue;
+      if (entry[ledger.identity] !== handle.title) continue;
+      return isRecord(entry.inputs) ? entry.inputs : {};
     }
-    if (!isRecord(entry)) continue;
-    const identity = handle.source !== undefined ? entry.name : entry.type;
-    if (identity !== handle.title) continue;
-    return isRecord(entry.inputs) ? entry.inputs : {};
   }
   return {};
 }
