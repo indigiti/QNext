@@ -166,6 +166,8 @@ async function bootstrapVela(timeframes: string[]) {
   mountIntelligenceLabBridge(
     workspace as unknown as Parameters<typeof mountIntelligenceLabBridge>[0],
     (symbol) => labResolverProvider.resolveInstrumentID(symbol),
+    (instrumentID, timeframe, range) =>
+      labResolverProvider.getBars(instrumentID, timeframe, range),
   );
 }
 
