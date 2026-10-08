@@ -81,6 +81,20 @@ describe('QNextIndicatorEngine', () => {
     expect(model.fills).toHaveLength(1);
     expect(model.barColors.length).toBeGreaterThan(0);
 
+    const context = await session.getContext([
+      'plots',
+      'variables',
+    ] as never);
+    expect(context?.plots).toHaveProperty('EMA');
+    expect(context?.plots).toHaveProperty('ATR');
+    expect(context?.plots).toHaveProperty('TREND');
+    expect(context?.plots).toHaveProperty('EMA_DISTANCE_PCT');
+    expect(context?.plots).toHaveProperty('EMA_SLOPE_PCT');
+    expect(context?.variables).toMatchObject({
+      trend: -1,
+      intelligenceFeatureContract: 1,
+    });
+
     session.stop();
   });
 });
