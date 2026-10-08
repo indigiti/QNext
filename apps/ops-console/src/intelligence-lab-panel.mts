@@ -41,6 +41,28 @@ type LabRecommendation = {
   } | null;
 };
 
+type LabShadowConfig = {
+  horizon_bars?: number;
+  min_samples?: number;
+  max_accuracy_regression?: number;
+  max_average_return_regression?: number;
+  max_drawdown_slack?: number;
+  max_brier?: number;
+  min_coverage?: number;
+  min_target1_before_invalidation?: number;
+};
+
+type LabShadowSummary = {
+  completed_samples?: number;
+  pending_samples?: number;
+  average_brier?: number;
+  target1_samples?: number;
+  target1_before_invalidation?: number;
+  target2_before_invalidation?: number;
+  invalidation_before_target1?: number;
+  metrics?: Record<string, number>;
+};
+
 type LabSelection = {
   selected_algorithm?: string;
   ml_family?: string;
@@ -58,6 +80,9 @@ type LabExperiment = {
   created_at_ms: number;
   lifecycle_state: string;
   backtest?: LabEvaluation | null;
+  shadow?: LabEvaluation | null;
+  shadow_config?: LabShadowConfig | null;
+  shadow_summary?: LabShadowSummary | null;
   selection?: LabSelection | null;
   recommendation?: LabRecommendation | null;
   candidates?: Array<Record<string, unknown>>;
@@ -147,7 +172,16 @@ function operationLabel(operation?: LabOperation): string {
 
 function card(experiment: LabExperiment, busy: boolean): string {
   const metrics = experiment.backtest?.metrics ?? {};
+  const shadowMetrics = experiment.shadow_summary?.metrics ?? {};
   const canBacktest = experiment.lifecycle_state === 'EXPERIMENT' && !busy;
+  const canStartShadow =
+    experiment.lifecycle_state === 'BACKTESTED' &&
+    Boolean(experiment.recommendation) &&
+    !busy;
+  const canCertify = experiment.lifecycle_state === 'SHADOW' && !busy;
+  const lifecycleGood = ['BACKTESTED', 'SHADOW', 'CERTIFIED'].includes(
+    experiment.lifecycle_state,
+  );
   return `
     <article class="feed-provider-card qil-card" data-experiment="${html(experiment.experiment_id)}">
       <div class="line">
@@ -155,7 +189,7 @@ function card(experiment: LabExperiment, busy: boolean): string {
           <strong>${html(experiment.name)}</strong>
           <div class="muted">${html(experiment.instrument_id)} · ${html(experiment.timeframe)}</div>
         </div>
-        <span class="badge ${experiment.lifecycle_state === 'BACKTESTED' ? 'good' : 'bad'}">${html(experiment.lifecycle_state)}</span>
+        <span class="badge ${lifecycleGood ? 'good' : 'bad'}">${html(experiment.lifecycle_state)}</span>
       </div>
       <div class="muted qil-indicators">${experiment.indicator_ids.map(html).join(' · ')}</div>
       ${experiment.selection ? `
