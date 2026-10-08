@@ -187,6 +187,7 @@ async function runInstrumented(
 ): Promise<Map<string, Array<{ time: number; value: number }>>> {
   const source = instrumentPineSource(indicator.source ?? '', candidates);
   const result = await (chart as any).runScript(source, {
+    language: 'pine',
     inputs: indicator.inputs,
   });
   if (!result?.ok || !result.run) return new Map();
