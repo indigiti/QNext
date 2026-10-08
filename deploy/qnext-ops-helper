@@ -13,7 +13,7 @@ source "$CONFIG_FILE"
 : "${QNEXT_PRIVATE_ROOT:?QNEXT_PRIVATE_ROOT is required}"
 : "${QNEXT_PUBLIC_ROOT:?QNEXT_PUBLIC_ROOT is required}"
 : "${QNEXT_SERVICE_NAME:=qnext-market-core.service}"
-: "${QNEXT_MARKET_CORE_URL:=http://127.0.0.1:8080}"
+: "${QNEXT_MARKET_CORE_URL:=http://127.0.0.1:18080}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "qnext-ops-helper must run with root privileges" >&2
@@ -59,8 +59,20 @@ activate_release() {
     echo "workspace payload missing: $version" >&2
     exit 3
   }
-  [[ -s "$release/private/bin/qnext-market-core" ]] || {
-    echo "market-core binary missing: $version" >&2
+  local pointer="$release/private/bin/qnext-market-core.current"
+  [[ -s "$pointer" ]] || {
+    echo "market-core pointer missing: $version" >&2
+    exit 3
+  }
+  local binary_name
+  binary_name="$(tr -d '\r\n' < "$pointer")"
+  if [[ ! "$binary_name" =~ ^qnext-market-core-[A-Za-z0-9._-]+$ ]]; then
+    echo "market-core pointer invalid: $version" >&2
+    exit 3
+  fi
+  local binary="$release/private/bin/$binary_name"
+  [[ -s "$binary" ]] || {
+    echo "market-core versioned binary missing: $version" >&2
     exit 3
   }
   [[ -f "$release/private/ops-api/public/index.php" ]] || {
@@ -68,7 +80,7 @@ activate_release() {
     exit 3
   }
 
-  chmod 0750 "$release/private/bin/qnext-market-core"
+  chmod 0750 "$binary"
 
   local old_current=""
   if [[ -L "$QNEXT_PRIVATE_ROOT/current" ]]; then
