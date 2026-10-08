@@ -95,6 +95,7 @@ INTELLIGENCE_LOG="$PRIVATE_ROOT/logs/intelligence.log"
 INTELLIGENCE_LAB_REQUEST="$PRIVATE_ROOT/run/intelligence-lab-request.json"
 INTELLIGENCE_LAB_RESULT="$PRIVATE_ROOT/run/intelligence-lab-result.json"
 INTELLIGENCE_LAB_LOG="$PRIVATE_ROOT/logs/intelligence-lab.log"
+INTELLIGENCE_LAB_PYTHON_HELPER="$PAYLOAD_PRIVATE/deploy/qnext-intelligence-lab-python"
 LOCK_DIR="$PRIVATE_ROOT/run/supervisor.lock"
 MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:18080}"
 
@@ -466,13 +467,26 @@ process_intelligence_lab_request() {
   [[ -s "$INTELLIGENCE_LAB_REQUEST" ]] || return 0
 
   local intelligence_root="$PAYLOAD_PRIVATE/intelligence"
+  local lab_python="python3"
+  local isolated_python=""
+
   if [[ ! -d "$intelligence_root/qnext_intelligence" ]]; then
     printf '%s\n' '{"state":"FAILED","action":"unknown","request_id":"","completed_at_ms":0,"error":"Intelligence Lab runtime is not deployed"}' > "$INTELLIGENCE_LAB_RESULT"
     rm -f "$INTELLIGENCE_LAB_REQUEST"
     return 0
   fi
 
-  if ! PYTHONPATH="$intelligence_root" python3 -m qnext_intelligence.lab_worker \
+  if [[ -x "$INTELLIGENCE_LAB_PYTHON_HELPER" ]]; then
+    if isolated_python="$(QNEXT_PRIVATE_ROOT="$PRIVATE_ROOT" "$INTELLIGENCE_LAB_PYTHON_HELPER" bootstrap 2>>"$INTELLIGENCE_LAB_LOG")" \
+        && [[ -x "$isolated_python" ]]; then
+      lab_python="$isolated_python"
+      echo "Intelligence Lab using isolated ML runtime: $lab_python" >>"$INTELLIGENCE_LAB_LOG"
+    else
+      echo "Intelligence Lab ML runtime unavailable; using Ridge-safe system Python fallback" >>"$INTELLIGENCE_LAB_LOG"
+    fi
+  fi
+
+  if ! PYTHONPATH="$intelligence_root" "$lab_python" -m qnext_intelligence.lab_worker \
       --request "$INTELLIGENCE_LAB_REQUEST" \
       --result "$INTELLIGENCE_LAB_RESULT" \
       --storage-root "$PRIVATE_ROOT/storage/intelligence-lab" \
