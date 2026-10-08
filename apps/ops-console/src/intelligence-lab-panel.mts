@@ -307,6 +307,18 @@ function render(status: LabStatus): void {
       if (id) void backtest(id);
     });
   });
+  experiments.querySelectorAll<HTMLButtonElement>('.qil-start-shadow').forEach((button) => {
+    button.addEventListener('click', () => {
+      const id = button.closest<HTMLElement>('.qil-card')?.dataset.experiment ?? '';
+      if (id) void startShadow(id);
+    });
+  });
+  experiments.querySelectorAll<HTMLButtonElement>('.qil-certify-shadow').forEach((button) => {
+    button.addEventListener('click', () => {
+      const id = button.closest<HTMLElement>('.qil-card')?.dataset.experiment ?? '';
+      if (id) void certifyShadow(id);
+    });
+  });
 }
 
 async function load(): Promise<void> {
@@ -358,6 +370,38 @@ async function backtest(experimentId: string): Promise<void> {
   }
 }
 
+async function startShadow(experimentId: string): Promise<void> {
+  const horizon = Number(document.querySelector<HTMLInputElement>('#qil-horizon')?.value ?? 3);
+  const state = document.querySelector<HTMLSpanElement>('#qil-state')!;
+  try {
+    const result = await request<QueueResponse>('/intelligence-lab/shadow/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        experimentId,
+        horizonBars: Number.isInteger(horizon) ? horizon : 3,
+        minSamples: 30,
+      }),
+    });
+    state.textContent = `Shadow start queued (${result.requestId})`;
+    await load();
+  } catch (error) {
+    state.textContent = `Shadow start failed: ${(error as Error).message}`;
+  }
+}
+
+async function certifyShadow(experimentId: string): Promise<void> {
+  const state = document.querySelector<HTMLSpanElement>('#qil-state')!;
+  try {
+    const result = await request<QueueResponse>('/intelligence-lab/shadow/certify', {
+      method: 'POST',
+      body: JSON.stringify({ experimentId }),
+    });
+    state.textContent = `Certification evaluation queued (${result.requestId})`;
+    await load();
+  } catch (error) {
+    state.textContent = `Certification evaluation failed: ${(error as Error).message}`;
+  }
+}
 function mount(): void {
   const grid = document.querySelector<HTMLElement>('main.grid');
   if (!grid || document.querySelector('#intelligence-lab-card')) return;
@@ -402,6 +446,7 @@ function mount(): void {
     #intelligence-lab-card .qil-metrics div{display:flex;flex-direction:column;gap:.2rem}
     #intelligence-lab-card .qil-horizon-label{display:flex;align-items:center;gap:.4rem;color:var(--muted,#8b98a5)}
     #intelligence-lab-card .qil-warning{margin:.6rem 0;padding:.55rem .65rem;border:1px solid rgba(245,158,11,.25);border-radius:.45rem}
+    #intelligence-lab-card .qil-shadow{margin:.75rem 0;padding:.8rem;border:1px solid rgba(34,197,94,.18);border-radius:.6rem;background:rgba(34,197,94,.025)}
     #intelligence-lab-card #qil-horizon{width:72px}
     @media(max-width:900px){#intelligence-lab-card .qil-metrics,#intelligence-lab-card .qil-levels{grid-template-columns:1fr 1fr}}
   `;
