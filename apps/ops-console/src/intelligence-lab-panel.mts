@@ -247,8 +247,29 @@ function card(experiment: LabExperiment, busy: boolean): string {
           ? `<div class="muted qil-warning">${experiment.backtest.reasons.map(html).join(' · ')}</div>`
           : ''}
       ` : '<p class="muted">No Lab backtest yet.</p>'}
+      ${experiment.shadow_summary ? `
+        <div class="qil-shadow">
+          <div class="line">
+            <strong>Shadow-Live evidence</strong>
+            <span class="muted">${experiment.shadow_summary.completed_samples ?? 0}/${experiment.shadow_config?.min_samples ?? 30} completed · ${experiment.shadow_summary.pending_samples ?? 0} pending</span>
+          </div>
+          <div class="qil-metrics">
+            <div><span>Live accuracy</span><strong>${pct(shadowMetrics.accuracy)}</strong></div>
+            <div><span>Live coverage</span><strong>${pct(shadowMetrics.coverage)}</strong></div>
+            <div><span>Live avg return</span><strong>${num(shadowMetrics.average_strategy_return)}</strong></div>
+            <div><span>Live max DD</span><strong>${num(shadowMetrics.max_drawdown)}</strong></div>
+            <div><span>Live Brier</span><strong>${num(experiment.shadow_summary.average_brier, 4)}</strong></div>
+            <div><span>T1 before invalidation</span><strong>${pct(experiment.shadow_summary.target1_before_invalidation)}</strong></div>
+          </div>
+          ${experiment.shadow?.reasons?.length
+            ? `<div class="muted qil-warning">${experiment.shadow.reasons.map(html).join(' · ')}</div>`
+            : ''}
+        </div>
+      ` : ''}
       <div class="actions">
         <button class="qil-backtest" type="button" ${canBacktest ? '' : 'disabled'}>Run backtest</button>
+        <button class="qil-start-shadow secondary" type="button" ${canStartShadow ? '' : 'disabled'}>Start Shadow</button>
+        <button class="qil-certify-shadow secondary" type="button" ${canCertify ? '' : 'disabled'}>Evaluate certification</button>
       </div>
     </article>
   `;
