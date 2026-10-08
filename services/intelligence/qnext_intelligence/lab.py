@@ -402,8 +402,13 @@ class IntelligenceLabRegistry:
         if path.exists():
             with path.open("r", encoding="utf-8") as handle:
                 existing = json.load(handle)
-            if existing == material:
-                return path
+            if isinstance(existing, dict):
+                existing_compare = dict(existing)
+                material_compare = dict(material)
+                existing_compare.pop("created_at_ms", None)
+                material_compare.pop("created_at_ms", None)
+                if existing_compare == material_compare:
+                    return path
             raise ValueError("shadow observation id already exists with different content")
         self._write_json(path, material, overwrite=False)
         self._write_json(
