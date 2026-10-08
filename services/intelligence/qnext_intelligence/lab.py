@@ -231,6 +231,72 @@ class IntelligenceLabRegistry:
             decoded = json.load(handle)
         return decoded if isinstance(decoded, dict) else None
 
+    def save_chart_snapshot(
+        self,
+        experiment_id: str,
+        payload: Mapping[str, Any],
+        *,
+        snapshot_hash: str,
+    ) -> Path:
+        self.get(experiment_id)
+        if not re.fullmatch(r"[a-f0-9]{64}", snapshot_hash):
+            raise ValueError("snapshot_hash must be a SHA-256 hash")
+        path = self._experiment_dir(experiment_id) / "sources" / "chart-snapshot.json"
+        material = {
+            "snapshot_hash": snapshot_hash,
+            "payload": dict(payload),
+        }
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing == material:
+                return path
+            raise ValueError("chart snapshot already exists with different content")
+        self._write_json(path, material, overwrite=False)
+        return path
+
+    def load_chart_snapshot(self, experiment_id: str) -> dict[str, Any]:
+        self.get(experiment_id)
+        path = self._experiment_dir(experiment_id) / "sources" / "chart-snapshot.json"
+        if not path.is_file():
+            raise ValueError("chart snapshot is not stored for this experiment")
+        with path.open("r", encoding="utf-8") as handle:
+            decoded = json.load(handle)
+        if not isinstance(decoded, dict) or not isinstance(decoded.get("payload"), dict):
+            raise ValueError("stored chart snapshot is invalid")
+        return decoded
+
+    def save_candidate_artifact(
+        self,
+        experiment_id: str,
+        candidate: Mapping[str, Any],
+    ) -> Path:
+        self.get(experiment_id)
+        candidate_id = str(candidate.get("candidate_id", ""))
+        self._validate_id(candidate_id)
+        path = self._experiment_dir(experiment_id) / "models" / f"{candidate_id}.json"
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing == dict(candidate):
+                return path
+            raise ValueError("candidate artifact already exists with different content")
+        self._write_json(path, dict(candidate), overwrite=False)
+        return path
+
+    def read_candidate_artifacts(self, experiment_id: str) -> tuple[dict[str, Any], ...]:
+        self.get(experiment_id)
+        root = self._experiment_dir(experiment_id) / "models"
+        if not root.is_dir():
+            return ()
+        records: list[dict[str, Any]] = []
+        for path in sorted(root.glob("*.json")):
+            with path.open("r", encoding="utf-8") as handle:
+                decoded = json.load(handle)
+            if isinstance(decoded, dict):
+                records.append(decoded)
+        return tuple(records)
+
     def _transition(
         self,
         experiment: LabExperiment,
