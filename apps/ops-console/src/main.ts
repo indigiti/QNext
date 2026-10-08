@@ -24,9 +24,7 @@ if (!root) {
 }
 
 const runtime = window.__QNEXT_OPS_CONFIG__ ?? {};
-let token = sessionStorage.getItem('qnext-ops-token') ?? '';
-let api = new OpsAPI({ base: runtime.apiBase, token });
-let setupInitialized: boolean | null = null;
+const api = new OpsAPI({ base: runtime.apiBase });
 
 root.innerHTML = `
   <div class="shell">
@@ -36,10 +34,9 @@ root.innerHTML = `
         <h1>Operations Console</h1>
         <p class="muted">Restricted deployment and runtime control plane</p>
       </div>
-      <div class="auth">
-        <label for="token">Staging admin token</label>
-        <input id="token" type="password" autocomplete="off" placeholder="Enter token" />
-        <button id="save-token" class="secondary">Use token</button>
+      <div class="auth admin-session">
+        <span class="admin-session-state"><span class="admin-session-dot"></span>Authenticated</span>
+        <button id="admin-logout" class="secondary" type="button">Sign out</button>
       </div>
     </header>
 
@@ -286,11 +283,6 @@ root.innerHTML = `
     <div id="toast" role="status" aria-live="polite"></div>
   </div>
 `;
-
-const tokenInput = document.querySelector<HTMLInputElement>('#token')!;
-const tokenLabel = document.querySelector<HTMLLabelElement>('label[for="token"]')!;
-const tokenButton = document.querySelector<HTMLButtonElement>('#save-token')!;
-tokenInput.value = token;
 
 function toast(message: string, error = false) {
   const el = document.querySelector<HTMLDivElement>('#toast')!;
@@ -984,37 +976,6 @@ async function loadConfig() {
   }
 }
 
-tokenButton.addEventListener('click', async () => {
-  token = tokenInput.value.trim();
-  if (!token) {
-    toast('Enter an admin token.', true);
-    return;
-  }
-
-  try {
-    if (setupInitialized === false) {
-      await api.initializeAdminToken(token);
-      setupInitialized = true;
-      tokenLabel.textContent = 'Staging admin token';
-      tokenInput.placeholder = 'Enter token';
-      tokenButton.textContent = 'Use token';
-      toast('QNext admin token initialized');
-    }
-
-    sessionStorage.setItem('qnext-ops-token', token);
-    api = new OpsAPI({ base: runtime.apiBase, token });
-    await refresh();
-    await loadConfig();
-    await loadActiveMarkets();
-    await loadCandleTimeframes();
-    await loadChartTimeframes();
-    await loadHistoricalRepairStatus();
-    await loadCustomIndicators();
-  } catch (error) {
-    toast((error as Error).message, true);
-  }
-});
-
 
 document.querySelector('#reload-custom-indicators')!.addEventListener('click', () => void loadCustomIndicators());
 document.querySelector('#add-pine-indicator')!.addEventListener('click', () => {
@@ -1314,35 +1275,18 @@ secretForm.addEventListener('submit', async (event) => {
   }
 });
 
-async function bootstrapAdmin() {
-  try {
-    const setup = await api.setupStatus();
-    setupInitialized = setup.initialized;
-
-    if (!setup.initialized) {
-      sessionStorage.removeItem('qnext-ops-token');
-      token = '';
-      tokenInput.value = '';
-      tokenLabel.textContent = 'Create first-time admin token';
-      tokenInput.placeholder = 'Choose token (minimum 16 characters)';
-      tokenButton.textContent = 'Initialize';
-      toast('First-time setup: create the QNext admin token.');
-      return;
-    }
-
-    if (token) {
-      await refresh();
-      await loadConfig();
-      await loadActiveMarkets();
-      await loadHistoricalRepairStatus();
-      await loadCustomIndicators();
-      await probeBrowserStream();
-    } else {
-      toast('Enter the staging admin token to connect to QNext Ops.');
-    }
-  } catch (error) {
-    toast((error as Error).message, true);
-  }
+async function bootstrapAuthenticatedAdmin() {
+  await refresh();
+  await loadConfig();
+  await loadActiveMarkets();
+  await loadCandleTimeframes();
+  await loadChartTimeframes();
+  await loadHistoricalRepairStatus();
+  await loadCustomIndicators();
+  await probeBrowserStream();
 }
 
-void bootstrapAdmin();
+void bootstrapAuthenticatedAdmin().catch((error) => {
+  toast((error as Error).message, true);
+});
+
