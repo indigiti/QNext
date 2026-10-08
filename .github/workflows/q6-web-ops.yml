@@ -35,12 +35,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Verify auth-first Admin bundle contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq '/src/admin-bootstrap.ts' index.html
+          ! grep -Eq '/src/(main|admin-shell|admin-router|intelligence-panel|intelligence-lab-panel)' index.html
+          ! grep -R -E "sessionStorage\.(getItem|setItem)\(['\"]qnext-ops-token" src
+          grep -Fq "if (\$method === 'GET' && \$path === '/session')" ../../services/ops-api/public/index.php
       - name: Verify packaged Admin routes
         shell: bash
         run: |
           set -euo pipefail
           test -f dist/api/index.php
-          for route in dashboard market-data candles-history synthetic indicators-intelligence runtime releases diagnostics settings security; do
+          for route in dashboard market-data candles-history synthetic indicators intelligence intelligence-lab indicators-intelligence runtime releases diagnostics settings security; do
             test -s "dist/${route}/index.html"
             grep -Fq '/qnext/admin/assets/' "dist/${route}/index.html"
           done

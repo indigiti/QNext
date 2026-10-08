@@ -1,3 +1,5 @@
+export {};
+
 type SetupStatus = {
   initialized: boolean;
   recovery_configured?: boolean;
@@ -29,15 +31,11 @@ function routeURL(path: string): string {
 async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
-  includeAdminToken = false,
+  _includeAdminToken = false,
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
   if (init.body) headers.set('Content-Type', 'application/json');
-  if (includeAdminToken) {
-    const token = sessionStorage.getItem('qnext-ops-token')?.trim();
-    if (token) headers.set('X-QNext-Ops-Token', token);
-  }
 
   const response = await fetch(routeURL(path), {
     ...init,
@@ -216,8 +214,7 @@ function installAdminAccessPanel(): void {
         body: JSON.stringify({ recovery_code: recoveryCode, new_token: newToken }),
       });
       if (!result.authenticated) throw new Error('Recovery did not establish an Admin session');
-      sessionStorage.setItem('qnext-ops-token', newToken);
-      setMessage(message, 'Admin access recovered. Reloading with the new token…');
+      setMessage(message, 'Admin access recovered. Reloading the authenticated session…');
       window.setTimeout(() => window.location.reload(), 350);
     } catch (error) {
       setMessage(message, `Recovery failed: ${(error as Error).message}`, true);

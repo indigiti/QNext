@@ -134,6 +134,15 @@ try {
         respond(201, ['initialized' => true, 'authenticated' => true]);
     }
 
+    if ($method === 'GET' && $path === '/session') {
+        $session = $_COOKIE[QNEXT_OPS_SESSION_COOKIE] ?? null;
+        $authenticated = $auth->authorizedSession(is_string($session) ? $session : null);
+        respond(200, [
+            'authenticated' => $authenticated,
+            'expires_in_seconds' => $authenticated ? Auth::sessionTTLSeconds() : 0,
+        ]);
+    }
+
     if ($method === 'POST' && $path === '/session') {
         $body = request_body();
         $token = $body['token'] ?? null;

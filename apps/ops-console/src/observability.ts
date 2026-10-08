@@ -1,3 +1,5 @@
+export {};
+
 type InstrumentTelemetry = {
   provider?: string;
   last_event_time_ms?: number;
