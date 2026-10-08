@@ -70,7 +70,7 @@ jobs:
           rm -rf build/intelligence-lab-wheels
           mkdir -p build/intelligence-lab-wheels
           printf '%s\n'             'scikit-learn==1.9.1'             'lightgbm==4.7.0'             > build/intelligence-lab-wheels/requirements.lock
-          python -m pip download             --disable-pip-version-check             --dest build/intelligence-lab-wheels             -r build/intelligence-lab-wheels/requirements.lock
+          python -m pip download             --disable-pip-version-check             --only-binary=:all:             --dest build/intelligence-lab-wheels             -r build/intelligence-lab-wheels/requirements.lock
           (
             cd build/intelligence-lab-wheels
             sha256sum requirements.lock *.whl > wheelhouse.sha256
