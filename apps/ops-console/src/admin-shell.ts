@@ -7,7 +7,9 @@ type View =
   | 'market'
   | 'candles'
   | 'synthetic'
-  | 'trading'
+  | 'indicators'
+  | 'intelligence'
+  | 'lab'
   | 'runtime'
   | 'releases'
   | 'diagnostics'
@@ -36,9 +38,17 @@ const views: Record<View, ViewMeta> = {
     title: 'Synthetic',
     description: 'NIFTY-SYN+ research synthetic and isolated forward paper evaluation.',
   },
-  trading: {
-    title: 'Indicators & Intelligence',
-    description: 'Custom indicators and controlled Quant Intelligence lifecycle.',
+  indicators: {
+    title: 'Indicators',
+    description: 'Custom indicator catalog, Pine v6 scripts and chart feature contracts.',
+  },
+  intelligence: {
+    title: 'Quant Intelligence',
+    description: 'Production candidates, controlled training, promotion gates and rollback.',
+  },
+  lab: {
+    title: 'Intelligence Lab',
+    description: 'Isolated chart experiments, ML challengers, backtests and certification.',
   },
   runtime: {
     title: 'Runtime',
@@ -70,26 +80,33 @@ const navGroups: Array<{ label: string; items: Array<{ view: View; label: string
     ],
   },
   {
-    label: 'Market Data',
+    label: 'Market & Data',
     items: [
-      { view: 'market', label: 'Feed & 5s Health', icon: '◉' },
+      { view: 'market', label: 'Live Market & 5s', icon: '◉' },
       { view: 'candles', label: 'Candles & History', icon: '▥' },
+      { view: 'synthetic', label: 'Synthetic Research', icon: '◇' },
     ],
   },
   {
-    label: 'Research & Trading',
+    label: 'Intelligence',
     items: [
-      { view: 'synthetic', label: 'NIFTY SYN+', icon: '◇' },
-      { view: 'trading', label: 'Indicators & Intelligence', icon: '⌁' },
+      { view: 'indicators', label: 'Indicators', icon: '⌁' },
+      { view: 'intelligence', label: 'Quant Intelligence', icon: '◫' },
+      { view: 'lab', label: 'Intelligence Lab', icon: '◈' },
     ],
   },
   {
-    label: 'System',
+    label: 'Operations',
     items: [
       { view: 'runtime', label: 'Runtime', icon: '⚡' },
       { view: 'releases', label: 'Releases', icon: '⬆' },
       { view: 'diagnostics', label: 'Diagnostics', icon: '▤' },
-      { view: 'settings', label: 'Settings', icon: '⚙' },
+    ],
+  },
+  {
+    label: 'Platform',
+    items: [
+      { view: 'settings', label: 'Workspace & Brokers', icon: '⚙' },
       { view: 'security', label: 'Security', icon: '◆' },
     ],
   },
@@ -127,8 +144,9 @@ function classifyCards(): void {
   setCardView(document.querySelector<HTMLElement>('#historical-repair-card'), 'candles');
 
   setCardView(document.querySelector<HTMLElement>('#syn-plus-status-card'), 'synthetic');
-  setCardView(document.querySelector<HTMLElement>('#custom-indicators-card'), 'trading');
-  setCardView(document.querySelector<HTMLElement>('#quant-intelligence-card'), 'trading');
+  setCardView(document.querySelector<HTMLElement>('#custom-indicators-card'), 'indicators');
+  setCardView(document.querySelector<HTMLElement>('#quant-intelligence-card'), 'intelligence');
+  setCardView(document.querySelector<HTMLElement>('#intelligence-lab-card'), 'lab');
 
   setCardView(document.querySelector<HTMLElement>('#workspace-settings-card'), 'settings');
   setCardView(findCard('#secret-form'), 'settings', 'broker-secrets-card');
@@ -138,8 +156,12 @@ function classifyCards(): void {
   document.querySelectorAll<HTMLElement>('main.grid > .card:not([data-ops-view])').forEach((card) => {
     const id = card.id.toLowerCase();
     const text = `${id} ${card.querySelector('.eyebrow')?.textContent ?? ''} ${card.querySelector('h2')?.textContent ?? ''}`.toLowerCase();
-    if (text.includes('intelligence') || text.includes('indicator') || text.includes('strategy')) {
-      card.dataset.opsView = 'trading';
+    if (text.includes('intelligence lab')) {
+      card.dataset.opsView = 'lab';
+    } else if (text.includes('quant intelligence') || text.includes('model') || text.includes('strategy')) {
+      card.dataset.opsView = 'intelligence';
+    } else if (text.includes('indicator')) {
+      card.dataset.opsView = 'indicators';
     } else if (text.includes('synthetic') || text.includes('syn+')) {
       card.dataset.opsView = 'synthetic';
     } else if (text.includes('diagnostic')) {
@@ -324,7 +346,8 @@ function dashboardMarkup(): string {
           <div class="ops-quick-grid">
             <button type="button" data-dashboard-view="candles"><span>▥</span><strong>Candles</strong><small>Formation & recovery</small></button>
             <button type="button" data-dashboard-view="synthetic"><span>◇</span><strong>SYN+</strong><small>Research synthetic</small></button>
-            <button type="button" data-dashboard-view="trading"><span>⌁</span><strong>Intelligence</strong><small>Indicators & models</small></button>
+            <button type="button" data-dashboard-view="intelligence"><span>◫</span><strong>Intelligence</strong><small>Models & promotion gates</small></button>
+            <button type="button" data-dashboard-view="lab"><span>◈</span><strong>Lab</strong><small>Experiments & ML challengers</small></button>
             <button type="button" data-dashboard-view="diagnostics"><span>▤</span><strong>Diagnostics</strong><small>Logs & runtime</small></button>
           </div>
         </section>
