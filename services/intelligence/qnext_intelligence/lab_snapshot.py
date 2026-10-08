@@ -26,6 +26,7 @@ class ImportedChartSnapshot:
     feature_schema_version: str
     indicator_configuration_hash: str
     indicator_ids: tuple[str, ...]
+    indicator_historical_features: Mapping[str, tuple[str, ...]]
     feature_rows: tuple[LabFeatureRow, ...]
     snapshot_hash: str
 
@@ -86,6 +87,7 @@ def import_chart_snapshot(payload: Mapping[str, Any]) -> ImportedChartSnapshot:
         raise ValueError("chart snapshot must contain enabled indicators")
 
     indicator_ids: list[str] = []
+    indicator_historical_features: dict[str, tuple[str, ...]] = {}
     for raw in raw_indicators:
         if not isinstance(raw, Mapping):
             raise ValueError("invalid indicator descriptor")
@@ -96,6 +98,16 @@ def import_chart_snapshot(payload: Mapping[str, Any]) -> ImportedChartSnapshot:
         if instance_id in indicator_ids:
             raise ValueError("duplicate indicator instance id")
         indicator_ids.append(instance_id)
+
+        raw_historical = raw.get("historical_feature_names", [])
+        if not isinstance(raw_historical, list):
+            raise ValueError("indicator historical_feature_names must be a list")
+        names = tuple(sorted({
+            str(value).strip()
+            for value in raw_historical
+            if isinstance(value, str) and value.strip()
+        }))
+        indicator_historical_features[instance_id] = names
 
     raw_rows = payload.get("feature_rows")
     if not isinstance(raw_rows, list) or not raw_rows:
@@ -123,6 +135,10 @@ def import_chart_snapshot(payload: Mapping[str, Any]) -> ImportedChartSnapshot:
         "timeframe": timeframe,
         "indicator_configuration_hash": configuration_hash,
         "indicator_ids": indicator_ids,
+        "indicator_historical_features": {
+            key: list(indicator_historical_features[key])
+            for key in sorted(indicator_historical_features)
+        },
         "feature_rows": [
             {"bar_time_ms": row.bar_time_ms, "features": dict(sorted(row.features.items()))}
             for row in rows
@@ -136,6 +152,7 @@ def import_chart_snapshot(payload: Mapping[str, Any]) -> ImportedChartSnapshot:
         feature_schema_version=feature_schema_version,
         indicator_configuration_hash=configuration_hash,
         indicator_ids=tuple(indicator_ids),
+        indicator_historical_features=indicator_historical_features,
         feature_rows=tuple(rows),
         snapshot_hash=stable_hash(normalized_material),
     )
