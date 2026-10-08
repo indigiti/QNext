@@ -21,7 +21,6 @@ function opsAPI(): OpsAPI {
   }).__QNEXT_OPS_CONFIG__ ?? {};
   return new OpsAPI({
     base: runtime.apiBase,
-    token: sessionStorage.getItem('qnext-ops-token') ?? '',
   });
 }
 
