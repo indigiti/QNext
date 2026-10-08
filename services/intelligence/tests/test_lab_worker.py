@@ -226,6 +226,10 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
                     return_value=0.001,
                     mfe=0.002,
                     mae=-0.001,
+                    mfe_bar=1,
+                    mae_bar=1,
+                    future_high_excursions=(0.002,),
+                    future_low_excursions=(-0.001,),
                     direction_actual="UP",
                 )
             )
