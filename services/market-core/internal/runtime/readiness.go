@@ -17,21 +17,21 @@ type ReadinessSnapshot struct {
 	LiveRequired        bool                     `json:"live_required"`
 	LiveConfigured      bool                     `json:"live_configured"`
 	ActiveMarkets       []string                 `json:"active_markets,omitempty"`
-	FeedFreshnessMS     map[string]int64          `json:"feed_freshness_ms,omitempty"`
+	FeedFreshnessMS     map[string]int64         `json:"feed_freshness_ms,omitempty"`
 	Persistence         history.PersistenceStats `json:"persistence"`
 	PersistenceQueueUse float64                  `json:"persistence_queue_utilization"`
 	Reasons             []string                 `json:"reasons,omitempty"`
 }
 
 type ReadinessEvaluator struct {
-	RequireLive           bool
-	Config                *marketconfig.Config
-	Calendars             *marketcalendar.Registry
-	Feed                  *feedstatus.Tracker
-	History               *history.Store
-	Now                   func() time.Time
-	MaxFeedAge            time.Duration
-	MaxPersistenceLag     time.Duration
+	RequireLive            bool
+	Config                 *marketconfig.Config
+	Calendars              *marketcalendar.Registry
+	Feed                   *feedstatus.Tracker
+	History                *history.Store
+	Now                    func() time.Time
+	MaxFeedAge             time.Duration
+	MaxPersistenceLag      time.Duration
 	MaxPersistenceQueueUse float64
 }
 

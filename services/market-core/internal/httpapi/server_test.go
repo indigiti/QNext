@@ -218,7 +218,6 @@ func TestBarsEndpointIncludesCurrentFormingBar(t *testing.T) {
 	}
 }
 
-
 type countingHistory struct {
 	calls int
 	bars  []domain.Bar

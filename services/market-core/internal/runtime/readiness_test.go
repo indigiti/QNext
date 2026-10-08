@@ -40,13 +40,13 @@ func TestReadinessRequiresFreshUnderlyingDuringActiveSession(t *testing.T) {
 	tracker := feedstatus.New()
 	now := time.Date(2026, 10, 8, 4, 0, 0, 0, time.UTC) // 09:30 IST.
 	tracker.Observe(domain.Tick{
-		InstrumentID: "NSE:NIFTY50",
-		Provider:     "upstox",
-		Price:        25000,
-		EventTime:    now,
-		ReceivedTime: now,
+		InstrumentID:  "NSE:NIFTY50",
+		Provider:      "upstox",
+		Price:         25000,
+		EventTime:     now,
+		ReceivedTime:  now,
 		ProcessedTime: now,
-		Quality:      domain.QualityGood,
+		Quality:       domain.QualityGood,
 	})
 
 	ready, snapshot := (ReadinessEvaluator{

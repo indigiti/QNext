@@ -64,7 +64,6 @@ func TestStoreRejectsFormingBar(t *testing.T) {
 	}
 }
 
-
 func TestStoreLocksHistoryPerPartition(t *testing.T) {
 	store := New(t.TempDir())
 	blockedDay := time.Date(2026, 9, 23, 3, 45, 0, 0, time.UTC)

@@ -259,11 +259,11 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 	requestedWindow := time.Duration(toMS-fromMS) * time.Millisecond
 	if requestedWindow > maxWindow {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
-			"error":               "history_range_too_large",
-			"timeframe":           timeframe,
-			"max_range_ms":        maxWindow.Milliseconds(),
-			"requested_range_ms":  requestedWindow.Milliseconds(),
-			"max_response_bars":   maxHistoryBars,
+			"error":              "history_range_too_large",
+			"timeframe":          timeframe,
+			"max_range_ms":       maxWindow.Milliseconds(),
+			"requested_range_ms": requestedWindow.Milliseconds(),
+			"max_response_bars":  maxHistoryBars,
 		})
 		return
 	}
@@ -273,8 +273,8 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed <= 0 || parsed > maxHistoryBars {
 			writeJSON(w, http.StatusBadRequest, map[string]any{
-				"error":          "invalid_limit",
-				"max_limit":      maxHistoryBars,
+				"error":     "invalid_limit",
+				"max_limit": maxHistoryBars,
 			})
 			return
 		}
@@ -312,9 +312,9 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 
 	if len(bars) > limit {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
-			"error":               "history_result_too_large",
-			"result_bars":         len(bars),
-			"max_response_bars":   limit,
+			"error":             "history_result_too_large",
+			"result_bars":       len(bars),
+			"max_response_bars": limit,
 		})
 		return
 	}
