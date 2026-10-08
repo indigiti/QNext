@@ -64,6 +64,7 @@ jobs:
           bash -n deploy/qnext-ops-helper
           bash -n deploy/qnext-ops-web
           bash -n deploy/qnext-ops-user
+          bash -n deploy/qnext-intelligence-lab-python
       - name: PHP smoke
         run: |
           php services/ops-api/tests/smoke.php
@@ -94,3 +95,6 @@ jobs:
           grep -q 'QNEXT.RELEASE/1' .github/workflows/qnext-release.yml
           test -x deploy/qnext-ops-helper
           test -x deploy/qnext-ops-web
+          test -f deploy/qnext-intelligence-lab-python
+          grep -q 'intelligence-lab-wheels' .github/workflows/qnext-release.yml
+          grep -q 'qnext-intelligence-lab-python' .github/workflows/qnext-release.yml
