@@ -9,6 +9,7 @@ import {
 import { QNextProvider } from './qnext-provider';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
+import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
 import './style.css';
 
 declare global {
@@ -166,6 +167,14 @@ async function bootstrapVela(timeframes: string[]) {
   mountIntelligenceLabBridge(
     workspace as unknown as Parameters<typeof mountIntelligenceLabBridge>[0],
     (symbol) => labResolverProvider.resolveInstrumentID(symbol),
+    (instrumentID, timeframe, range) =>
+      labResolverProvider.getBars(instrumentID, timeframe, range),
+  );
+  mountIntelligenceLabShadowBridge(
+    workspace as unknown as Parameters<typeof mountIntelligenceLabShadowBridge>[0],
+    (symbol) => labResolverProvider.resolveInstrumentID(symbol),
+    (instrumentID, timeframe, range) =>
+      labResolverProvider.getCanonicalBars(instrumentID, timeframe, range),
     (instrumentID, timeframe, range) =>
       labResolverProvider.getBars(instrumentID, timeframe, range),
   );
