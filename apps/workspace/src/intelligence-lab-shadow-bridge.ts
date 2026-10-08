@@ -123,10 +123,16 @@ export function mountIntelligenceLabShadowBridge(
         return;
       }
 
+      const stepMs = timeframeMs(active.timeframe);
+      const now = Date.now();
       const canonical = await fetchCanonicalBars(
         instrumentID,
         active.timeframe,
-        { limit: 4 },
+        {
+          from: now - Math.max(stepMs * 16, 2 * 60 * 60 * 1_000),
+          to: now,
+          limit: 4,
+        },
       );
       const latest = canonical
         .filter(
