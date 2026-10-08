@@ -21,7 +21,10 @@ interface WorkspaceLike {
   };
 }
 
-export function mountIntelligenceLabBridge(workspace: WorkspaceLike): () => void {
+export function mountIntelligenceLabBridge(
+  workspace: WorkspaceLike,
+  resolveInstrumentID?: (symbol: string) => Promise<string>,
+): () => void {
   const existing = document.querySelector<HTMLDivElement>('#qnext-intelligence-lab-bridge');
   existing?.remove();
 
@@ -65,7 +68,11 @@ export function mountIntelligenceLabBridge(workspace: WorkspaceLike): () => void
     button.disabled = true;
     status.textContent = 'Capturing enabled indicators…';
     try {
-      const snapshot = await captureActiveChartLabSnapshot(workspace);
+      const snapshot = await captureActiveChartLabSnapshot(
+        workspace,
+        Date.now(),
+        resolveInstrumentID,
+      );
       persistPending(snapshot);
       status.textContent = `${snapshot.indicators.length} indicators · queueing…`;
 
