@@ -229,8 +229,8 @@ async function loadAdmin(): Promise<void> {
   await import('./observability');
   await import('./canonical-5s-admin');
   await import('./five-second-health-v2');
-  await import('./intelligence-panel.mts');
-  await import('./intelligence-lab-panel.mts');
+  await import('./intelligence-panel');
+  await import('./intelligence-lab-panel');
   await import('./admin-ready');
 
   document.querySelector<HTMLButtonElement>('#admin-logout')?.addEventListener('click', async () => {
