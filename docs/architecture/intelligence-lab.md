@@ -156,3 +156,60 @@ The Lab worker has no production-promotion action.
 The first runner learns only from historical numeric feature series that the chart runtime exposes. Current-bar variables are retained for diagnostics but are not retroactively fabricated into historical rows.
 
 An indicator that renders only drawing objects (for example boxes/labels) and exposes no numeric historical series is therefore not silently treated as a useful ML feature. A follow-on indicator feature contract will expose drawing/state semantics explicitly (zone prices, distances, ages, structure state, etc.) before such information is admitted to model training.
+
+
+## Indicator feature contracts (v2)
+
+Chart snapshot schema version `qnext-chart-indicators-v2` records feature coverage per enabled indicator.
+
+Each indicator descriptor now reports:
+
+- historical feature names available to model training;
+- current-only numeric features available for diagnostics;
+- source/configuration hashes and persisted Vela input overrides.
+
+Certification is fail-closed: every enabled indicator must contribute at least one stable historical feature after coverage/variance filtering. The feature selector reserves representation for each enabled indicator before applying the global feature cap.
+
+Adaptive EMA exposes an explicit historical contract including EMA, price, ATR, standard deviation, trend, EMA distance, EMA slope, ATR percent and standard-deviation percent.
+
+For Pine scripts that render drawings but expose no historical plot series, **Send to Lab** may run a separate invisible Vela/PineWorker clone over canonical Market Core bars. QNext auto-discovers safe top-level scalar Pine state and appends hidden plots only to that Lab clone. The visible chart source and runtime instance are never modified.
+
+Examples of auto-contract state include structure/trend integers, last swing levels and CHoCH booleans. Arrays, boxes, labels and local block variables are not rewritten into unsafe guesses. If no safe historical state can be extracted, the experiment can still be imported for diagnostics but cannot pass the backtest gate.
+
+## Lab ML tournament
+
+The deterministic Ridge learner remains the mandatory first benchmark and fail-safe.
+
+Optional Lab-only dependencies:
+
+- `scikit-learn==1.9.1`
+- `lightgbm==4.7.0`
+
+The tournament runs:
+
+```text
+chronological dataset
+      ↓
+60% train
+      ↓
+20% validation ── choose family/parameters/confidence threshold
+      ↓
+20% untouched test ── compare selected challenger against Ridge
+```
+
+Current challengers:
+
+- scikit-learn logistic classifier with standardized features;
+- LightGBM classifier with deterministic single-threaded training settings.
+
+The selected ML family must improve the validation objective before it is allowed to see the untouched test window. It then must satisfy return, accuracy and drawdown gates versus the Ridge benchmark. Any missing dependency or ML runtime/training error falls back to Ridge; it does not fail the Lab backtest or affect production Intelligence.
+
+Probability output is explicitly marked **not calibrated** at this stage. A displayed percentage must not be treated as a literal historical win probability until a leakage-safe calibration stage is added.
+
+The Lab persists the tournament winner, model hash, Ridge candidate, optional ML candidate, dependency versions, indicator feature coverage and failure/fallback reason. Admin shows the selected algorithm after each backtest.
+
+## ML deployment boundary
+
+CI installs and executes the optional ML stack to certify the code path. The normal QNext release does not yet install NumPy/SciPy/scikit-learn/LightGBM into the live host Python runtime.
+
+This is intentional. Until an isolated Lab ML environment is provisioned, deployed Lab backtests remain fully functional with the deterministic Ridge benchmark. No compiled ML dependency is introduced into the Go Market Core, chart runtime or production Intelligence path.
