@@ -157,6 +157,43 @@ describe('QNextProvider', () => {
     ]);
   });
 
+  it('preserves canonical final and quality metadata for Shadow-Live', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      if (target.startsWith('/api/v1/symbols/')) {
+        return jsonResponse(symbolsPayload);
+      }
+      if (target.startsWith('/api/v1/bars/?')) {
+        return jsonResponse({
+          bars: [
+            {
+              time: 100, open: 10, high: 11, low: 9, close: 10.5, volume: 3,
+              final: false, quality: 'good', revision: 1, authority_provider: 'upstox',
+            },
+            {
+              time: 200, open: 11, high: 12, low: 10, close: 11.5, volume: 4,
+              final: true, quality: 'RECOVERED', revision: 2, authority_provider: 'upstox',
+            },
+          ],
+        });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const provider = new QNextProvider({ fetchImpl });
+    await expect(
+      provider.getCanonicalBars('NIFTY', '1m', { from: 0, to: 1_000 }),
+    ).resolves.toEqual([
+      {
+        time: 100, open: 10, high: 11, low: 9, close: 10.5, volume: 3,
+        final: false, quality: 'GOOD', revision: 1, authority_provider: 'upstox',
+      },
+      {
+        time: 200, open: 11, high: 12, low: 10, close: 11.5, volume: 4,
+        final: true, quality: 'RECOVERED', revision: 2, authority_provider: 'upstox',
+      },
+    ]);
+  });
   it('pads 15s history across weekends and holidays', async () => {
     const now = Date.UTC(2026, 9, 4, 18, 2, 0);
     let barsURL = '';
