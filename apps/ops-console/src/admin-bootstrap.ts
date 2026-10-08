@@ -18,6 +18,7 @@ type SetupStatus = {
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('QNext Admin root not found');
+const appRoot: HTMLDivElement = root;
 
 const apiBase = (window.__QNEXT_OPS_CONFIG__?.apiBase ?? '/qnext/admin/api/index.php').replace(/\/$/, '');
 
@@ -80,7 +81,7 @@ async function setupStatus(): Promise<SetupStatus> {
 
 function renderGate(setup: SetupStatus, message = ''): void {
   const firstTime = !setup.initialized;
-  root.innerHTML = `
+  appRoot.innerHTML = `
     <main class="admin-gate" aria-labelledby="admin-gate-title">
       <section class="admin-gate-card">
         <div class="admin-gate-brand">
@@ -218,7 +219,7 @@ async function loadAdmin(): Promise<void> {
   if (adminLoaded) return;
   adminLoaded = true;
   document.documentElement.classList.add('ops-authenticated');
-  root.innerHTML = '';
+  appRoot.innerHTML = '';
 
   await import('./main');
   await import('./admin-router');
@@ -229,8 +230,8 @@ async function loadAdmin(): Promise<void> {
   await import('./observability');
   await import('./canonical-5s-admin');
   await import('./five-second-health-v2');
-  await import('./intelligence-panel');
-  await import('./intelligence-lab-panel');
+  await import('./intelligence-panel.mts');
+  await import('./intelligence-lab-panel.mts');
   await import('./admin-ready');
 
   document.querySelector<HTMLButtonElement>('#admin-logout')?.addEventListener('click', async () => {
