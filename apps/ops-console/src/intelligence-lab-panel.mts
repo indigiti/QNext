@@ -41,6 +41,20 @@ type LabRecommendation = {
   } | null;
 };
 
+type LabCertifiedAdvisory = {
+  advisory_id?: string;
+  as_of_time_ms?: number;
+  model_algorithm?: string;
+  decision?: 'BUY' | 'SELL' | 'NO_TRADE';
+  probabilities?: { BUY?: number; SELL?: number; NO_TRADE?: number };
+  entry_price?: number;
+  target1_price?: number | null;
+  target2_price?: number | null;
+  invalidation_price?: number | null;
+  expected_return_pct?: number | null;
+  expected_horizon_bars?: number | null;
+};
+
 type LabShadowConfig = {
   horizon_bars?: number;
   min_samples?: number;
@@ -85,6 +99,7 @@ type LabExperiment = {
   shadow_summary?: LabShadowSummary | null;
   selection?: LabSelection | null;
   recommendation?: LabRecommendation | null;
+  advisory_latest?: LabCertifiedAdvisory | null;
   candidates?: Array<Record<string, unknown>>;
 };
 
@@ -230,6 +245,33 @@ function card(experiment: LabExperiment, busy: boolean): string {
             · Brier ${num(experiment.recommendation.calibration?.test_brier, 4)}
             · T1-before-invalidation ${pct(experiment.recommendation.target_profile?.test_target1_before_invalidation)}
             · T2-before-invalidation ${pct(experiment.recommendation.target_profile?.test_target2_before_invalidation)}
+          </div>
+        </div>
+      ` : ''}
+      ${experiment.advisory_latest ? `
+        <div class="qil-certified">
+          <div class="line">
+            <div>
+              <span class="muted">Certified chart advisory</span>
+              <div class="qil-decision">${html(experiment.advisory_latest.decision ?? '—')}</div>
+            </div>
+            <div class="qil-probabilities">
+              <span>BUY <strong>${pct(experiment.advisory_latest.probabilities?.BUY)}</strong></span>
+              <span>SELL <strong>${pct(experiment.advisory_latest.probabilities?.SELL)}</strong></span>
+              <span>NO TRADE <strong>${pct(experiment.advisory_latest.probabilities?.NO_TRADE)}</strong></span>
+            </div>
+          </div>
+          <div class="qil-levels">
+            <div><span>Entry</span><strong>${num(experiment.advisory_latest.entry_price, 2)}</strong></div>
+            <div><span>Target 1</span><strong>${num(experiment.advisory_latest.target1_price ?? undefined, 2)}</strong></div>
+            <div><span>Target 2</span><strong>${num(experiment.advisory_latest.target2_price ?? undefined, 2)}</strong></div>
+            <div><span>Invalidation</span><strong>${num(experiment.advisory_latest.invalidation_price ?? undefined, 2)}</strong></div>
+            <div><span>Expected return</span><strong>${pct(experiment.advisory_latest.expected_return_pct ?? undefined)}</strong></div>
+            <div><span>Horizon</span><strong>${num(experiment.advisory_latest.expected_horizon_bars ?? undefined, 1)} bars</strong></div>
+          </div>
+          <div class="muted qil-rec-meta">
+            As of ${experiment.advisory_latest.as_of_time_ms ? new Date(experiment.advisory_latest.as_of_time_ms).toLocaleString() : '—'}
+            · advisory only · no execution
           </div>
         </div>
       ` : ''}
@@ -435,6 +477,7 @@ function mount(): void {
     #intelligence-lab-card .qil-indicators{margin:.6rem 0;word-break:break-word}
     #intelligence-lab-card .qil-selection{margin:.45rem 0;padding-top:.45rem;border-top:1px solid rgba(255,255,255,.06)}
     #intelligence-lab-card .qil-recommendation{margin:.75rem 0;padding:.8rem;border:1px solid rgba(99,102,241,.22);border-radius:.6rem;background:rgba(99,102,241,.035)}
+    #intelligence-lab-card .qil-certified{margin:.75rem 0;padding:.8rem;border:1px solid rgba(34,197,94,.24);border-radius:.6rem;background:rgba(34,197,94,.035)}
     #intelligence-lab-card .qil-decision{font-size:1.35rem;font-weight:800;margin-top:.15rem}
     #intelligence-lab-card .qil-probabilities{display:flex;gap:.7rem;flex-wrap:wrap;font-size:.74rem}
     #intelligence-lab-card .qil-levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.7rem 0}

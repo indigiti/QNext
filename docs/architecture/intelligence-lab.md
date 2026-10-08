@@ -353,3 +353,62 @@ The Shadow horizon is locked to the original backtest horizon. It cannot be chan
 Failed certification attempts remain in `SHADOW` and are retryable as more live observations mature. Every certification evaluation remains immutable while `results/shadow.json` points to the latest evaluation.
 
 Certification only changes the Lab lifecycle to `CERTIFIED`. It still does not promote a production model or enable live execution.
+
+## Certified chart advisory
+
+A Lab experiment that passes Shadow-Live certification can publish a read-only chart advisory while remaining isolated from production execution.
+
+```text
+CERTIFIED Lab experiment
+      ↓
+matching Vela chart context
+      ↓
+new canonical finalized bar
+      ↓
+protected Admin-session scoring request
+      ↓
+selected certified model + stored calibration policy
+      ↓
+immutable certified advisory artifact
+      ↓
+sanitized read-only workspace endpoint
+      ↓
+Certified Intelligence card
+```
+
+### Exact context contract
+
+The chart displays an advisory only when all of the following match exactly:
+
+- canonical instrument ID;
+- timeframe;
+- feature schema version;
+- enabled indicator configuration hash.
+
+The configuration hash includes enabled indicator instance identity, script/native source hash, language/type and resolved inputs. If an indicator is added, removed, hidden or reconfigured, the advisory disappears rather than falling back to a different model context.
+
+A lightweight context fingerprint path computes this hash without repeatedly extracting full indicator history.
+
+### Publishing boundary
+
+Live scoring remains protected by the Admin HttpOnly session. An authenticated Vela chart submits finalized feature rows to the existing append-only Intelligence live inbox. `SHADOW` targets continue producing outcome evidence; `CERTIFIED` targets switch to advisory-only scoring.
+
+Certified advisory scoring does not update Shadow metrics, place orders, change Strategy Lab, or modify the production Intelligence model pointer.
+
+### Public chart payload
+
+The workspace endpoint returns only sanitized fields from `CERTIFIED` experiments:
+
+- decision (`BUY`, `SELL`, `NO_TRADE`);
+- calibrated probabilities;
+- entry, Target 1, Target 2 and invalidation;
+- expected side return and horizon;
+- instrument/timeframe/context hashes;
+- model algorithm/hash and recommendation-policy ID;
+- certification/advisory timestamps.
+
+It never exposes feature vectors, candidate artifacts, coefficients, model payloads, datasets, Admin tokens or execution instructions.
+
+The Vela chart shows the result in a compact **Certified Intelligence** card labelled **Advisory only · no execution**. Advisories older than a bounded timeframe window are visibly marked `STALE`.
+
+Lightweight Charts do not display certified advisories yet because they do not currently prove parity with the Vela enabled-indicator context.

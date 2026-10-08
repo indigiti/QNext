@@ -30,6 +30,7 @@ final class IntelligenceLabControl
                 $manifest['shadow_config'] = $this->readJson($dir . '/shadow/config.json');
                 $manifest['shadow_summary'] = $this->readJson($dir . '/shadow/summary.json');
                 $manifest['shadow_latest'] = $this->readJson($dir . '/shadow/latest-observation.json');
+                $manifest['advisory_latest'] = $this->readJson($dir . '/advisory/latest.json');
                 $manifest['candidates'] = [];
                 $models = glob($dir . '/models/*.json') ?: [];
                 foreach ($models as $model) {
@@ -137,7 +138,11 @@ final class IntelligenceLabControl
         if (is_dir($root)) {
             foreach (glob($root . '/*', GLOB_ONLYDIR) ?: [] as $dir) {
                 $manifest = $this->readJson($dir . '/manifest.json');
-                if (!is_array($manifest) || ($manifest['lifecycle_state'] ?? '') !== 'SHADOW') {
+                if (!is_array($manifest)) {
+                    continue;
+                }
+                $state = (string) ($manifest['lifecycle_state'] ?? '');
+                if (!in_array($state, ['SHADOW', 'CERTIFIED'], true)) {
                     continue;
                 }
                 $config = $this->readJson($dir . '/shadow/config.json');
@@ -152,6 +157,7 @@ final class IntelligenceLabControl
                     'feature_schema_version' => $manifest['feature_schema_version'] ?? '',
                     'horizon_bars' => $config['horizon_bars'] ?? 0,
                     'started_at_ms' => $config['started_at_ms'] ?? 0,
+                    'mode' => $state === 'CERTIFIED' ? 'ADVISORY' : 'SHADOW',
                 ];
             }
         }
@@ -212,6 +218,63 @@ final class IntelligenceLabControl
             'queued' => true,
             'requestId' => $request['request_id'],
             'action' => 'shadow-observation',
+        ];
+    }
+
+    public function submitAdvisoryObservation(array $payload): array
+    {
+        $experimentId = $this->requiredToken($payload, 'experimentId', 96);
+        $configurationHash = $payload['indicatorConfigurationHash'] ?? null;
+        if (!is_string($configurationHash) || preg_match('/^[a-f0-9]{64}$/', $configurationHash) !== 1) {
+            throw new RuntimeException('indicatorConfigurationHash is invalid');
+        }
+        $featureSchemaVersion = $payload['featureSchemaVersion'] ?? null;
+        if (!is_string($featureSchemaVersion) || trim($featureSchemaVersion) === '' || strlen($featureSchemaVersion) > 128) {
+            throw new RuntimeException('featureSchemaVersion is invalid');
+        }
+        $rows = $payload['featureRows'] ?? null;
+        if (!is_array($rows) || count($rows) < 1 || count($rows) > 256) {
+            throw new RuntimeException('featureRows must contain between 1 and 256 rows');
+        }
+        $currentFeatures = $payload['currentFeatures'] ?? [];
+        if (!is_array($currentFeatures)) {
+            throw new RuntimeException('currentFeatures must be an object');
+        }
+        $barTimeMs = $payload['barTimeMs'] ?? null;
+        if (!is_int($barTimeMs) || $barTimeMs <= 0) {
+            throw new RuntimeException('barTimeMs is invalid');
+        }
+
+        $request = [
+            'schema' => 'QNEXT.INTELLIGENCE.LAB.REQUEST/1',
+            'request_id' => bin2hex(random_bytes(12)),
+            'action' => 'advisory-observation',
+            'requested_at_ms' => (int) floor(microtime(true) * 1000),
+            'payload' => [
+                'experimentId' => $experimentId,
+                'indicatorConfigurationHash' => $configurationHash,
+                'featureSchemaVersion' => trim($featureSchemaVersion),
+                'barTimeMs' => $barTimeMs,
+                'createdAtMs' => (int) ($payload['createdAtMs'] ?? floor(microtime(true) * 1000)),
+                'featureRows' => $rows,
+                'currentFeatures' => $currentFeatures,
+            ],
+        ];
+        $encoded = json_encode($request, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        if (strlen($encoded) > 2 * 1024 * 1024) {
+            throw new RuntimeException('certified advisory observation exceeds the 2 MiB limit');
+        }
+
+        $dir = $this->shadowInboxPath();
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+            throw new RuntimeException('failed to create Intelligence live inbox');
+        }
+        $path = $dir . '/' . $barTimeMs . '-' . $request['request_id'] . '.json';
+        AtomicFile::writeJson($path, $request);
+        return [
+            'queued' => true,
+            'requestId' => $request['request_id'],
+            'action' => 'advisory-observation',
         ];
     }
 

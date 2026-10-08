@@ -22,6 +22,7 @@ from .lab_snapshot import (
 from .learning import CandidateModel, build_learning_dataset, train_candidate
 from .lab_ml import LabMLCandidate, SCHEMA as LAB_ML_SCHEMA, dependency_status, train_ml_challenger
 from .lab_recommendation import build_recommendation
+from .lab_advisory import build_certified_advisory
 from .lab_shadow import (
     ShadowConfig,
     ShadowObservation,
@@ -707,6 +708,84 @@ def _shadow_observation(
     }
 
 
+def _certified_advisory_observation(
+    registry: IntelligenceLabRegistry,
+    market_core_url: str,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    experiment_id = str(payload.get("experimentId", ""))
+    if not experiment_id:
+        raise ValueError("experimentId is required")
+    experiment = registry.get(experiment_id)
+    if experiment.lifecycle_state != "CERTIFIED":
+        raise ValueError("certified advisory observation requires CERTIFIED state")
+
+    configuration_hash = str(payload.get("indicatorConfigurationHash", ""))
+    if configuration_hash != experiment.indicator_configuration_hash:
+        raise ValueError("certified advisory chart configuration does not match experiment")
+    feature_schema_version = str(payload.get("featureSchemaVersion", ""))
+    if feature_schema_version != experiment.feature_schema_version:
+        raise ValueError("certified advisory feature schema does not match experiment")
+
+    snapshot_payload = _shadow_snapshot_payload(
+        registry,
+        experiment_id,
+        payload,
+    )
+    imported = import_chart_snapshot(snapshot_payload)
+    if imported.instrument_id != experiment.instrument_id:
+        raise ValueError("certified advisory instrument does not match experiment")
+    if imported.timeframe != experiment.timeframe:
+        raise ValueError("certified advisory timeframe does not match experiment")
+
+    expected_bar_time = int(payload.get("barTimeMs", 0))
+    if expected_bar_time <= 0:
+        raise ValueError("barTimeMs is required")
+    duration = timeframe_to_milliseconds(experiment.timeframe)
+    first_time = imported.feature_rows[0].bar_time_ms
+    client = MarketCoreHistoryClient(market_core_url)
+    bars = client.fetch_bars(
+        instrument_id=experiment.instrument_id,
+        timeframe=experiment.timeframe,
+        from_ms=max(0, first_time),
+        to_ms=expected_bar_time + duration * 2,
+    )
+    current = build_latest_feature_vector(imported, bars)
+    if current.bar_time_ms != expected_bar_time:
+        raise ValueError(
+            "certified advisory feature vector is not aligned to the requested finalized bar"
+        )
+
+    selected_model = _load_selected_model(registry, experiment_id)
+    recommendation = registry.read_result_record(
+        experiment_id,
+        "recommendation.json",
+    )
+    certification = registry.read_evaluation(experiment_id, "SHADOW")
+    if not isinstance(recommendation, Mapping):
+        raise ValueError("certified advisory recommendation policy is missing")
+    if not isinstance(certification, Mapping) or not bool(
+        certification.get("gate_passed", False)
+    ):
+        raise ValueError("certified advisory requires a passing Shadow evaluation")
+
+    advisory = build_certified_advisory(
+        experiment=experiment,
+        current=current,
+        selected_model=selected_model,
+        recommendation_policy=recommendation,
+        certified_at_ms=int(certification.get("evaluated_at_ms", 0)),
+        created_at_ms=int(payload.get("createdAtMs", time.time() * 1000)),
+    )
+    registry.save_certified_advisory(
+        experiment_id,
+        advisory.to_record(),
+    )
+    return {
+        "advisory": advisory.to_record(),
+    }
+
+
 def _certify_shadow(
     registry: IntelligenceLabRegistry,
     market_core_url: str,
@@ -809,6 +888,12 @@ def process_request(
         result = _shadow_observation(registry, market_core_url, payload)
     elif action == "certify-shadow":
         result = _certify_shadow(registry, market_core_url, payload)
+    elif action == "advisory-observation":
+        result = _certified_advisory_observation(
+            registry,
+            market_core_url,
+            payload,
+        )
     else:
         raise ValueError("unsupported intelligence lab action")
 
