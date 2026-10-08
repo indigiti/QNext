@@ -63,7 +63,7 @@ final class IntelligenceLabControl
         if (!is_array($indicators) || count($indicators) < 1 || count($indicators) > 100) {
             throw new RuntimeException('snapshot indicator count is invalid');
         }
-        if (!is_array($rows) || count($rows) < 1 || count($rows) > 10000) {
+        if (!is_array($rows) || count($rows) > 10000) {
             throw new RuntimeException('snapshot feature row count is invalid');
         }
         $encoded = json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
