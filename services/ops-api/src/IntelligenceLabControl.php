@@ -30,6 +30,7 @@ final class IntelligenceLabControl
                 $manifest['shadow_config'] = $this->readJson($dir . '/shadow/config.json');
                 $manifest['shadow_summary'] = $this->readJson($dir . '/shadow/summary.json');
                 $manifest['shadow_latest'] = $this->readJson($dir . '/shadow/latest-observation.json');
+                $manifest['advisory_latest'] = $this->readJson($dir . '/advisory/latest.json');
                 $manifest['candidates'] = [];
                 $models = glob($dir . '/models/*.json') ?: [];
                 foreach ($models as $model) {
