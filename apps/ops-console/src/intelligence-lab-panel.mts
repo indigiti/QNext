@@ -371,14 +371,12 @@ async function backtest(experimentId: string): Promise<void> {
 }
 
 async function startShadow(experimentId: string): Promise<void> {
-  const horizon = Number(document.querySelector<HTMLInputElement>('#qil-horizon')?.value ?? 3);
   const state = document.querySelector<HTMLSpanElement>('#qil-state')!;
   try {
     const result = await request<QueueResponse>('/intelligence-lab/shadow/start', {
       method: 'POST',
       body: JSON.stringify({
         experimentId,
-        horizonBars: Number.isInteger(horizon) ? horizon : 3,
         minSamples: 30,
       }),
     });
