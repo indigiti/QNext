@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from qnext_intelligence.domain import Bar
-from qnext_intelligence.lab_worker import process_request
+from qnext_intelligence.lab_worker import _selected_feature_names, process_request
 
 
 def chart_snapshot(rows: int = 90):
@@ -205,6 +205,39 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
                 result["result"]["evaluation"]["metrics"]["indicator_coverage_ratio"],
                 1.0,
             )
+
+    def test_feature_cap_reserves_one_feature_per_enabled_indicator(self):
+        examples = []
+        from qnext_intelligence.lab_snapshot import HistoricalLabExample
+
+        for index in range(100):
+            features = {
+                f"indicator.alpha.plot.feature_{feature}": float(index + feature)
+                for feature in range(110)
+            }
+            features["indicator.omega.plot.signal"] = float(index % 7)
+            examples.append(
+                HistoricalLabExample(
+                    bar_time_ms=index * 60_000,
+                    as_of_time_ms=(index + 1) * 60_000,
+                    features=features,
+                    origin_close=100.0 + index,
+                    horizon_bars=1,
+                    return_value=0.001,
+                    mfe=0.002,
+                    mae=-0.001,
+                    direction_actual="UP",
+                )
+            )
+
+        selected = _selected_feature_names(
+            examples,
+            indicator_ids=("alpha", "omega"),
+            max_features=20,
+        )
+        self.assertEqual(len(selected), 20)
+        self.assertTrue(any(name.startswith("indicator.alpha.") for name in selected))
+        self.assertTrue(any(name.startswith("indicator.omega.") for name in selected))
 
     def test_rejects_unknown_action_and_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
