@@ -222,11 +222,25 @@ class IntelligenceLabRegistry:
         experiment = self.get(evaluation.experiment_id)
         if experiment.lifecycle_state != "SHADOW":
             raise ValueError("certification requires SHADOW state")
-        self._write_evaluation(evaluation, "shadow.json")
+
+        evaluation_record = evaluation.to_record()
+        evaluation_id = stable_hash(evaluation_record)[:32]
+        self._write_evaluation(evaluation, f"shadow-evaluations/{evaluation_id}.json")
+        self._write_json(
+            self._experiment_dir(evaluation.experiment_id) / "results" / "shadow.json",
+            evaluation_record,
+            overwrite=True,
+        )
         if not evaluation.gate_passed:
-            self._append_event(experiment, "SHADOW_FAIL", evaluation.to_record())
+            self._append_event(experiment, "SHADOW_FAIL", {
+                "evaluation_id": evaluation_id,
+                **evaluation_record,
+            })
             return experiment
-        return self._transition(experiment, "CERTIFIED", "CERTIFY", evaluation.to_record())
+        return self._transition(experiment, "CERTIFIED", "CERTIFY", {
+            "evaluation_id": evaluation_id,
+            **evaluation_record,
+        })
 
     def retire(self, experiment_id: str, reason: str = "") -> LabExperiment:
         experiment = self.get(experiment_id)
@@ -339,6 +353,138 @@ class IntelligenceLabRegistry:
             overwrite=True,
         )
         return recommendation_id
+
+    def save_shadow_config(
+        self,
+        experiment_id: str,
+        config: Mapping[str, Any],
+    ) -> Path:
+        experiment = self.get(experiment_id)
+        if experiment.lifecycle_state != "SHADOW":
+            raise ValueError("shadow config requires SHADOW state")
+        path = self._experiment_dir(experiment_id) / "shadow" / "config.json"
+        material = dict(config)
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing == material:
+                return path
+            raise ValueError("shadow config already exists with different content")
+        self._write_json(path, material, overwrite=False)
+        return path
+
+    def read_shadow_config(self, experiment_id: str) -> dict[str, Any] | None:
+        self.get(experiment_id)
+        path = self._experiment_dir(experiment_id) / "shadow" / "config.json"
+        if not path.is_file():
+            return None
+        with path.open("r", encoding="utf-8") as handle:
+            decoded = json.load(handle)
+        return decoded if isinstance(decoded, dict) else None
+
+    def save_shadow_observation(
+        self,
+        experiment_id: str,
+        observation: Mapping[str, Any],
+    ) -> Path:
+        experiment = self.get(experiment_id)
+        if experiment.lifecycle_state != "SHADOW":
+            raise ValueError("shadow observation requires SHADOW state")
+        observation_id = str(observation.get("observation_id", ""))
+        self._validate_id(observation_id)
+        path = (
+            self._experiment_dir(experiment_id)
+            / "shadow"
+            / "observations"
+            / f"{observation_id}.json"
+        )
+        material = dict(observation)
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if isinstance(existing, dict):
+                existing_compare = dict(existing)
+                material_compare = dict(material)
+                existing_compare.pop("created_at_ms", None)
+                material_compare.pop("created_at_ms", None)
+                if existing_compare == material_compare:
+                    return path
+            raise ValueError("shadow observation id already exists with different content")
+        self._write_json(path, material, overwrite=False)
+        self._write_json(
+            self._experiment_dir(experiment_id) / "shadow" / "latest-observation.json",
+            material,
+            overwrite=True,
+        )
+        return path
+
+    def save_shadow_outcome(
+        self,
+        experiment_id: str,
+        outcome: Mapping[str, Any],
+    ) -> Path:
+        self.get(experiment_id)
+        observation_id = str(outcome.get("observation_id", ""))
+        self._validate_id(observation_id)
+        path = (
+            self._experiment_dir(experiment_id)
+            / "shadow"
+            / "outcomes"
+            / f"{observation_id}.json"
+        )
+        material = dict(outcome)
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing == material:
+                return path
+            raise ValueError("shadow outcome already exists with different content")
+        self._write_json(path, material, overwrite=False)
+        return path
+
+    def save_shadow_summary(
+        self,
+        experiment_id: str,
+        summary: Mapping[str, Any],
+    ) -> Path:
+        self.get(experiment_id)
+        path = self._experiment_dir(experiment_id) / "shadow" / "summary.json"
+        self._write_json(path, dict(summary), overwrite=True)
+        return path
+
+    def read_shadow_records(
+        self,
+        experiment_id: str,
+        kind: str,
+    ) -> tuple[dict[str, Any], ...]:
+        self.get(experiment_id)
+        if kind not in {"observations", "outcomes"}:
+            raise ValueError("unsupported shadow record kind")
+        root = self._experiment_dir(experiment_id) / "shadow" / kind
+        if not root.is_dir():
+            return ()
+        records: list[dict[str, Any]] = []
+        for path in sorted(root.glob("*.json")):
+            with path.open("r", encoding="utf-8") as handle:
+                decoded = json.load(handle)
+            if isinstance(decoded, dict):
+                records.append(decoded)
+        return tuple(records)
+
+    def read_result_record(
+        self,
+        experiment_id: str,
+        filename: str,
+    ) -> dict[str, Any] | None:
+        self.get(experiment_id)
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,96}", filename):
+            raise ValueError("invalid result filename")
+        path = self._experiment_dir(experiment_id) / "results" / filename
+        if not path.is_file():
+            return None
+        with path.open("r", encoding="utf-8") as handle:
+            decoded = json.load(handle)
+        return decoded if isinstance(decoded, dict) else None
 
     def save_candidate_artifact(
         self,

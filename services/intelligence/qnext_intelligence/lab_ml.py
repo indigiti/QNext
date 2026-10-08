@@ -94,6 +94,48 @@ class LabMLCandidate:
             "model_payload": dict(self.model_payload),
             "family_validation": list(self.family_validation),
         }
+    @classmethod
+    def from_record(cls, record: Mapping[str, Any]) -> "LabMLCandidate":
+        return cls(
+            candidate_id=str(record["candidate_id"]),
+            lifecycle_state=str(record["lifecycle_state"]),
+            algorithm=str(record["algorithm"]),
+            family=str(record["family"]),
+            feature_set_version=str(record["feature_set_version"]),
+            dataset_hash=str(record["dataset_hash"]),
+            model_hash=str(record["model_hash"]),
+            feature_names=tuple(str(value) for value in record["feature_names"]),
+            training_window_start_ms=int(record["training_window_start_ms"]),
+            training_window_end_ms=int(record["training_window_end_ms"]),
+            validation_window_start_ms=int(record["validation_window_start_ms"]),
+            validation_window_end_ms=int(record["validation_window_end_ms"]),
+            test_window_start_ms=int(record["test_window_start_ms"]),
+            test_window_end_ms=int(record["test_window_end_ms"]),
+            created_at_ms=int(record["created_at_ms"]),
+            train_samples=int(record["train_samples"]),
+            validation_samples=int(record["validation_samples"]),
+            test_samples=int(record["test_samples"]),
+            params=dict(record.get("params", {})),
+            confidence_threshold=float(record["confidence_threshold"]),
+            validation_metrics=EvaluationMetrics(**record["validation_metrics"]),
+            test_metrics=EvaluationMetrics(**record["test_metrics"]),
+            ridge_validation_metrics=EvaluationMetrics(**record["ridge_validation_metrics"]),
+            ridge_test_metrics=EvaluationMetrics(**record["ridge_test_metrics"]),
+            promotion_gate=PromotionGate(
+                passed=bool(record["promotion_gate"]["passed"]),
+                reasons=tuple(str(value) for value in record["promotion_gate"].get("reasons", [])),
+            ),
+            library_versions={
+                str(key): str(value)
+                for key, value in dict(record.get("library_versions", {})).items()
+            },
+            probability_calibrated=bool(record.get("probability_calibrated", False)),
+            model_payload=dict(record.get("model_payload", {})),
+            family_validation=tuple(
+                dict(value) for value in record.get("family_validation", [])
+            ),
+        )
+
 
 
 def dependency_status() -> dict[str, Any]:

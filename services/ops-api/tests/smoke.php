@@ -193,6 +193,96 @@ expect(
     'Intelligence Lab queue must be schema-bound and action-bound'
 );
 unlink($flatRoot . '/run/intelligence-lab-request.json');
+
+$shadowStart = $labControl->startShadow([
+    'experimentId' => 'lab-shadow-smoke',
+    'horizonBars' => 3,
+    'minSamples' => 30,
+]);
+expect(
+    ($shadowStart['queued'] ?? false) === true,
+    'Shadow-Live start should use the isolated Lab queue'
+);
+$shadowStartRequest = json_decode(
+    file_get_contents($flatRoot . '/run/intelligence-lab-request.json') ?: '{}',
+    true
+);
+expect(
+    ($shadowStartRequest['action'] ?? '') === 'start-shadow',
+    'Shadow-Live start action should be queue-bound'
+);
+unlink($flatRoot . '/run/intelligence-lab-request.json');
+
+$shadowCertify = $labControl->certifyShadow([
+    'experimentId' => 'lab-shadow-smoke',
+]);
+expect(
+    ($shadowCertify['queued'] ?? false) === true,
+    'Shadow certification should use the isolated Lab queue'
+);
+$shadowCertifyRequest = json_decode(
+    file_get_contents($flatRoot . '/run/intelligence-lab-request.json') ?: '{}',
+    true
+);
+expect(
+    ($shadowCertifyRequest['action'] ?? '') === 'certify-shadow',
+    'Shadow certification action should be queue-bound'
+);
+unlink($flatRoot . '/run/intelligence-lab-request.json');
+
+$shadowExperimentRoot = $flatRoot . '/storage/intelligence-lab/experiments/lab-shadow-smoke';
+mkdir($shadowExperimentRoot . '/shadow', 0750, true);
+AtomicFile::writeJson($shadowExperimentRoot . '/manifest.json', [
+    'schema' => 'QNEXT.INTELLIGENCE.LAB/1',
+    'experiment_id' => 'lab-shadow-smoke',
+    'name' => 'Shadow smoke',
+    'instrument_id' => 'QNEXT:NIFTY',
+    'timeframe' => '1m',
+    'indicator_ids' => ['ema-1'],
+    'indicator_configuration_hash' => str_repeat('a', 64),
+    'feature_schema_version' => 'qnext-chart-indicators-v1',
+    'created_at_ms' => 1800000000000,
+    'lifecycle_state' => 'SHADOW',
+    'source' => 'MANUAL',
+    'notes' => '',
+]);
+AtomicFile::writeJson($shadowExperimentRoot . '/shadow/config.json', [
+    'schema' => 'QNEXT.INTELLIGENCE.LAB.SHADOW_CONFIG/1',
+    'experiment_id' => 'lab-shadow-smoke',
+    'started_at_ms' => 1800000000000,
+    'horizon_bars' => 3,
+    'min_samples' => 30,
+]);
+$shadowTargets = $labControl->shadowTargets();
+expect(
+    count($shadowTargets['targets'] ?? []) === 1
+    && ($shadowTargets['targets'][0]['experiment_id'] ?? '') === 'lab-shadow-smoke'
+    && ($shadowTargets['targets'][0]['started_at_ms'] ?? 0) === 1800000000000,
+    'Shadow-Live target discovery should expose only active Shadow experiments'
+);
+
+$shadowQueued = $labControl->submitShadowObservation([
+    'experimentId' => 'lab-shadow-smoke',
+    'indicatorConfigurationHash' => str_repeat('a', 64),
+    'featureSchemaVersion' => 'qnext-chart-indicators-v1',
+    'barTimeMs' => 1800000060000,
+    'createdAtMs' => 1800000120000,
+    'featureRows' => [[
+        'bar_time_ms' => 1800000060000,
+        'features' => ['indicator.ema_1.plot.ema' => 101.0],
+    ]],
+    'currentFeatures' => ['indicator.ema_1.plot.ema' => 101.0],
+]);
+expect(
+    ($shadowQueued['queued'] ?? false) === true,
+    'Shadow-Live observation should enter the append-only inbox'
+);
+$shadowInbox = glob($flatRoot . '/run/intelligence-lab-shadow-inbox/*.json') ?: [];
+expect(
+    count($shadowInbox) === 1,
+    'Shadow-Live inbox should retain each observation as an independent request'
+);
+
 $seeded = $flatController->getConfig();
 expect(
     isset($seeded['timeframes']) && $seeded['timeframes'] === ['1m'],

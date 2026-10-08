@@ -301,3 +301,55 @@ The untouched test window reports Target-1-before-invalidation, Target-2-before-
 Intrabar ordering is deliberately conservative. If a single OHLC bar can touch both the target and invalidation level, the evaluator records invalidation first because tick order is unknown.
 
 Recommendation artifacts include experiment ID, model algorithm/hash, feature schema version, calibration method, decision threshold, latest finalized-bar timestamp and recommendation ID for auditability.
+
+## Shadow-Live validation
+
+A `BACKTESTED` experiment can be advanced explicitly to `SHADOW`. This does not change the production model, broker execution, chart order path or Strategy Paper.
+
+Shadow-Live evidence is generated only from new finalized canonical bars after the experiment enters `SHADOW`.
+
+```text
+Vela chart + enabled indicator context
+        ↓
+new canonical finalized bar
+        ↓
+fresh chart feature rows (same config hash/schema)
+        ↓
+protected Shadow-Live inbox
+        ↓
+selected Lab model + stored calibration policy
+        ↓
+private BUY / SELL / NO_TRADE observation
+        ↓
+wait configured future horizon
+        ↓
+canonical outcome + MFE/MAE + target/stop ordering
+        ↓
+Shadow summary
+```
+
+The browser observer is dormant unless an experiment is already in `SHADOW` and the browser has an authenticated Admin session. Lightweight Charts are not changed; Shadow feature capture currently follows the Vela indicator-contract path.
+
+Each Shadow observation is immutable and keyed by experiment, finalized bar time, model hash and feature snapshot hash. Browser retries are idempotent. Pre-Shadow bars are ignored so historical replay cannot be counted as live evidence.
+
+Observations use a separate append-only inbox rather than the one-action Admin queue. This allows sub-minute bars to accumulate without being dropped between supervisor cycles. The supervisor drains up to 50 observations per cycle and retains failed files for retry.
+
+### Explicit certification gates
+
+`CERTIFIED` is never automatic. An Admin must click **Evaluate certification** while the experiment is in `SHADOW`.
+
+The default live gates are:
+
+- at least 30 completed Shadow outcomes;
+- live coverage at least 10%;
+- accuracy no more than 5 percentage points below the untouched backtest;
+- average strategy return no more than 0.2 percentage points below the untouched backtest;
+- max drawdown no more than 2 percentage points above the untouched backtest;
+- average multiclass Brier score no worse than 0.35;
+- Target-1-before-invalidation at least 30% when target evidence exists.
+
+The Shadow horizon is locked to the original backtest horizon. It cannot be changed when Shadow starts.
+
+Failed certification attempts remain in `SHADOW` and are retryable as more live observations mature. Every certification evaluation remains immutable while `results/shadow.json` points to the latest evaluation.
+
+Certification only changes the Lab lifecycle to `CERTIFIED`. It still does not promote a production model or enable live execution.

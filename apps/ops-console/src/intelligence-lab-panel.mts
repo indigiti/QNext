@@ -41,6 +41,28 @@ type LabRecommendation = {
   } | null;
 };
 
+type LabShadowConfig = {
+  horizon_bars?: number;
+  min_samples?: number;
+  max_accuracy_regression?: number;
+  max_average_return_regression?: number;
+  max_drawdown_slack?: number;
+  max_brier?: number;
+  min_coverage?: number;
+  min_target1_before_invalidation?: number;
+};
+
+type LabShadowSummary = {
+  completed_samples?: number;
+  pending_samples?: number;
+  average_brier?: number;
+  target1_samples?: number;
+  target1_before_invalidation?: number;
+  target2_before_invalidation?: number;
+  invalidation_before_target1?: number;
+  metrics?: Record<string, number>;
+};
+
 type LabSelection = {
   selected_algorithm?: string;
   ml_family?: string;
@@ -58,6 +80,9 @@ type LabExperiment = {
   created_at_ms: number;
   lifecycle_state: string;
   backtest?: LabEvaluation | null;
+  shadow?: LabEvaluation | null;
+  shadow_config?: LabShadowConfig | null;
+  shadow_summary?: LabShadowSummary | null;
   selection?: LabSelection | null;
   recommendation?: LabRecommendation | null;
   candidates?: Array<Record<string, unknown>>;
@@ -147,7 +172,16 @@ function operationLabel(operation?: LabOperation): string {
 
 function card(experiment: LabExperiment, busy: boolean): string {
   const metrics = experiment.backtest?.metrics ?? {};
+  const shadowMetrics = experiment.shadow_summary?.metrics ?? {};
   const canBacktest = experiment.lifecycle_state === 'EXPERIMENT' && !busy;
+  const canStartShadow =
+    experiment.lifecycle_state === 'BACKTESTED' &&
+    Boolean(experiment.recommendation) &&
+    !busy;
+  const canCertify = experiment.lifecycle_state === 'SHADOW' && !busy;
+  const lifecycleGood = ['BACKTESTED', 'SHADOW', 'CERTIFIED'].includes(
+    experiment.lifecycle_state,
+  );
   return `
     <article class="feed-provider-card qil-card" data-experiment="${html(experiment.experiment_id)}">
       <div class="line">
@@ -155,7 +189,7 @@ function card(experiment: LabExperiment, busy: boolean): string {
           <strong>${html(experiment.name)}</strong>
           <div class="muted">${html(experiment.instrument_id)} · ${html(experiment.timeframe)}</div>
         </div>
-        <span class="badge ${experiment.lifecycle_state === 'BACKTESTED' ? 'good' : 'bad'}">${html(experiment.lifecycle_state)}</span>
+        <span class="badge ${lifecycleGood ? 'good' : 'bad'}">${html(experiment.lifecycle_state)}</span>
       </div>
       <div class="muted qil-indicators">${experiment.indicator_ids.map(html).join(' · ')}</div>
       ${experiment.selection ? `
@@ -213,8 +247,29 @@ function card(experiment: LabExperiment, busy: boolean): string {
           ? `<div class="muted qil-warning">${experiment.backtest.reasons.map(html).join(' · ')}</div>`
           : ''}
       ` : '<p class="muted">No Lab backtest yet.</p>'}
+      ${experiment.shadow_summary ? `
+        <div class="qil-shadow">
+          <div class="line">
+            <strong>Shadow-Live evidence</strong>
+            <span class="muted">${experiment.shadow_summary.completed_samples ?? 0}/${experiment.shadow_config?.min_samples ?? 30} completed · ${experiment.shadow_summary.pending_samples ?? 0} pending</span>
+          </div>
+          <div class="qil-metrics">
+            <div><span>Live accuracy</span><strong>${pct(shadowMetrics.accuracy)}</strong></div>
+            <div><span>Live coverage</span><strong>${pct(shadowMetrics.coverage)}</strong></div>
+            <div><span>Live avg return</span><strong>${num(shadowMetrics.average_strategy_return)}</strong></div>
+            <div><span>Live max DD</span><strong>${num(shadowMetrics.max_drawdown)}</strong></div>
+            <div><span>Live Brier</span><strong>${num(experiment.shadow_summary.average_brier, 4)}</strong></div>
+            <div><span>T1 before invalidation</span><strong>${pct(experiment.shadow_summary.target1_before_invalidation)}</strong></div>
+          </div>
+          ${experiment.shadow?.reasons?.length
+            ? `<div class="muted qil-warning">${experiment.shadow.reasons.map(html).join(' · ')}</div>`
+            : ''}
+        </div>
+      ` : ''}
       <div class="actions">
         <button class="qil-backtest" type="button" ${canBacktest ? '' : 'disabled'}>Run backtest</button>
+        <button class="qil-start-shadow secondary" type="button" ${canStartShadow ? '' : 'disabled'}>Start Shadow</button>
+        <button class="qil-certify-shadow secondary" type="button" ${canCertify ? '' : 'disabled'}>Evaluate certification</button>
       </div>
     </article>
   `;
@@ -250,6 +305,18 @@ function render(status: LabStatus): void {
     button.addEventListener('click', () => {
       const id = button.closest<HTMLElement>('.qil-card')?.dataset.experiment ?? '';
       if (id) void backtest(id);
+    });
+  });
+  experiments.querySelectorAll<HTMLButtonElement>('.qil-start-shadow').forEach((button) => {
+    button.addEventListener('click', () => {
+      const id = button.closest<HTMLElement>('.qil-card')?.dataset.experiment ?? '';
+      if (id) void startShadow(id);
+    });
+  });
+  experiments.querySelectorAll<HTMLButtonElement>('.qil-certify-shadow').forEach((button) => {
+    button.addEventListener('click', () => {
+      const id = button.closest<HTMLElement>('.qil-card')?.dataset.experiment ?? '';
+      if (id) void certifyShadow(id);
     });
   });
 }
@@ -303,6 +370,36 @@ async function backtest(experimentId: string): Promise<void> {
   }
 }
 
+async function startShadow(experimentId: string): Promise<void> {
+  const state = document.querySelector<HTMLSpanElement>('#qil-state')!;
+  try {
+    const result = await request<QueueResponse>('/intelligence-lab/shadow/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        experimentId,
+        minSamples: 30,
+      }),
+    });
+    state.textContent = `Shadow start queued (${result.requestId})`;
+    await load();
+  } catch (error) {
+    state.textContent = `Shadow start failed: ${(error as Error).message}`;
+  }
+}
+
+async function certifyShadow(experimentId: string): Promise<void> {
+  const state = document.querySelector<HTMLSpanElement>('#qil-state')!;
+  try {
+    const result = await request<QueueResponse>('/intelligence-lab/shadow/certify', {
+      method: 'POST',
+      body: JSON.stringify({ experimentId }),
+    });
+    state.textContent = `Certification evaluation queued (${result.requestId})`;
+    await load();
+  } catch (error) {
+    state.textContent = `Certification evaluation failed: ${(error as Error).message}`;
+  }
+}
 function mount(): void {
   const grid = document.querySelector<HTMLElement>('main.grid');
   if (!grid || document.querySelector('#intelligence-lab-card')) return;
@@ -347,6 +444,7 @@ function mount(): void {
     #intelligence-lab-card .qil-metrics div{display:flex;flex-direction:column;gap:.2rem}
     #intelligence-lab-card .qil-horizon-label{display:flex;align-items:center;gap:.4rem;color:var(--muted,#8b98a5)}
     #intelligence-lab-card .qil-warning{margin:.6rem 0;padding:.55rem .65rem;border:1px solid rgba(245,158,11,.25);border-radius:.45rem}
+    #intelligence-lab-card .qil-shadow{margin:.75rem 0;padding:.8rem;border:1px solid rgba(34,197,94,.18);border-radius:.6rem;background:rgba(34,197,94,.025)}
     #intelligence-lab-card #qil-horizon{width:72px}
     @media(max-width:900px){#intelligence-lab-card .qil-metrics,#intelligence-lab-card .qil-levels{grid-template-columns:1fr 1fr}}
   `;

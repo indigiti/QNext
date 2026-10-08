@@ -156,6 +156,163 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
             )
             self.assertFalse((production_root / "models" / "production.json").exists())
 
+    def test_shadow_live_observation_and_retryable_certification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lab_root = root / "storage" / "intelligence-lab"
+            production_root = root / "storage" / "intelligence"
+            snapshot = chart_snapshot()
+
+            imported = process_request(
+                self.request("import", {"snapshot": snapshot}),
+                storage_root=lab_root,
+                production_root=production_root,
+                market_core_url="http://market-core",
+            )
+            experiment_id = imported["result"]["experiment"]["experiment_id"]
+
+            with patch(
+                "qnext_intelligence.lab_worker.MarketCoreHistoryClient",
+                FakeHistoryClient,
+            ):
+                backtest = process_request(
+                    self.request(
+                        "backtest",
+                        {
+                            "experimentId": experiment_id,
+                            "horizonBars": 1,
+                            "minSamples": 60,
+                            "minTestSamples": 12,
+                            "minAverageReturnImprovement": -1.0,
+                            "maxAccuracyRegression": 1.0,
+                            "maxDrawdownSlack": 10.0,
+                        },
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+            self.assertEqual(
+                backtest["result"]["experiment"]["lifecycle_state"],
+                "BACKTESTED",
+            )
+
+            with patch("qnext_intelligence.lab_worker.time.time", return_value=5_000.0):
+                shadow = process_request(
+                    self.request(
+                        "start-shadow",
+                        {
+                            "experimentId": experiment_id,
+                            "horizonBars": 1,
+                            "minSamples": 12,
+                        },
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+            self.assertEqual(
+                shadow["result"]["experiment"]["lifecycle_state"],
+                "SHADOW",
+            )
+
+            final_rows = snapshot["feature_rows"][-30:]
+            with patch(
+                "qnext_intelligence.lab_worker.MarketCoreHistoryClient",
+                FakeHistoryClient,
+            ):
+                observed = process_request(
+                    self.request(
+                        "shadow-observation",
+                        {
+                            "experimentId": experiment_id,
+                            "indicatorConfigurationHash": "a" * 64,
+                            "featureSchemaVersion": "qnext-chart-indicators-v1",
+                            "barTimeMs": final_rows[-1]["bar_time_ms"],
+                            "createdAtMs": 5_500_000,
+                            "featureRows": final_rows,
+                            "currentFeatures": final_rows[-1]["features"],
+                        },
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+
+            self.assertEqual(observed["state"], "SUCCESS")
+            self.assertIn("observation", observed["result"])
+            self.assertEqual(
+                observed["result"]["summary"]["completed_samples"],
+                1,
+            )
+            shadow_root = (
+                lab_root
+                / "experiments"
+                / experiment_id
+                / "shadow"
+            )
+            self.assertEqual(
+                len(list((shadow_root / "observations").glob("*.json"))),
+                1,
+            )
+            self.assertEqual(
+                len(list((shadow_root / "outcomes").glob("*.json"))),
+                1,
+            )
+
+            with patch(
+                "qnext_intelligence.lab_worker.MarketCoreHistoryClient",
+                FakeHistoryClient,
+            ):
+                first_certification = process_request(
+                    self.request(
+                        "certify-shadow",
+                        {"experimentId": experiment_id},
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+                second_certification = process_request(
+                    self.request(
+                        "certify-shadow",
+                        {"experimentId": experiment_id},
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+
+            self.assertEqual(
+                first_certification["result"]["experiment"]["lifecycle_state"],
+                "SHADOW",
+            )
+            self.assertEqual(
+                second_certification["result"]["experiment"]["lifecycle_state"],
+                "SHADOW",
+            )
+            self.assertIn(
+                "insufficient_shadow_samples",
+                second_certification["result"]["evaluation"]["reasons"],
+            )
+            self.assertGreaterEqual(
+                len(
+                    list(
+                        (
+                            lab_root
+                            / "experiments"
+                            / experiment_id
+                            / "results"
+                            / "shadow-evaluations"
+                        ).glob("*.json")
+                    )
+                ),
+                1,
+            )
+            self.assertFalse(
+                (production_root / "models" / "production.json").exists()
+            )
+
     def test_missing_enabled_indicator_features_block_backtested_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

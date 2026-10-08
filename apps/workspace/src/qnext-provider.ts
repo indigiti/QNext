@@ -23,6 +23,13 @@ export interface QNextBar {
   volume?: number;
 }
 
+export interface QNextCanonicalBar extends QNextBar {
+  final: boolean;
+  quality: string;
+  revision?: number;
+  authority_provider?: string;
+}
+
 export interface QNextTransportSnapshot {
   mode: 'idle' | 'connecting' | 'wss' | 'rest_fallback';
   sockets: number;
@@ -195,6 +202,50 @@ export class QNextProvider {
 
     const payload = (await response.json()) as BarsPayload;
     const bars = normalizeBars(payload.bars ?? []);
+    return limit > 0 && bars.length > limit ? bars.slice(-limit) : bars;
+  }
+
+  async getCanonicalBars(
+    ticker: string,
+    timeframe: string,
+    range: QNextRange = {},
+  ): Promise<QNextCanonicalBar[]> {
+    const instrument = await this.resolveInstrument(ticker);
+    const to = range.to ?? Date.now();
+    const limit = range.limit ?? 500;
+    const from =
+      range.from ??
+      to - defaultHistoryLookbackMs(timeframe, Math.max(limit, 1));
+
+    const query = new URLSearchParams({
+      instrument_id: instrument.instrument_id,
+      timeframe,
+      from_ms: String(from),
+      to_ms: String(to),
+    });
+
+    const response = await this.fetchImpl(
+      this.endpoint(`/api/v1/bars/?${query.toString()}`),
+    );
+    if (!response.ok) {
+      throw new Error(`QNext canonical bars request failed: HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as BarsPayload;
+    const byTime = new Map<number, QNextCanonicalBar>();
+    for (const raw of payload.bars ?? []) {
+      const bar = normalizeCanonicalBar(raw);
+      if (
+        Number.isFinite(bar.time) &&
+        Number.isFinite(bar.open) &&
+        Number.isFinite(bar.high) &&
+        Number.isFinite(bar.low) &&
+        Number.isFinite(bar.close)
+      ) {
+        byTime.set(bar.time, bar);
+      }
+    }
+    const bars = [...byTime.values()].sort((left, right) => left.time - right.time);
     return limit > 0 && bars.length > limit ? bars.slice(-limit) : bars;
   }
 
@@ -715,6 +766,26 @@ export function normalizeBars(bars: QNextBar[]): QNextBar[] {
     }
   }
   return [...byTime.values()].sort((a, b) => a.time - b.time);
+}
+
+function normalizeCanonicalBar(
+  bar: QNextBar & {
+    final?: boolean;
+    revision?: number;
+    quality?: string;
+    authority_provider?: string;
+  },
+): QNextCanonicalBar {
+  const normalized = normalizeBar(bar);
+  return {
+    ...normalized,
+    final: bar.final === true,
+    quality: typeof bar.quality === 'string' ? bar.quality.trim().toUpperCase() : '',
+    ...(bar.revision === undefined ? {} : { revision: Number(bar.revision) }),
+    ...(typeof bar.authority_provider === 'string'
+      ? { authority_provider: bar.authority_provider }
+      : {}),
+  };
 }
 
 function normalizeBar(bar: QNextBar): QNextBar {
