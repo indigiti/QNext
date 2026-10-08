@@ -356,6 +356,24 @@ def _backtest(
         reasons=tuple(evaluation_reasons),
     )
     updated = registry.record_backtest(evaluation)
+    selection = {
+        "schema": "QNEXT.INTELLIGENCE.LAB.SELECTION/1",
+        "selected_algorithm": selected_algorithm,
+        "selected_model_hash": selected_hash,
+        "ridge_candidate_id": candidate.candidate_id,
+        "ml_candidate_id": ml_candidate.candidate_id if ml_candidate is not None else "",
+        "ml_family": ml_candidate.family if ml_candidate is not None else "",
+        "ml_gate_passed": bool(
+            ml_candidate is not None and ml_candidate.promotion_gate.passed
+        ),
+        "ml_dependencies": dependency_status(),
+        "ml_error": ml_error,
+        "indicator_feature_counts": indicator_feature_counts,
+        "missing_indicators": list(missing_indicators),
+        "feature_names": list(dataset.feature_names),
+        "evaluated_at_ms": created_at_ms,
+    }
+    selection_id = registry.save_backtest_selection(experiment_id, selection)
 
     return {
         "experiment": updated.to_record(),
@@ -363,6 +381,7 @@ def _backtest(
         "candidate": candidate_record,
         "ml_candidate": ml_record,
         "selected_algorithm": selected_algorithm,
+        "selection_id": selection_id,
         "ml_dependencies": dependency_status(),
         "ml_error": ml_error,
         "indicator_feature_counts": indicator_feature_counts,
