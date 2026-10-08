@@ -281,6 +281,35 @@ class IntelligenceLabRegistry:
             raise ValueError("stored chart snapshot is invalid")
         return decoded
 
+    def save_backtest_selection(
+        self,
+        experiment_id: str,
+        selection: Mapping[str, Any],
+    ) -> str:
+        self.get(experiment_id)
+        material = dict(selection)
+        selection_id = stable_hash(material)[:32]
+        immutable_path = (
+            self._experiment_dir(experiment_id)
+            / "results"
+            / "selections"
+            / f"{selection_id}.json"
+        )
+        if immutable_path.exists():
+            with immutable_path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing != material:
+                raise ValueError("selection id already exists with different content")
+        else:
+            self._write_json(immutable_path, material, overwrite=False)
+
+        self._write_json(
+            self._experiment_dir(experiment_id) / "results" / "selection.json",
+            {"selection_id": selection_id, **material},
+            overwrite=True,
+        )
+        return selection_id
+
     def save_candidate_artifact(
         self,
         experiment_id: str,
