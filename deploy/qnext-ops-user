@@ -95,6 +95,8 @@ INTELLIGENCE_LOG="$PRIVATE_ROOT/logs/intelligence.log"
 INTELLIGENCE_LAB_REQUEST="$PRIVATE_ROOT/run/intelligence-lab-request.json"
 INTELLIGENCE_LAB_RESULT="$PRIVATE_ROOT/run/intelligence-lab-result.json"
 INTELLIGENCE_LAB_LOG="$PRIVATE_ROOT/logs/intelligence-lab.log"
+INTELLIGENCE_LAB_SHADOW_INBOX="$PRIVATE_ROOT/run/intelligence-lab-shadow-inbox"
+INTELLIGENCE_LAB_SHADOW_RESULT="$PRIVATE_ROOT/run/intelligence-lab-shadow-last.json"
 INTELLIGENCE_LAB_PYTHON_HELPER="$PAYLOAD_PRIVATE/deploy/qnext-intelligence-lab-python"
 LOCK_DIR="$PRIVATE_ROOT/run/supervisor.lock"
 MARKET_URL="${QNEXT_MARKET_CORE_URL:-http://127.0.0.1:18080}"
@@ -489,7 +491,7 @@ except Exception:
 PY
 )"
 
-  if [[ "$lab_action" == "backtest" && -x "$INTELLIGENCE_LAB_PYTHON_HELPER" ]]; then
+  if [[ ( "$lab_action" == "backtest" || "$lab_action" == "shadow-observation" ) && -x "$INTELLIGENCE_LAB_PYTHON_HELPER" ]]; then
     if isolated_python="$(QNEXT_PRIVATE_ROOT="$PRIVATE_ROOT" "$INTELLIGENCE_LAB_PYTHON_HELPER" bootstrap 2>>"$INTELLIGENCE_LAB_LOG")" \
         && [[ -x "$isolated_python" ]]; then
       lab_python="$isolated_python"
@@ -510,10 +512,53 @@ PY
   rm -f "$INTELLIGENCE_LAB_REQUEST"
 }
 
+process_intelligence_lab_shadow_inbox() {
+  [[ -d "$INTELLIGENCE_LAB_SHADOW_INBOX" ]] || return 0
+
+  local intelligence_root="$PAYLOAD_PRIVATE/intelligence"
+  local lab_python="python3"
+  local isolated_python=""
+  local request_path=""
+  local processed=0
+
+  if [[ ! -d "$intelligence_root/qnext_intelligence" ]]; then
+    return 0
+  fi
+
+  if [[ -x "$INTELLIGENCE_LAB_PYTHON_HELPER" ]]; then
+    if isolated_python="$(QNEXT_PRIVATE_ROOT="$PRIVATE_ROOT" "$INTELLIGENCE_LAB_PYTHON_HELPER" bootstrap 2>>"$INTELLIGENCE_LAB_LOG")" \
+        && [[ -x "$isolated_python" ]]; then
+      lab_python="$isolated_python"
+    else
+      echo "Shadow-Live ML runtime unavailable; using Ridge-safe system Python fallback" >>"$INTELLIGENCE_LAB_LOG"
+    fi
+  fi
+
+  while IFS= read -r request_path; do
+    [[ -n "$request_path" ]] || continue
+    if PYTHONPATH="$intelligence_root" "$lab_python" -m qnext_intelligence.lab_worker \
+        --request "$request_path" \
+        --result "$INTELLIGENCE_LAB_SHADOW_RESULT" \
+        --storage-root "$PRIVATE_ROOT/storage/intelligence-lab" \
+        --production-root "$PRIVATE_ROOT/storage/intelligence" \
+        --market-core-url "$MARKET_URL" >>"$INTELLIGENCE_LAB_LOG" 2>&1; then
+      rm -f "$request_path"
+    else
+      echo "Shadow-Live observation failed and will retry: $request_path" >>"$INTELLIGENCE_LAB_LOG"
+    fi
+
+    processed=$((processed + 1))
+    if (( processed >= 50 )); then
+      break
+    fi
+  done < <(find "$INTELLIGENCE_LAB_SHADOW_INBOX" -maxdepth 1 -type f -name '*.json' -print 2>/dev/null | sort)
+}
+
 reconcile() {
   date +%s > "$CRON_HEARTBEAT"
   process_intelligence_request
   process_intelligence_lab_request
+  process_intelligence_lab_shadow_inbox
 
   local request=""
   if [[ -s "$CONTROL_REQUEST" ]]; then
