@@ -213,3 +213,52 @@ The Lab persists the tournament winner, model hash, Ridge candidate, optional ML
 CI installs and executes the optional ML stack to certify the code path. The normal QNext release does not yet install NumPy/SciPy/scikit-learn/LightGBM into the live host Python runtime.
 
 This is intentional. Until an isolated Lab ML environment is provisioned, deployed Lab backtests remain fully functional with the deterministic Ridge benchmark. No compiled ML dependency is introduced into the Go Market Core, chart runtime or production Intelligence path.
+
+## Isolated Lab ML runtime
+
+The deployed Lab ML stack is isolated from the production Intelligence interpreter.
+
+The release artifact contains:
+
+```text
+private/
+  intelligence/
+    qnext_intelligence/          # dependency-light production/Lab source
+  intelligence-lab-wheels/
+    requirements.lock
+    wheelhouse.sha256
+    *.whl
+  deploy/
+    qnext-intelligence-lab-python
+```
+
+The wheelhouse is built on Python 3.11 with binary-only packages and SHA-256 verification. It contains the pinned Lab ML dependencies and their transitive wheels, so the server does not need network access to provision ML.
+
+The first **backtest** that needs ML lazily creates:
+
+```text
+<private-root>/runtime/intelligence-lab-venv/
+```
+
+The virtual environment is keyed to the immutable wheelhouse fingerprint. A matching environment is reused; a changed wheelhouse is staged into a new environment and atomically swapped only after dependency verification succeeds.
+
+Simple chart-snapshot imports do not trigger ML provisioning.
+
+Runtime selection is:
+
+```text
+Lab backtest
+   ↓
+isolated venv READY?
+   ├─ yes → run Ridge + scikit-learn + LightGBM tournament
+   └─ no  → system Python → deterministic Ridge fallback
+```
+
+Failure to create or verify the isolated environment writes a Lab runtime status record and does not modify the production Intelligence environment. Admin exposes the runtime state (`READY`, `NEEDS_BOOTSTRAP`, `UNAVAILABLE`, `FAILED`, or `UNKNOWN`).
+
+CI exercises both paths:
+
+- missing wheelhouse → explicit Ridge-safe fallback status;
+- real local wheelhouse → isolated venv creation, scikit-learn/LightGBM imports, version checks and idempotent reuse.
+
+The live Go Market Core, Vela workspace, production Intelligence model pointer and production Python dependency set are unaffected.
