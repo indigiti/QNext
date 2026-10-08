@@ -189,11 +189,26 @@ class IntelligenceLabRegistry:
         experiment = self.get(evaluation.experiment_id)
         if experiment.lifecycle_state != "EXPERIMENT":
             raise ValueError("backtest can only be recorded for an EXPERIMENT")
-        self._write_evaluation(evaluation, "backtest.json")
+
+        evaluation_record = evaluation.to_record()
+        evaluation_id = stable_hash(evaluation_record)[:32]
+        self._write_evaluation(evaluation, f"backtests/{evaluation_id}.json")
+        self._write_json(
+            self._experiment_dir(evaluation.experiment_id) / "results" / "backtest.json",
+            evaluation_record,
+            overwrite=True,
+        )
+
         if not evaluation.gate_passed:
-            self._append_event(experiment, "BACKTEST_FAIL", evaluation.to_record())
+            self._append_event(experiment, "BACKTEST_FAIL", {
+                "evaluation_id": evaluation_id,
+                **evaluation_record,
+            })
             return experiment
-        return self._transition(experiment, "BACKTESTED", "BACKTEST_PASS", evaluation.to_record())
+        return self._transition(experiment, "BACKTESTED", "BACKTEST_PASS", {
+            "evaluation_id": evaluation_id,
+            **evaluation_record,
+        })
 
     def start_shadow(self, experiment_id: str) -> LabExperiment:
         experiment = self.get(experiment_id)
