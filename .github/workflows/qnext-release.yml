@@ -27,6 +27,11 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Build Vela workspace
         working-directory: apps/workspace
         run: |
@@ -58,6 +63,20 @@ jobs:
           PYTHONPATH=. python3 -m qnext_intelligence.learning_cli --help
           PYTHONPATH=. python3 -m qnext_intelligence.lab_worker --help
 
+      - name: Build isolated Lab ML wheelhouse
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/intelligence-lab-wheels
+          mkdir -p build/intelligence-lab-wheels
+          printf '%s\n'             'scikit-learn==1.9.1'             'lightgbm==4.7.0'             > build/intelligence-lab-wheels/requirements.lock
+          python -m pip download             --disable-pip-version-check             --dest build/intelligence-lab-wheels             -r build/intelligence-lab-wheels/requirements.lock
+          (
+            cd build/intelligence-lab-wheels
+            sha256sum requirements.lock *.whl > wheelhouse.sha256
+            sha256sum -c wheelhouse.sha256
+          )
+
       - name: Validate Ops PHP control plane
         shell: bash
         run: |
@@ -77,6 +96,7 @@ jobs:
           php -l services/ops-api/src/PaperProxy.php
           php -l services/ops-api/src/OpsController.php
           bash -n deploy/qnext-ops-user
+          bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php
 
           cron_root="$(mktemp -d)"
@@ -171,7 +191,7 @@ jobs:
           set -euo pipefail
           rm -rf release
           mkdir -p release/public/admin
-          mkdir -p release/private/bin release/private/config release/private/deploy release/private/strategy-lab release/private/intelligence
+          mkdir -p release/private/bin release/private/config release/private/deploy release/private/strategy-lab release/private/intelligence release/private/intelligence-lab-wheels
 
           cp -a apps/workspace/dist/. release/public/
           cp apps/workspace/public/.htaccess release/public/.htaccess
@@ -186,6 +206,7 @@ jobs:
           cp -a services/strategy-lab/qnext_strategy_lab release/private/strategy-lab/
           cp -a services/intelligence/qnext_intelligence release/private/intelligence/
           cp services/intelligence/README.md release/private/intelligence/README.md
+          cp -a build/intelligence-lab-wheels/. release/private/intelligence-lab-wheels/
           cp -a services/ops-api release/private/ops-api
 
           cp config/q1-market.example.json release/private/config/q1-market.example.json
@@ -196,6 +217,7 @@ jobs:
           install -m 0750 deploy/qnext-ops-helper release/private/deploy/qnext-ops-helper
           install -m 0750 deploy/qnext-ops-web release/private/deploy/qnext-ops-web
           install -m 0750 deploy/qnext-ops-user release/private/deploy/qnext-ops-user
+          install -m 0750 deploy/qnext-intelligence-lab-python release/private/deploy/qnext-intelligence-lab-python
           cp deploy/qnext-market-core.service release/private/deploy/
           cp deploy/qnext-ops.env.example release/private/deploy/
           cp deploy/qnext-runtime.env.example release/private/deploy/
@@ -216,7 +238,8 @@ jobs:
               "market_core": "${binary_name}",
               "data_collector": "${collector_binary_name}",
               "syn_plus_paper": "strategy-lab/qnext_strategy_lab/syn_plus_runtime.py",
-              "quant_intelligence": "intelligence/qnext_intelligence/learning_cli.py"
+              "quant_intelligence": "intelligence/qnext_intelligence/learning_cli.py",
+              "intelligence_lab_ml": "intelligence-lab-wheels/requirements.lock"
             },
             "routes": {
               "workspace": "/qnext/",
@@ -266,10 +289,26 @@ jobs:
           PYTHONPATH=release/private/intelligence python3 -m compileall -q release/private/intelligence/qnext_intelligence
           PYTHONPATH=release/private/intelligence python3 -m qnext_intelligence.learning_cli --help >/dev/null
           PYTHONPATH=release/private/intelligence python3 -m qnext_intelligence.lab_worker --help >/dev/null
+          test -s release/private/intelligence-lab-wheels/requirements.lock
+          test -s release/private/intelligence-lab-wheels/wheelhouse.sha256
+          (
+            cd release/private/intelligence-lab-wheels
+            sha256sum -c wheelhouse.sha256
+          )
+          QNEXT_PRIVATE_ROOT="$(pwd)/release/private"             QNEXT_LAB_BOOTSTRAP_PYTHON=python3             release/private/deploy/qnext-intelligence-lab-python bootstrap >/tmp/qnext-lab-python-path
+          lab_python="$(cat /tmp/qnext-lab-python-path)"
+          "$lab_python" - <<'PY'
+          import lightgbm
+          import sklearn
+          assert sklearn.__version__ == "1.9.1"
+          assert lightgbm.__version__ == "4.7.0"
+          PY
+          rm -rf release/private/runtime release/private/run /tmp/qnext-lab-python-path
           test -f release/private/ops-api/public/index.php
           test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
           test -x release/private/deploy/qnext-ops-user
+          test -x release/private/deploy/qnext-intelligence-lab-python
           test -s release/release-manifest.json
 
       - name: Upload DigiOps release artifact
