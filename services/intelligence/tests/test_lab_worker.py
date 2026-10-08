@@ -137,6 +137,23 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
             self.assertTrue(
                 (lab_root / "experiments" / experiment_id / "results" / "backtest.json").is_file()
             )
+            recommendation_path = (
+                lab_root
+                / "experiments"
+                / experiment_id
+                / "results"
+                / "recommendation.json"
+            )
+            self.assertTrue(recommendation_path.is_file())
+            recommendation = result["result"]["recommendation"]
+            self.assertIsInstance(recommendation, dict)
+            self.assertTrue(recommendation["probability_calibrated"])
+            self.assertIn(recommendation["decision"], {"BUY", "SELL", "NO_TRADE"})
+            self.assertAlmostEqual(
+                sum(recommendation["probabilities"].values()),
+                1.0,
+                places=6,
+            )
             self.assertFalse((production_root / "models" / "production.json").exists())
 
     def test_missing_enabled_indicator_features_block_backtested_state(self):
@@ -226,6 +243,10 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
                     return_value=0.001,
                     mfe=0.002,
                     mae=-0.001,
+                    mfe_bar=1,
+                    mae_bar=1,
+                    future_high_excursions=(0.002,),
+                    future_low_excursions=(-0.001,),
                     direction_actual="UP",
                 )
             )
