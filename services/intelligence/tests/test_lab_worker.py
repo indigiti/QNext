@@ -139,6 +139,73 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
             )
             self.assertFalse((production_root / "models" / "production.json").exists())
 
+    def test_missing_enabled_indicator_features_block_backtested_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lab_root = root / "storage" / "intelligence-lab"
+            production_root = root / "storage" / "intelligence"
+
+            snapshot = chart_snapshot()
+            snapshot["indicators"].append(
+                {
+                    "instance_id": "order-block-1",
+                    "title": "Order Block",
+                    "kind": "script",
+                    "source_hash": "e" * 64,
+                    "configuration_hash": "f" * 64,
+                    "inputs": {},
+                    "historical_feature_names": [],
+                    "current_feature_names": [],
+                }
+            )
+
+            imported = process_request(
+                self.request("import", {"snapshot": snapshot}),
+                storage_root=lab_root,
+                production_root=production_root,
+                market_core_url="http://market-core",
+            )
+            experiment_id = imported["result"]["experiment"]["experiment_id"]
+
+            with patch(
+                "qnext_intelligence.lab_worker.MarketCoreHistoryClient",
+                FakeHistoryClient,
+            ):
+                result = process_request(
+                    self.request(
+                        "backtest",
+                        {
+                            "experimentId": experiment_id,
+                            "horizonBars": 1,
+                            "minSamples": 60,
+                            "minTestSamples": 12,
+                            "minAverageReturnImprovement": -1.0,
+                            "maxAccuracyRegression": 1.0,
+                            "maxDrawdownSlack": 10.0,
+                        },
+                    ),
+                    storage_root=lab_root,
+                    production_root=production_root,
+                    market_core_url="http://market-core",
+                )
+
+            self.assertEqual(
+                result["result"]["experiment"]["lifecycle_state"],
+                "EXPERIMENT",
+            )
+            self.assertIn(
+                "order-block-1",
+                result["result"]["missing_indicators"],
+            )
+            self.assertIn(
+                "missing_historical_indicator_features:order-block-1",
+                result["result"]["evaluation"]["reasons"],
+            )
+            self.assertLess(
+                result["result"]["evaluation"]["metrics"]["indicator_coverage_ratio"],
+                1.0,
+            )
+
     def test_rejects_unknown_action_and_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
