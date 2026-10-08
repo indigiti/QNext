@@ -248,6 +248,39 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	maxWindow, supported := maxHistoryWindow(timeframe)
+	if !supported {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":     "unsupported_timeframe",
+			"timeframe": timeframe,
+		})
+		return
+	}
+	requestedWindow := time.Duration(toMS-fromMS) * time.Millisecond
+	if requestedWindow > maxWindow {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+			"error":               "history_range_too_large",
+			"timeframe":           timeframe,
+			"max_range_ms":        maxWindow.Milliseconds(),
+			"requested_range_ms":  requestedWindow.Milliseconds(),
+			"max_response_bars":   maxHistoryBars,
+		})
+		return
+	}
+
+	limit := maxHistoryBars
+	if rawLimit := strings.TrimSpace(query.Get("limit")); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed <= 0 || parsed > maxHistoryBars {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error":          "invalid_limit",
+				"max_limit":      maxHistoryBars,
+			})
+			return
+		}
+		limit = parsed
+	}
+
 	bars, err := s.history.LoadRange(
 		instrumentID,
 		timeframe,
@@ -275,6 +308,15 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 				bars = append(bars, live)
 			}
 		}
+	}
+
+	if len(bars) > limit {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+			"error":               "history_result_too_large",
+			"result_bars":         len(bars),
+			"max_response_bars":   limit,
+		})
+		return
 	}
 
 	if sourceID := strings.TrimSpace(s.options.VolumeAliases[instrumentID]); sourceID != "" {
