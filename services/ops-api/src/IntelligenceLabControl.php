@@ -25,6 +25,7 @@ final class IntelligenceLabControl
                 }
                 $manifest['backtest'] = $this->readJson($dir . '/results/backtest.json');
                 $manifest['shadow'] = $this->readJson($dir . '/results/shadow.json');
+                $manifest['selection'] = $this->readJson($dir . '/results/selection.json');
                 $manifest['candidates'] = [];
                 $models = glob($dir . '/models/*.json') ?: [];
                 foreach ($models as $model) {
