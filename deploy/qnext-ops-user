@@ -260,6 +260,7 @@ load_runtime_environment() {
   export QNEXT_HTTP_ADDR="127.0.0.1:18080"
   export QNEXT_STORAGE_ROOT="$PRIVATE_ROOT/storage"
   export QNEXT_RAW_CAPTURE="1"
+  export QNEXT_REQUIRE_LIVE_READY="1"
 
   if [[ -r "$SECRETS_FILE" ]]; then
     set -a
