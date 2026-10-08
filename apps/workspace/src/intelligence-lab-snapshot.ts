@@ -11,6 +11,8 @@ export interface LabIndicatorDescriptor {
   source_hash: string;
   inputs: Record<string, string | number | boolean>;
   configuration_hash: string;
+  historical_feature_names: string[];
+  current_feature_names: string[];
 }
 
 export interface LabFeatureRow {
@@ -94,6 +96,12 @@ export async function captureActiveChartLabSnapshot(
       inputs,
     };
     const configurationHash = await sha256Hex(canonicalJson(descriptorMaterial));
+    const contributed = collectContextFeatures(
+      handle.id,
+      context,
+      rows,
+      currentFeatures,
+    );
     descriptors.push({
       instance_id: handle.id,
       title: handle.title,
@@ -104,9 +112,9 @@ export async function captureActiveChartLabSnapshot(
       source_hash: sourceHash,
       inputs,
       configuration_hash: configurationHash,
+      historical_feature_names: contributed.historical,
+      current_feature_names: contributed.current,
     });
-
-    collectContextFeatures(handle.id, context, rows, currentFeatures);
   }
 
   descriptors.sort((a, b) => a.instance_id.localeCompare(b.instance_id));
@@ -234,9 +242,11 @@ function collectContextFeatures(
   context: ContextLike | null,
   rows: Map<number, Record<string, number>>,
   currentFeatures: Record<string, number>,
-): void {
-  if (!context) return;
+): { historical: string[]; current: string[] } {
+  if (!context) return { historical: [], current: [] };
   const namespace = safeFeaturePart(indicatorId);
+  const historical = new Set<string>();
+  const current = new Set<string>();
 
   for (const [plotName, raw] of Object.entries(context.plots ?? {})) {
     const key = `indicator.${namespace}.plot.${safeFeaturePart(plotName)}`;
@@ -245,18 +255,43 @@ function collectContextFeatures(
       const row = rows.get(point.time) ?? {};
       row[key] = point.value;
       rows.set(point.time, row);
+      historical.add(key);
     }
     const latest = points.at(-1);
-    if (latest) currentFeatures[key] = latest.value;
+    if (latest) {
+      currentFeatures[key] = latest.value;
+      current.add(key);
+    }
   }
 
   for (const [name, raw] of Object.entries(context.variables ?? {})) {
+    const key = `indicator.${namespace}.var.${safeFeaturePart(name)}`;
+    const points = plotPoints(raw);
+    if (points.length > 0) {
+      for (const point of points) {
+        const row = rows.get(point.time) ?? {};
+        row[key] = point.value;
+        rows.set(point.time, row);
+        historical.add(key);
+      }
+      const latest = points.at(-1);
+      if (latest) {
+        currentFeatures[key] = latest.value;
+        current.add(key);
+      }
+      continue;
+    }
+
     const value = numericValue(raw);
     if (value === undefined) continue;
-    currentFeatures[
-      `indicator.${namespace}.var.${safeFeaturePart(name)}`
-    ] = value;
+    currentFeatures[key] = value;
+    current.add(key);
   }
+
+  return {
+    historical: [...historical].sort(),
+    current: [...current].sort(),
+  };
 }
 
 function plotPoints(value: unknown): Array<{ time: number; value: number }> {
