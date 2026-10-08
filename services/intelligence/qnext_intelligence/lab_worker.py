@@ -19,9 +19,18 @@ from .lab_snapshot import (
     historical_dataset_hash,
     import_chart_snapshot,
 )
-from .learning import build_learning_dataset, train_candidate
-from .lab_ml import dependency_status, train_ml_challenger
+from .learning import CandidateModel, build_learning_dataset, train_candidate
+from .lab_ml import LabMLCandidate, SCHEMA as LAB_ML_SCHEMA, dependency_status, train_ml_challenger
 from .lab_recommendation import build_recommendation
+from .lab_shadow import (
+    ShadowConfig,
+    ShadowObservation,
+    ShadowOutcome,
+    certification_gate,
+    evaluate_shadow_observation,
+    score_shadow_observation,
+    summarize_shadow,
+)
 
 REQUEST_SCHEMA = "QNEXT.INTELLIGENCE.LAB.REQUEST/1"
 
@@ -362,6 +371,7 @@ def _backtest(
     updated = registry.record_backtest(evaluation)
     selection = {
         "schema": "QNEXT.INTELLIGENCE.LAB.SELECTION/1",
+        "horizon_bars": horizon_bars,
         "selected_algorithm": selected_algorithm,
         "selected_model_hash": selected_hash,
         "ridge_candidate_id": candidate.candidate_id,
@@ -423,6 +433,343 @@ def _backtest(
     }
 
 
+
+def _load_selected_model(
+    registry: IntelligenceLabRegistry,
+    experiment_id: str,
+) -> CandidateModel | LabMLCandidate:
+    selection = registry.read_result_record(experiment_id, "selection.json")
+    if not isinstance(selection, Mapping):
+        raise ValueError("Lab model selection is missing")
+    selected_hash = str(selection.get("selected_model_hash", ""))
+    if not selected_hash:
+        raise ValueError("Lab selected model hash is missing")
+
+    for record in registry.read_candidate_artifacts(experiment_id):
+        if str(record.get("model_hash", "")) != selected_hash:
+            continue
+        if str(record.get("schema", "")) == LAB_ML_SCHEMA:
+            return LabMLCandidate.from_record(record)
+        return CandidateModel.from_record(record)
+    raise ValueError("selected Lab model artifact is missing")
+
+
+def _shadow_config_from_payload(
+    experiment_id: str,
+    payload: Mapping[str, Any],
+) -> ShadowConfig:
+    def number(key: str, default: float) -> float:
+        value = payload.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{key} must be numeric")
+        result = float(value)
+        if not (result >= 0.0 and result < float("inf")):
+            raise ValueError(f"{key} must be finite and non-negative")
+        return result
+
+    horizon_bars = int(payload.get("horizonBars", 3))
+    min_samples = int(payload.get("minSamples", 30))
+    if horizon_bars < 1 or horizon_bars > 100:
+        raise ValueError("horizonBars must be between 1 and 100")
+    if min_samples < 12 or min_samples > 100000:
+        raise ValueError("minSamples must be between 12 and 100000")
+
+    return ShadowConfig(
+        experiment_id=experiment_id,
+        started_at_ms=int(time.time() * 1000),
+        horizon_bars=horizon_bars,
+        min_samples=min_samples,
+        max_accuracy_regression=number("maxAccuracyRegression", 0.05),
+        max_average_return_regression=number(
+            "maxAverageReturnRegression",
+            0.002,
+        ),
+        max_drawdown_slack=number("maxDrawdownSlack", 0.02),
+        max_brier=number("maxBrier", 0.35),
+        min_coverage=number("minCoverage", 0.10),
+        min_target1_before_invalidation=number(
+            "minTarget1BeforeInvalidation",
+            0.30,
+        ),
+    )
+
+
+def _start_shadow(
+    registry: IntelligenceLabRegistry,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    experiment_id = str(payload.get("experimentId", ""))
+    if not experiment_id:
+        raise ValueError("experimentId is required")
+    experiment = registry.get(experiment_id)
+    if experiment.lifecycle_state != "BACKTESTED":
+        raise ValueError("Shadow-Live can only start from BACKTESTED")
+    recommendation = registry.read_result_record(experiment_id, "recommendation.json")
+    selection = registry.read_result_record(experiment_id, "selection.json")
+    if not isinstance(recommendation, Mapping):
+        raise ValueError("Shadow-Live requires a calibrated Lab recommendation")
+    if not isinstance(selection, Mapping):
+        raise ValueError("Shadow-Live requires a selected Lab model")
+    if not bool(recommendation.get("probability_calibrated", False)):
+        raise ValueError("Shadow-Live requires calibrated probabilities")
+
+    default_horizon = int(selection.get("horizon_bars", 3))
+    material = dict(payload)
+    material.setdefault("horizonBars", default_horizon)
+    config = _shadow_config_from_payload(experiment_id, material)
+    updated = registry.start_shadow(experiment_id)
+    registry.save_shadow_config(experiment_id, config.to_record())
+    registry.save_shadow_summary(
+        experiment_id,
+        summarize_shadow((), ()).to_record(),
+    )
+    return {
+        "experiment": updated.to_record(),
+        "shadow_config": config.to_record(),
+    }
+
+
+def _shadow_snapshot_payload(
+    registry: IntelligenceLabRegistry,
+    experiment_id: str,
+    payload: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    stored = registry.load_chart_snapshot(experiment_id)
+    raw = stored.get("payload")
+    if not isinstance(raw, Mapping):
+        raise ValueError("stored chart snapshot is invalid")
+
+    rows = payload.get("featureRows")
+    if not isinstance(rows, list) or not rows or len(rows) > 256:
+        raise ValueError("shadow featureRows must contain between 1 and 256 rows")
+    current_features = payload.get("currentFeatures", {})
+    if not isinstance(current_features, Mapping):
+        raise ValueError("shadow currentFeatures must be an object")
+
+    material = dict(raw)
+    material["created_at_ms"] = int(payload.get("createdAtMs", time.time() * 1000))
+    material["feature_rows"] = rows
+    material["current_features"] = dict(current_features)
+    return material
+
+
+def _evaluate_pending_shadow(
+    registry: IntelligenceLabRegistry,
+    market_core_url: str,
+    experiment_id: str,
+    config: ShadowConfig,
+) -> tuple[tuple[ShadowObservation, ...], tuple[ShadowOutcome, ...]]:
+    experiment = registry.get(experiment_id)
+    observations = tuple(
+        ShadowObservation.from_record(record)
+        for record in registry.read_shadow_records(experiment_id, "observations")
+    )
+    outcomes_by_id = {
+        outcome.observation_id: outcome
+        for outcome in (
+            ShadowOutcome.from_record(record)
+            for record in registry.read_shadow_records(experiment_id, "outcomes")
+        )
+    }
+    duration = timeframe_to_milliseconds(experiment.timeframe)
+    client = MarketCoreHistoryClient(market_core_url)
+
+    for observation in observations:
+        if observation.observation_id in outcomes_by_id:
+            continue
+        bars = client.fetch_bars(
+            instrument_id=experiment.instrument_id,
+            timeframe=experiment.timeframe,
+            from_ms=observation.as_of_time_ms,
+            to_ms=observation.as_of_time_ms
+            + duration * (config.horizon_bars + 4),
+        )
+        future = [
+            bar
+            for bar in bars
+            if bar.open_time_ms > observation.bar_time_ms
+            and bar.final
+            and bar.quality.upper() in {"GOOD", "RECOVERED"}
+        ][: config.horizon_bars]
+        if len(future) < config.horizon_bars:
+            continue
+        outcome = evaluate_shadow_observation(
+            observation,
+            future_bars=future,
+            evaluated_at_ms=max(
+                int(time.time() * 1000),
+                future[-1].close_time_ms,
+            ),
+        )
+        registry.save_shadow_outcome(experiment_id, outcome.to_record())
+        outcomes_by_id[outcome.observation_id] = outcome
+
+    outcomes = tuple(
+        sorted(
+            outcomes_by_id.values(),
+            key=lambda value: (value.evaluated_at_ms, value.observation_id),
+        )
+    )
+    return observations, outcomes
+
+
+def _shadow_observation(
+    registry: IntelligenceLabRegistry,
+    market_core_url: str,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    experiment_id = str(payload.get("experimentId", ""))
+    if not experiment_id:
+        raise ValueError("experimentId is required")
+    experiment = registry.get(experiment_id)
+    if experiment.lifecycle_state != "SHADOW":
+        raise ValueError("shadow observations require SHADOW state")
+
+    config_record = registry.read_shadow_config(experiment_id)
+    if not isinstance(config_record, Mapping):
+        raise ValueError("Shadow-Live config is missing")
+    config = ShadowConfig.from_record(config_record)
+
+    configuration_hash = str(payload.get("indicatorConfigurationHash", ""))
+    if configuration_hash != experiment.indicator_configuration_hash:
+        raise ValueError("shadow chart indicator configuration does not match experiment")
+    feature_schema_version = str(payload.get("featureSchemaVersion", ""))
+    if feature_schema_version != experiment.feature_schema_version:
+        raise ValueError("shadow chart feature schema does not match experiment")
+
+    snapshot_payload = _shadow_snapshot_payload(
+        registry,
+        experiment_id,
+        payload,
+    )
+    imported = import_chart_snapshot(snapshot_payload)
+    if imported.instrument_id != experiment.instrument_id:
+        raise ValueError("shadow observation instrument does not match experiment")
+    if imported.timeframe != experiment.timeframe:
+        raise ValueError("shadow observation timeframe does not match experiment")
+
+    expected_bar_time = int(payload.get("barTimeMs", 0))
+    if expected_bar_time <= 0:
+        raise ValueError("barTimeMs is required")
+    duration = timeframe_to_milliseconds(experiment.timeframe)
+    first_time = imported.feature_rows[0].bar_time_ms
+    client = MarketCoreHistoryClient(market_core_url)
+    bars = client.fetch_bars(
+        instrument_id=experiment.instrument_id,
+        timeframe=experiment.timeframe,
+        from_ms=max(0, first_time),
+        to_ms=expected_bar_time + duration * 2,
+    )
+    current = build_latest_feature_vector(imported, bars)
+    if current.bar_time_ms != expected_bar_time:
+        raise ValueError("shadow feature vector is not aligned to the requested finalized bar")
+
+    selected_model = _load_selected_model(registry, experiment_id)
+    recommendation = registry.read_result_record(experiment_id, "recommendation.json")
+    if not isinstance(recommendation, Mapping):
+        raise ValueError("shadow recommendation policy is missing")
+
+    observation = score_shadow_observation(
+        experiment_id=experiment_id,
+        current=current,
+        selected_model=selected_model,
+        recommendation_policy=recommendation,
+        created_at_ms=int(payload.get("createdAtMs", time.time() * 1000)),
+    )
+    registry.save_shadow_observation(
+        experiment_id,
+        observation.to_record(),
+    )
+    observations, outcomes = _evaluate_pending_shadow(
+        registry,
+        market_core_url,
+        experiment_id,
+        config,
+    )
+    summary = summarize_shadow(observations, outcomes)
+    registry.save_shadow_summary(experiment_id, summary.to_record())
+    return {
+        "observation": observation.to_record(),
+        "summary": summary.to_record(),
+    }
+
+
+def _certify_shadow(
+    registry: IntelligenceLabRegistry,
+    market_core_url: str,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    experiment_id = str(payload.get("experimentId", ""))
+    if not experiment_id:
+        raise ValueError("experimentId is required")
+    experiment = registry.get(experiment_id)
+    if experiment.lifecycle_state != "SHADOW":
+        raise ValueError("certification requires SHADOW state")
+
+    config_record = registry.read_shadow_config(experiment_id)
+    if not isinstance(config_record, Mapping):
+        raise ValueError("Shadow-Live config is missing")
+    config = ShadowConfig.from_record(config_record)
+    observations, outcomes = _evaluate_pending_shadow(
+        registry,
+        market_core_url,
+        experiment_id,
+        config,
+    )
+    summary = summarize_shadow(observations, outcomes)
+    registry.save_shadow_summary(experiment_id, summary.to_record())
+
+    backtest = registry.read_evaluation(experiment_id, "BACKTEST")
+    selection = registry.read_result_record(experiment_id, "selection.json")
+    if not isinstance(backtest, Mapping) or not isinstance(selection, Mapping):
+        raise ValueError("Shadow certification requires backtest and model selection")
+    backtest_metrics = backtest.get("metrics")
+    if not isinstance(backtest_metrics, Mapping):
+        raise ValueError("backtest metrics are invalid")
+
+    passed, reasons = certification_gate(
+        summary,
+        backtest_metrics=backtest_metrics,
+        config=config,
+    )
+    evidence_hash = stable_hash({
+        "observations": [value.to_record() for value in observations],
+        "outcomes": [value.to_record() for value in outcomes],
+        "summary": summary.to_record(),
+    })
+    model_hash = str(selection.get("selected_model_hash", ""))
+    evaluation = LabEvaluation(
+        experiment_id=experiment_id,
+        phase="SHADOW",
+        evaluated_at_ms=int(time.time() * 1000),
+        dataset_hash=evidence_hash,
+        model_spec_hash=model_hash,
+        gate_passed=passed,
+        metrics={
+            "samples": float(summary.metrics.samples),
+            "accuracy": summary.metrics.accuracy,
+            "coverage": summary.metrics.coverage,
+            "strategy_return": summary.metrics.strategy_return,
+            "average_strategy_return": summary.metrics.average_strategy_return,
+            "max_drawdown": summary.metrics.max_drawdown,
+            "trades": float(summary.metrics.trades),
+            "average_brier": summary.average_brier,
+            "target1_samples": float(summary.target1_samples),
+            "target1_before_invalidation": summary.target1_before_invalidation,
+            "target2_before_invalidation": summary.target2_before_invalidation,
+            "invalidation_before_target1": summary.invalidation_before_target1,
+            "pending_samples": float(summary.pending_samples),
+        },
+        reasons=reasons,
+    )
+    updated = registry.certify(evaluation)
+    return {
+        "experiment": updated.to_record(),
+        "evaluation": evaluation.to_record(),
+        "summary": summary.to_record(),
+    }
+
+
 def process_request(
     request: Mapping[str, Any],
     *,
@@ -443,6 +790,12 @@ def process_request(
         result = _import_snapshot(registry, payload)
     elif action == "backtest":
         result = _backtest(registry, market_core_url, payload)
+    elif action == "start-shadow":
+        result = _start_shadow(registry, payload)
+    elif action == "shadow-observation":
+        result = _shadow_observation(registry, market_core_url, payload)
+    elif action == "certify-shadow":
+        result = _certify_shadow(registry, market_core_url, payload)
     else:
         raise ValueError("unsupported intelligence lab action")
 
