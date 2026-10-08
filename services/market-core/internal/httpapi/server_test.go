@@ -231,7 +231,7 @@ func TestReadyReflectsRuntimePersistenceHealth(t *testing.T) {
 		t.Fatalf("expected readiness 503, got %d: %s", response.Code, response.Body.String())
 	}
 	var payload struct {
-		Status string `json:"status"`
+		Status  string   `json:"status"`
 		Reasons []string `json:"reasons"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -256,11 +256,11 @@ func TestReadyAllowsHealthyPersistence(t *testing.T) {
 func TestBarsRejectOversizedRangeWithoutReadingHistory(t *testing.T) {
 	for _, testcase := range []struct {
 		timeframe string
-		days int
+		days      int
 	}{
 		{"15s", 32},
 		{"1m", 401},
-		{"1D", 21*365},
+		{"1D", 21 * 365},
 	} {
 		handler := New(fakeHistory{}, Options{})
 		from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
