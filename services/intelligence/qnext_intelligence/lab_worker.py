@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 from statistics import pstdev
 import time
 from typing import Any, Mapping, Sequence
@@ -103,6 +104,26 @@ def _selected_feature_names(
     if not selected:
         raise ValueError("historical examples have no stable non-constant features")
     return selected
+
+
+def _safe_feature_part(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+    return normalized or "unnamed"
+
+
+def _indicator_feature_coverage(
+    indicator_ids: Sequence[str],
+    feature_names: Sequence[str],
+) -> tuple[dict[str, int], tuple[str, ...]]:
+    counts: dict[str, int] = {}
+    missing: list[str] = []
+    for indicator_id in indicator_ids:
+        prefix = f"indicator.{_safe_feature_part(indicator_id)}."
+        count = sum(1 for name in feature_names if name.startswith(prefix))
+        counts[indicator_id] = count
+        if count == 0:
+            missing.append(indicator_id)
+    return counts, tuple(missing)
 
 
 def _learning_records(
@@ -215,6 +236,10 @@ def _backtest(
         prediction_records,
         outcome_records,
     )
+    indicator_feature_counts, missing_indicators = _indicator_feature_coverage(
+        imported.indicator_ids,
+        dataset.feature_names,
+    )
 
     created_at_ms = max(int(time.time() * 1000), dataset.end_ms + 1)
     candidate = train_candidate(
@@ -270,16 +295,29 @@ def _backtest(
         "champion_max_drawdown": candidate.champion_test_metrics.max_drawdown,
         "historical_examples": float(len(examples)),
         "feature_count": float(len(dataset.feature_names)),
+        "enabled_indicator_count": float(len(imported.indicator_ids)),
+        "covered_indicator_count": float(len(imported.indicator_ids) - len(missing_indicators)),
+        "indicator_coverage_ratio": (
+            (len(imported.indicator_ids) - len(missing_indicators))
+            / len(imported.indicator_ids)
+            if imported.indicator_ids
+            else 0.0
+        ),
     }
+    evaluation_reasons = list(selected_gate.reasons)
+    evaluation_reasons.extend(
+        f"missing_historical_indicator_features:{indicator_id}"
+        for indicator_id in missing_indicators
+    )
     evaluation = LabEvaluation(
         experiment_id=experiment_id,
         phase="BACKTEST",
         evaluated_at_ms=created_at_ms,
         dataset_hash=dataset_hash,
         model_spec_hash=selected_hash,
-        gate_passed=selected_gate.passed,
+        gate_passed=selected_gate.passed and not missing_indicators,
         metrics=metrics,
-        reasons=selected_gate.reasons,
+        reasons=tuple(evaluation_reasons),
     )
     updated = registry.record_backtest(evaluation)
 
@@ -290,6 +328,8 @@ def _backtest(
         "ml_candidate": ml_record,
         "selected_algorithm": selected_algorithm,
         "ml_dependencies": dependency_status(),
+        "indicator_feature_counts": indicator_feature_counts,
+        "missing_indicators": list(missing_indicators),
         "feature_names": list(dataset.feature_names),
     }
 
