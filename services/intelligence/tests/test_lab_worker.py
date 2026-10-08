@@ -302,7 +302,7 @@ class IntelligenceLabWorkerTests(unittest.TestCase):
                             lab_root
                             / "experiments"
                             / experiment_id
-                            / "evaluations"
+                            / "results"
                             / "shadow-evaluations"
                         ).glob("*.json")
                     )
