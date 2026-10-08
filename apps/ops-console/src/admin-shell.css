@@ -632,3 +632,42 @@ button.ops-health-row {
     grid-template-columns: 1fr;
   }
 }
+
+.admin-session {
+  display: flex !important;
+  width: auto !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .65rem;
+}
+
+.admin-session-state {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: #aeb9c8;
+  font-size: .72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-session-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ops-good);
+  box-shadow: 0 0 0 4px rgba(104, 214, 154, .08);
+}
+
+#admin-logout {
+  min-height: 36px;
+  padding: .48rem .7rem;
+}
+
+@media (max-width: 680px) {
+  .admin-session {
+    width: 100% !important;
+    order: 3;
+    justify-content: space-between;
+  }
+}
