@@ -56,6 +56,7 @@ jobs:
           PYTHONPATH=. python3 -m compileall -q qnext_intelligence tests
           PYTHONPATH=. python3 -m unittest discover -s tests -v
           PYTHONPATH=. python3 -m qnext_intelligence.learning_cli --help
+          PYTHONPATH=. python3 -m qnext_intelligence.lab_worker --help
 
       - name: Validate Ops PHP control plane
         shell: bash
@@ -264,6 +265,7 @@ jobs:
           test -f release/private/intelligence/qnext_intelligence/learning_cli.py
           PYTHONPATH=release/private/intelligence python3 -m compileall -q release/private/intelligence/qnext_intelligence
           PYTHONPATH=release/private/intelligence python3 -m qnext_intelligence.learning_cli --help >/dev/null
+          PYTHONPATH=release/private/intelligence python3 -m qnext_intelligence.lab_worker --help >/dev/null
           test -f release/private/ops-api/public/index.php
           test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
