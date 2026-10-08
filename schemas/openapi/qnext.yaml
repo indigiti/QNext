@@ -1,49 +1,97 @@
 openapi: 3.1.0
 info:
   title: QNext Market API
-  version: 0.1.0
+  version: 0.2.0
 paths:
-  /api/v1/symbols/search:
+  /health:
     get:
-      summary: Search canonical instruments
-      parameters:
-        - in: query
-          name: q
-          schema: { type: string }
+      summary: Process liveness
       responses:
-        "200": { description: OK }
-  /api/v1/symbols/{id}:
+        "200": { description: Process is alive }
+  /ready:
     get:
-      summary: Resolve canonical instrument
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
+      summary: Production readiness
       responses:
-        "200": { description: OK }
+        "200": { description: Runtime is ready for its configured role }
+        "503": { description: Runtime is alive but not production-ready }
+  /version:
+    get:
+      summary: Runtime build identity
+      responses:
+        "200": { description: Build version and commit }
   /api/v1/bars:
     get:
-      summary: Fetch canonical bars
+      summary: Fetch canonical bars within the interactive history guardrails
+      parameters:
+        - in: query
+          name: instrument_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: timeframe
+          required: true
+          schema: { type: string }
+        - in: query
+          name: from_ms
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: to_ms
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50000 }
       responses:
-        "200": { description: OK }
-  /api/v1/markets/calendar:
+        "200": { description: Canonical bars }
+        "400": { description: Invalid query or unsupported timeframe }
+        "413": { description: Requested range or result set exceeds interactive limits }
+  /api/v1/symbols:
     get:
-      summary: Fetch resolved market-session windows
+      summary: List visible canonical instruments
       responses:
-        "200": { description: OK }
-  /api/v1/market/status:
+        "200": { description: Canonical instrument catalog }
+  /api/v1/calendar:
     get:
-      summary: Current market status
+      summary: Fetch resolved market-session windows for an instrument
       responses:
-        "200": { description: OK }
-  /api/v1/providers/status:
+        "200": { description: Resolved market calendar windows }
+        "400": { description: Invalid query }
+        "404": { description: Instrument or calendar not found }
+        "422": { description: Requested range is outside the certified calendar window }
+  /api/v1/timeframes:
     get:
-      summary: Provider and authority status
+      summary: List enabled chart timeframes
       responses:
-        "200": { description: OK }
-  /api/v1/system/health:
+        "200": { description: Enabled chart timeframes }
+  /api/v1/5s-health:
     get:
-      summary: System health
+      summary: Five-second candle health and telemetry
       responses:
-        "200": { description: OK }
+        "200": { description: Five-second health snapshot }
+  /api/v1/resilience:
+    get:
+      summary: Provider authority and resilience status
+      responses:
+        "200": { description: Resilience status }
+        "503": { description: Resilience status unavailable }
+  /api/v1/feed-status:
+    get:
+      summary: Live provider, instrument and runtime feed status
+      responses:
+        "200": { description: Feed status }
+        "503": { description: Feed status unavailable }
+  /api/v1/history-repair:
+    get:
+      summary: Historical repair status
+      responses:
+        "200": { description: Historical repair status }
+        "503": { description: Historical repair unavailable }
+    post:
+      summary: Run a bounded historical repair
+      responses:
+        "200": { description: Historical repair result }
+        "409": { description: Historical repair already running }
+        "422": { description: Historical repair request failed validation }
+        "503": { description: Historical repair unavailable }

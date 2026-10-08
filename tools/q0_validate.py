@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import re
 import statistics
 from pathlib import Path
 
@@ -17,6 +18,31 @@ required = [
 for relative in required:
     if not (ROOT / relative).is_file():
         raise SystemExit(f"missing required contract: {relative}")
+
+openapi_text = (ROOT / "schemas/openapi/qnext.yaml").read_text(encoding="utf-8")
+server_text = (
+    ROOT / "services/market-core/internal/httpapi/server.go"
+).read_text(encoding="utf-8")
+declared_http_routes = set(
+    re.findall(r"^  (/[^:\s]+):\s*$", openapi_text, flags=re.MULTILINE)
+)
+implemented_http_routes = set(
+    re.findall(
+        r's\.mux\.Handle(?:Func)?\("([^"]+)"',
+        server_text,
+    )
+)
+# Realtime GET/WebSocket plus the internal research bridge are governed by
+# AsyncAPI and the stream protocol rather than the conventional HTTP contract.
+implemented_http_routes.discard("/api/v1/stream")
+
+if declared_http_routes != implemented_http_routes:
+    missing = sorted(implemented_http_routes - declared_http_routes)
+    stale = sorted(declared_http_routes - implemented_http_routes)
+    raise SystemExit(
+        "OpenAPI/Market Core route drift: "
+        f"missing={missing or 'none'} stale={stale or 'none'}"
+    )
 
 ticks = []
 with (ROOT / "fixtures/market/nifty_ticks.jsonl").open() as fh:
