@@ -66,6 +66,14 @@ describe('Intelligence Lab chart snapshot', () => {
     expect(snapshot.indicators).toHaveLength(1);
     expect(snapshot.indicators[0]?.instance_id).toBe('ema-1');
     expect(snapshot.indicators[0]?.inputs).toEqual({ emaLength: 34 });
+    expect(snapshot.indicators[0]?.historical_feature_names).toEqual([
+      'indicator.ema_1.plot.ema',
+    ]);
+    expect(snapshot.indicators[0]?.current_feature_names).toEqual([
+      'indicator.ema_1.plot.ema',
+      'indicator.ema_1.var.colorbars',
+      'indicator.ema_1.var.trend',
+    ]);
     expect(snapshot.feature_rows).toEqual([
       {
         bar_time_ms: 1_800_000_000_000,
