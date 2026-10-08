@@ -54,6 +54,10 @@ class HistoricalLabExample:
     return_value: float
     mfe: float
     mae: float
+    mfe_bar: int
+    mae_bar: int
+    future_high_excursions: tuple[float, ...]
+    future_low_excursions: tuple[float, ...]
     direction_actual: str
 
     def to_record(self) -> dict[str, Any]:
@@ -66,6 +70,10 @@ class HistoricalLabExample:
             "return_value": self.return_value,
             "mfe": self.mfe,
             "mae": self.mae,
+            "mfe_bar": self.mfe_bar,
+            "mae_bar": self.mae_bar,
+            "future_high_excursions": list(self.future_high_excursions),
+            "future_low_excursions": list(self.future_low_excursions),
             "direction_actual": self.direction_actual,
         }
 
@@ -158,6 +166,64 @@ def import_chart_snapshot(payload: Mapping[str, Any]) -> ImportedChartSnapshot:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class LabCurrentFeatureVector:
+    bar_time_ms: int
+    as_of_time_ms: int
+    features: Mapping[str, float]
+    origin_close: float
+
+
+def build_latest_feature_vector(
+    snapshot: ImportedChartSnapshot,
+    bars: Sequence[Bar],
+) -> LabCurrentFeatureVector:
+    ordered = sorted(bars, key=lambda bar: bar.open_time_ms)
+    if not ordered:
+        raise ValueError("current Lab recommendation requires canonical bars")
+
+    previous_open = -1
+    row_by_open = {row.bar_time_ms: row for row in snapshot.feature_rows}
+    indicator_history: dict[str, list[float]] = {}
+    usable_closes: list[float] = []
+    usable_volumes: list[float] = []
+    latest: LabCurrentFeatureVector | None = None
+
+    for origin in ordered:
+        origin.validate()
+        if origin.instrument_id != snapshot.instrument_id or origin.timeframe != snapshot.timeframe:
+            raise ValueError("current bars do not match chart snapshot market")
+        if origin.open_time_ms <= previous_open:
+            raise ValueError("current bars must be strictly increasing")
+        previous_open = origin.open_time_ms
+
+        row = row_by_open.get(origin.open_time_ms)
+        if row is None:
+            continue
+        if not origin.final or origin.quality.upper() not in USABLE_QUALITY:
+            continue
+
+        features = _enrich_origin_features(
+            row.features,
+            origin,
+            usable_closes=usable_closes,
+            usable_volumes=usable_volumes,
+            indicator_history=indicator_history,
+        )
+        usable_closes.append(origin.close)
+        usable_volumes.append(origin.volume)
+        latest = LabCurrentFeatureVector(
+            bar_time_ms=origin.open_time_ms,
+            as_of_time_ms=origin.close_time_ms,
+            features=features,
+            origin_close=origin.close,
+        )
+
+    if latest is None:
+        raise ValueError("no finalized Lab feature row is available for recommendation")
+    return latest
+
+
 def build_historical_examples(
     snapshot: ImportedChartSnapshot,
     bars: Sequence[Bar],
@@ -218,8 +284,12 @@ def build_historical_examples(
         as_of_time_ms = origin.close_time_ms
         terminal = future[-1].close
         return_value = (terminal / origin.close) - 1.0
-        mfe = max((bar.high / origin.close) - 1.0 for bar in future)
-        mae = min((bar.low / origin.close) - 1.0 for bar in future)
+        high_excursions = tuple((bar.high / origin.close) - 1.0 for bar in future)
+        low_excursions = tuple((bar.low / origin.close) - 1.0 for bar in future)
+        mfe = max(high_excursions)
+        mae = min(low_excursions)
+        mfe_bar = high_excursions.index(mfe) + 1
+        mae_bar = low_excursions.index(mae) + 1
         direction = "UP" if terminal > origin.close else "DOWN" if terminal < origin.close else "FLAT"
 
         examples.append(
@@ -232,6 +302,10 @@ def build_historical_examples(
                 return_value=return_value,
                 mfe=mfe,
                 mae=mae,
+                mfe_bar=mfe_bar,
+                mae_bar=mae_bar,
+                future_high_excursions=high_excursions,
+                future_low_excursions=low_excursions,
                 direction_actual=direction,
             )
         )
