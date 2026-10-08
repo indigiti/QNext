@@ -12,6 +12,14 @@ type LabEvaluation = {
   reasons?: string[];
 };
 
+type LabSelection = {
+  selected_algorithm?: string;
+  ml_family?: string;
+  ml_gate_passed?: boolean;
+  ml_error?: string;
+  missing_indicators?: string[];
+};
+
 type LabExperiment = {
   experiment_id: string;
   name: string;
@@ -21,6 +29,7 @@ type LabExperiment = {
   created_at_ms: number;
   lifecycle_state: string;
   backtest?: LabEvaluation | null;
+  selection?: LabSelection | null;
   candidates?: Array<Record<string, unknown>>;
 };
 
@@ -112,6 +121,18 @@ function card(experiment: LabExperiment, busy: boolean): string {
         <span class="badge ${experiment.lifecycle_state === 'BACKTESTED' ? 'good' : 'bad'}">${html(experiment.lifecycle_state)}</span>
       </div>
       <div class="muted qil-indicators">${experiment.indicator_ids.map(html).join(' · ')}</div>
+      ${experiment.selection ? `
+        <div class="line qil-selection">
+          <span>Selected model</span>
+          <strong>${html(experiment.selection.selected_algorithm ?? 'ridge')}</strong>
+        </div>
+        ${experiment.selection.ml_family
+          ? `<div class="muted">ML challenger: ${html(experiment.selection.ml_family)} · ${experiment.selection.ml_gate_passed ? 'PASS' : 'NOT SELECTED'}</div>`
+          : ''}
+        ${experiment.selection.ml_error
+          ? `<div class="muted qil-warning">ML fallback: ${html(experiment.selection.ml_error)}</div>`
+          : ''}
+      ` : ''}
       ${experiment.backtest ? `
         <div class="qil-metrics">
           <div><span>Accuracy</span><strong>${pct(metrics.accuracy)}</strong></div>
@@ -247,6 +268,7 @@ function mount(): void {
   style.textContent = `
     #intelligence-lab-card .qil-pending{margin:1rem 0;padding:.8rem;border:1px solid rgba(255,255,255,.08);border-radius:.6rem}
     #intelligence-lab-card .qil-indicators{margin:.6rem 0;word-break:break-word}
+    #intelligence-lab-card .qil-selection{margin:.45rem 0;padding-top:.45rem;border-top:1px solid rgba(255,255,255,.06)}
     #intelligence-lab-card .qil-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.75rem 0}
     #intelligence-lab-card .qil-metrics div{display:flex;flex-direction:column;gap:.2rem}
     #intelligence-lab-card .qil-horizon-label{display:flex;align-items:center;gap:.4rem;color:var(--muted,#8b98a5)}
