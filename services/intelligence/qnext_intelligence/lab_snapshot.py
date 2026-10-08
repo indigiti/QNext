@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from statistics import fmean, pstdev
 from typing import Any, Mapping, Sequence
 
 from .domain import Bar, stable_hash
@@ -154,18 +155,19 @@ def build_historical_examples(
         raise ValueError("historical evaluation requires canonical bars")
 
     previous_open = -1
-    bars_by_open: dict[int, Bar] = {}
     for bar in ordered:
         bar.validate()
         if bar.instrument_id != snapshot.instrument_id or bar.timeframe != snapshot.timeframe:
             raise ValueError("historical bars do not match chart snapshot market")
         if bar.open_time_ms <= previous_open:
             raise ValueError("historical bars must be strictly increasing")
-        bars_by_open[bar.open_time_ms] = bar
         previous_open = bar.open_time_ms
 
     row_by_open = {row.bar_time_ms: row for row in snapshot.feature_rows}
     examples: list[HistoricalLabExample] = []
+    indicator_history: dict[str, list[float]] = {}
+    usable_closes: list[float] = []
+    usable_volumes: list[float] = []
 
     for index, origin in enumerate(ordered):
         row = row_by_open.get(origin.open_time_ms)
@@ -173,13 +175,26 @@ def build_historical_examples(
             continue
         if not origin.final or origin.quality.upper() not in USABLE_QUALITY:
             continue
-        future = [
-            bar
-            for bar in ordered[index + 1:index + 1 + horizon_bars]
-            if bar.final and bar.quality.upper() in USABLE_QUALITY
-        ]
-        if len(future) != horizon_bars:
+
+        future = ordered[index + 1:index + 1 + horizon_bars]
+        if (
+            len(future) != horizon_bars
+            or any(
+                not bar.final or bar.quality.upper() not in USABLE_QUALITY
+                for bar in future
+            )
+        ):
             continue
+
+        features = _enrich_origin_features(
+            row.features,
+            origin,
+            usable_closes=usable_closes,
+            usable_volumes=usable_volumes,
+            indicator_history=indicator_history,
+        )
+        usable_closes.append(origin.close)
+        usable_volumes.append(origin.volume)
 
         # Feature rows are keyed to the origin bar. The decision becomes eligible
         # only after that canonical bar has finalized; no future bar is included.
@@ -194,7 +209,7 @@ def build_historical_examples(
             HistoricalLabExample(
                 bar_time_ms=origin.open_time_ms,
                 as_of_time_ms=as_of_time_ms,
-                features=dict(sorted(row.features.items())),
+                features=features,
                 origin_close=origin.close,
                 horizon_bars=horizon_bars,
                 return_value=return_value,
@@ -207,6 +222,56 @@ def build_historical_examples(
     if not examples:
         raise ValueError("no complete leakage-safe historical examples are available")
     return tuple(examples)
+
+
+def _enrich_origin_features(
+    raw_features: Mapping[str, float],
+    origin: Bar,
+    *,
+    usable_closes: Sequence[float],
+    usable_volumes: Sequence[float],
+    indicator_history: dict[str, list[float]],
+) -> dict[str, float]:
+    features = {str(name): float(value) for name, value in raw_features.items()}
+
+    if usable_closes:
+        previous_close = usable_closes[-1]
+        if previous_close != 0:
+            features["market.return_1"] = (origin.close / previous_close) - 1.0
+    if len(usable_closes) >= 3:
+        close_3 = usable_closes[-3]
+        if close_3 != 0:
+            features["market.return_3"] = (origin.close / close_3) - 1.0
+
+    if origin.close != 0:
+        features["market.range_pct"] = (origin.high - origin.low) / origin.close
+        features["market.body_pct"] = (origin.close - origin.open) / origin.close
+    span = origin.high - origin.low
+    if span > 0:
+        features["market.close_location"] = (origin.close - origin.low) / span
+
+    features["market.volume_log1p"] = math.log1p(max(origin.volume, 0.0))
+    recent_volumes = list(usable_volumes[-19:]) + [origin.volume]
+    if recent_volumes:
+        average_volume = fmean(recent_volumes)
+        if average_volume > 0:
+            features["market.volume_ratio_20"] = origin.volume / average_volume
+
+    for name, value in raw_features.items():
+        history = indicator_history.setdefault(str(name), [])
+        number = float(value)
+        if history:
+            features[f"{name}.delta_1"] = number - history[-1]
+        if len(history) >= 3:
+            features[f"{name}.delta_3"] = number - history[-3]
+        z_window = history[-19:] + [number]
+        if len(z_window) >= 5:
+            scale = pstdev(z_window)
+            if scale > 1e-12:
+                features[f"{name}.z20"] = (number - fmean(z_window)) / scale
+        history.append(number)
+
+    return dict(sorted(features.items()))
 
 
 def historical_dataset_hash(
