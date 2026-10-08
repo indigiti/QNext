@@ -217,3 +217,112 @@ func TestBarsEndpointIncludesCurrentFormingBar(t *testing.T) {
 		t.Fatalf("unexpected forming bar: %+v", got)
 	}
 }
+
+
+type countingHistory struct {
+	calls int
+	bars  []domain.Bar
+}
+
+func (h *countingHistory) LoadRange(string, string, time.Time, time.Time) ([]domain.Bar, error) {
+	h.calls++
+	return append([]domain.Bar(nil), h.bars...), nil
+}
+
+func TestReadyEndpointUsesRuntimeReadiness(t *testing.T) {
+	handler := New(nil, Options{
+		Readiness: func() (bool, any) {
+			return false, map[string]any{
+				"status":  "not_ready",
+				"reasons": []string{"persistence_backlog"},
+			}
+		},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", response.Code, response.Body.String())
+	}
+
+	handler = New(nil, Options{
+		Readiness: func() (bool, any) {
+			return true, map[string]any{"status": "ready"}
+		},
+	})
+	request = httptest.NewRequest(http.MethodGet, "/ready", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestBarsEndpointRejectsOversizedHistoryRangeBeforeDiskRead(t *testing.T) {
+	history := &countingHistory{}
+	handler := New(history, Options{})
+	from := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(32 * 24 * time.Hour)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/bars?instrument_id=NSE%3ANIFTY50&timeframe=15s&from_ms="+
+			strconv.FormatInt(from.UnixMilli(), 10)+
+			"&to_ms="+strconv.FormatInt(to.UnixMilli(), 10),
+		nil,
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", response.Code, response.Body.String())
+	}
+	if history.calls != 0 {
+		t.Fatalf("oversized request reached history store %d times", history.calls)
+	}
+}
+
+func TestBarsEndpointEnforcesResponseLimit(t *testing.T) {
+	at := time.Date(2026, 9, 24, 3, 45, 0, 0, time.UTC)
+	history := &countingHistory{bars: []domain.Bar{
+		{
+			InstrumentID: "NSE:NIFTY50",
+			Timeframe:    "1m",
+			OpenTime:     at,
+			CloseTime:    at.Add(time.Minute),
+			Open:         1,
+			High:         1,
+			Low:          1,
+			Close:        1,
+			Final:        true,
+			Quality:      domain.QualityGood,
+		},
+		{
+			InstrumentID: "NSE:NIFTY50",
+			Timeframe:    "1m",
+			OpenTime:     at.Add(time.Minute),
+			CloseTime:    at.Add(2 * time.Minute),
+			Open:         2,
+			High:         2,
+			Low:          2,
+			Close:        2,
+			Final:        true,
+			Quality:      domain.QualityGood,
+		},
+	}}
+	handler := New(history, Options{})
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/bars?instrument_id=NSE%3ANIFTY50&timeframe=1m&from_ms="+
+			strconv.FormatInt(at.UnixMilli(), 10)+
+			"&to_ms="+strconv.FormatInt(at.Add(3*time.Minute).UnixMilli(), 10)+
+			"&limit=1",
+		nil,
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", response.Code, response.Body.String())
+	}
+	if history.calls != 1 {
+		t.Fatalf("expected one bounded history read, got %d", history.calls)
+	}
+}
