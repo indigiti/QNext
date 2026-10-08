@@ -18,6 +18,7 @@ from .lab_snapshot import (
     import_chart_snapshot,
 )
 from .learning import build_learning_dataset, train_candidate
+from .lab_ml import dependency_status, train_ml_challenger
 
 REQUEST_SCHEMA = "QNEXT.INTELLIGENCE.LAB.REQUEST/1"
 
@@ -229,14 +230,41 @@ def _backtest(
     candidate_record = candidate.to_record()
     registry.save_candidate_artifact(experiment_id, candidate_record)
 
+    ml_candidate = train_ml_challenger(
+        dataset,
+        ridge_validation_metrics=candidate.validation_metrics,
+        ridge_test_metrics=candidate.test_metrics,
+        created_at_ms=created_at_ms,
+        min_test_samples=min_test_samples,
+        min_average_return_improvement=float(payload.get("minAverageReturnImprovement", 0.0)),
+        max_accuracy_regression=float(payload.get("maxAccuracyRegression", 0.02)),
+        max_drawdown_slack=float(payload.get("maxDrawdownSlack", 0.01)),
+    )
+    ml_record = ml_candidate.to_record() if ml_candidate is not None else None
+    if ml_record is not None:
+        registry.save_candidate_artifact(experiment_id, ml_record)
+
+    selected_algorithm = candidate.algorithm
+    selected_hash = candidate.model_hash
+    selected_metrics = candidate.test_metrics
+    selected_gate = candidate.promotion_gate
+    if ml_candidate is not None and ml_candidate.promotion_gate.passed:
+        selected_algorithm = ml_candidate.algorithm
+        selected_hash = ml_candidate.model_hash
+        selected_metrics = ml_candidate.test_metrics
+        selected_gate = ml_candidate.promotion_gate
+
     metrics = {
-        "samples": float(candidate.test_metrics.samples),
-        "accuracy": candidate.test_metrics.accuracy,
-        "coverage": candidate.test_metrics.coverage,
-        "strategy_return": candidate.test_metrics.strategy_return,
-        "average_strategy_return": candidate.test_metrics.average_strategy_return,
-        "max_drawdown": candidate.test_metrics.max_drawdown,
-        "trades": float(candidate.test_metrics.trades),
+        "samples": float(selected_metrics.samples),
+        "accuracy": selected_metrics.accuracy,
+        "coverage": selected_metrics.coverage,
+        "strategy_return": selected_metrics.strategy_return,
+        "average_strategy_return": selected_metrics.average_strategy_return,
+        "max_drawdown": selected_metrics.max_drawdown,
+        "trades": float(selected_metrics.trades),
+        "ridge_accuracy": candidate.test_metrics.accuracy,
+        "ridge_average_strategy_return": candidate.test_metrics.average_strategy_return,
+        "ridge_max_drawdown": candidate.test_metrics.max_drawdown,
         "champion_accuracy": candidate.champion_test_metrics.accuracy,
         "champion_average_strategy_return": candidate.champion_test_metrics.average_strategy_return,
         "champion_max_drawdown": candidate.champion_test_metrics.max_drawdown,
@@ -248,10 +276,10 @@ def _backtest(
         phase="BACKTEST",
         evaluated_at_ms=created_at_ms,
         dataset_hash=dataset_hash,
-        model_spec_hash=candidate.model_hash,
-        gate_passed=candidate.promotion_gate.passed,
+        model_spec_hash=selected_hash,
+        gate_passed=selected_gate.passed,
         metrics=metrics,
-        reasons=candidate.promotion_gate.reasons,
+        reasons=selected_gate.reasons,
     )
     updated = registry.record_backtest(evaluation)
 
@@ -259,6 +287,9 @@ def _backtest(
         "experiment": updated.to_record(),
         "evaluation": evaluation.to_record(),
         "candidate": candidate_record,
+        "ml_candidate": ml_record,
+        "selected_algorithm": selected_algorithm,
+        "ml_dependencies": dependency_status(),
         "feature_names": list(dataset.feature_names),
     }
 
