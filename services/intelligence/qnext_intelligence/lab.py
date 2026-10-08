@@ -338,7 +338,14 @@ class IntelligenceLabRegistry:
         if any(not isinstance(value, (int, float)) for value in evaluation.metrics.values()):
             raise ValueError("evaluation metrics must be numeric")
         path = self._experiment_dir(evaluation.experiment_id) / "results" / filename
-        self._write_json(path, evaluation.to_record(), overwrite=False)
+        record = evaluation.to_record()
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if existing == record:
+                return
+            raise ValueError("immutable lab evaluation already exists with different content")
+        self._write_json(path, record, overwrite=False)
 
     def _append_event(
         self,
