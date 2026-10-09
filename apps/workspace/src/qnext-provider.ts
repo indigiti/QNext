@@ -98,6 +98,7 @@ interface SharedBarSubscription {
   callbacks: Set<(bar: QNextBar) => void>;
   streamID: string;
   lastSeq: number;
+  resuming: boolean;
   needsSnapshot: boolean;
   healing: boolean;
   polling: boolean;
@@ -303,6 +304,7 @@ export class QNextProvider {
             callbacks: new Set(),
             streamID: '',
             lastSeq: 0,
+            resuming: false,
             needsSnapshot: false,
             healing: false,
             polling: false,
@@ -405,6 +407,7 @@ export class QNextProvider {
         if (subscription.needsSnapshot) {
           void this.healAndSubscribe(subscription);
         } else if (subscription.streamID) {
+          subscription.resuming = true;
           this.send({
             op: 'resume',
             stream_id: subscription.streamID,
@@ -482,9 +485,14 @@ export class QNextProvider {
         }
         subscription.streamID = message.stream_id;
         this.streamToKey.set(message.stream_id, subscription.key);
-        if (typeof message.seq === 'number') {
+        // A resume acknowledgement reports the broker's current sequence before
+        // replay events are sent. Do not advance lastSeq here or the replayed
+        // events will be rejected as stale and the chart will keep a gap until
+        // a full REST refresh.
+        if (typeof message.seq === 'number' && !subscription.resuming) {
           subscription.lastSeq = Math.max(subscription.lastSeq, message.seq);
         }
+        subscription.resuming = false;
         subscription.needsSnapshot = false;
         this.stopPolling(subscription);
         return;
@@ -521,6 +529,7 @@ export class QNextProvider {
   }
 
   private freshSubscribe(subscription: SharedBarSubscription): void {
+    subscription.resuming = false;
     this.send({
       op: 'subscribe',
       channel: 'bars',
