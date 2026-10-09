@@ -124,6 +124,98 @@ describe('QNextProvider shared live transport', () => {
     unsubscribeSynthetic();
   });
 
+  it('replays missed bars after reconnect instead of discarding them behind the resume acknowledgement', async () => {
+    const sockets: FakeSocket[] = [];
+    const provider = new QNextProvider({
+      fetchImpl: jsonFetch(),
+      webSocketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      reconnectDelayMs: 1,
+    });
+
+    const onBar = vi.fn();
+    const unsubscribe = provider.subscribe('NIFTY', '15s', onBar);
+
+    await waitFor(() => sockets.length === 1);
+    sockets[0].open();
+    await waitFor(() => sockets[0].sent.length === 1);
+
+    const streamID = 'bars:NSE:NIFTY50:15s';
+    sockets[0].message({
+      op: 'subscribed',
+      stream_id: streamID,
+      seq: 5,
+      symbol: 'NSE:NIFTY50',
+      timeframe: '15s',
+    });
+    sockets[0].message({
+      op: 'update',
+      stream_id: streamID,
+      seq: 6,
+      bar: { time: 100, open: 10, high: 12, low: 9, close: 11, volume: 5 },
+    });
+
+    sockets[0].close();
+    await waitFor(() => sockets.length === 2);
+    sockets[1].open();
+    await waitFor(() => sockets[1].sent.length === 1);
+
+    expect(sockets[1].sent[0]).toEqual({
+      op: 'resume',
+      stream_id: streamID,
+      after_seq: 6,
+    });
+
+    // Market Core acknowledges resume at its current sequence before sending
+    // the replay events. The client must preserve after_seq until replay lands.
+    sockets[1].message({
+      op: 'subscribed',
+      stream_id: streamID,
+      seq: 9,
+    });
+    sockets[1].message({
+      op: 'update',
+      stream_id: streamID,
+      seq: 7,
+      bar: { time: 200, open: 11, high: 13, low: 10, close: 12, volume: 6 },
+    });
+    sockets[1].message({
+      op: 'update',
+      stream_id: streamID,
+      seq: 8,
+      bar: { time: 300, open: 12, high: 14, low: 11, close: 13, volume: 7 },
+    });
+    sockets[1].message({
+      op: 'update',
+      stream_id: streamID,
+      seq: 9,
+      bar: { time: 400, open: 13, high: 15, low: 12, close: 14, volume: 8 },
+    });
+
+    expect(onBar).toHaveBeenCalledTimes(4);
+    expect(onBar).toHaveBeenNthCalledWith(2, {
+      time: 200,
+      open: 11,
+      high: 13,
+      low: 10,
+      close: 12,
+      volume: 6,
+    });
+    expect(onBar).toHaveBeenNthCalledWith(4, {
+      time: 400,
+      open: 13,
+      high: 15,
+      low: 12,
+      close: 14,
+      volume: 8,
+    });
+
+    unsubscribe();
+  });
+
   it('reference-counts duplicate chart consumers instead of duplicating server subscriptions', async () => {
     const sockets: FakeSocket[] = [];
     const provider = new QNextProvider({
