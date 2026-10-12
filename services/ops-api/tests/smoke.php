@@ -283,6 +283,44 @@ expect(
     'Shadow-Live inbox should retain each observation as an independent request'
 );
 
+$certifiedManifest = json_decode(
+    file_get_contents($shadowExperimentRoot . '/manifest.json') ?: '{}',
+    true
+);
+$certifiedManifest['lifecycle_state'] = 'CERTIFIED';
+AtomicFile::writeJson($shadowExperimentRoot . '/manifest.json', $certifiedManifest);
+
+$certifiedTargets = $labControl->shadowTargets();
+expect(
+    count($certifiedTargets['targets'] ?? []) === 1
+    && ($certifiedTargets['targets'][0]['experiment_id'] ?? '') === 'lab-shadow-smoke'
+    && ($certifiedTargets['targets'][0]['mode'] ?? '') === 'ADVISORY',
+    'Certified Lab experiments should switch the live target into advisory mode'
+);
+
+$advisoryQueued = $labControl->submitAdvisoryObservation([
+    'experimentId' => 'lab-shadow-smoke',
+    'indicatorConfigurationHash' => str_repeat('a', 64),
+    'featureSchemaVersion' => 'qnext-chart-indicators-v1',
+    'barTimeMs' => 1800000120000,
+    'createdAtMs' => 1800000180000,
+    'featureRows' => [[
+        'bar_time_ms' => 1800000120000,
+        'features' => ['indicator.ema_1.plot.ema' => 102.0],
+    ]],
+    'currentFeatures' => ['indicator.ema_1.plot.ema' => 102.0],
+]);
+expect(
+    ($advisoryQueued['queued'] ?? false) === true
+    && ($advisoryQueued['action'] ?? '') === 'advisory-observation',
+    'Certified advisory observations should enter the protected live inbox'
+);
+$advisoryInbox = glob($flatRoot . '/run/intelligence-lab-shadow-inbox/*.json') ?: [];
+expect(
+    count($advisoryInbox) === 2,
+    'Certified advisory inbox should append without replacing Shadow evidence'
+);
+
 $seeded = $flatController->getConfig();
 expect(
     isset($seeded['timeframes']) && $seeded['timeframes'] === ['1m'],

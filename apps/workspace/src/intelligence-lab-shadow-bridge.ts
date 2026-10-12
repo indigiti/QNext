@@ -32,6 +32,7 @@ interface ShadowTarget {
   feature_schema_version: string;
   horizon_bars: number;
   started_at_ms: number;
+  mode: 'SHADOW' | 'ADVISORY';
 }
 
 type CanonicalBarFetcher = (
@@ -85,11 +86,13 @@ export function mountIntelligenceLabShadowBridge(
       targets = Array.isArray(payload.targets)
         ? payload.targets.filter(isShadowTarget)
         : [];
+      const shadowCount = targets.filter((target) => target.mode === 'SHADOW').length;
+      const advisoryCount = targets.filter((target) => target.mode === 'ADVISORY').length;
       setStatus(
         status,
         targets.length > 0
-          ? `Shadow: ${targets.length} active`
-          : 'Shadow: idle',
+          ? `Intel: ${shadowCount} shadow · ${advisoryCount} certified`
+          : 'Intel: idle',
       );
     } catch (error) {
       setStatus(
@@ -188,8 +191,11 @@ export function mountIntelligenceLabShadowBridge(
           continue;
         }
 
+        const route = target.mode === 'ADVISORY'
+          ? '%2Fintelligence-lab%2Fadvisory-observation'
+          : '%2Fintelligence-lab%2Fshadow-observation';
         const response = await fetch(
-          '/qnext/admin/api/index.php?route=%2Fintelligence-lab%2Fshadow-observation',
+          `/qnext/admin/api/index.php?route=${route}`,
           {
             method: 'POST',
             credentials: 'same-origin',
@@ -222,7 +228,7 @@ export function mountIntelligenceLabShadowBridge(
         lastQueued[target.experiment_id] = latest.time;
         saveLastQueued(lastQueued);
       }
-      setStatus(status, `Shadow: queued ${formatTime(latest.time)}`);
+      setStatus(status, `Intel: queued ${formatTime(latest.time)}`);
     } catch (error) {
       setStatus(
         status,
@@ -297,7 +303,8 @@ function isShadowTarget(value: unknown): value is ShadowTarget {
     typeof value.indicator_configuration_hash === 'string' &&
     typeof value.feature_schema_version === 'string' &&
     typeof value.horizon_bars === 'number' &&
-    typeof value.started_at_ms === 'number'
+    typeof value.started_at_ms === 'number' &&
+    (value.mode === 'SHADOW' || value.mode === 'ADVISORY')
   );
 }
 

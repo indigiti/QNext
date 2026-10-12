@@ -253,6 +253,9 @@ try {
     if ($method === 'POST' && $path === '/intelligence-lab/shadow-observation') {
         respond(200, $intelligenceLab->submitShadowObservation(request_body()));
     }
+    if ($method === 'POST' && $path === '/intelligence-lab/advisory-observation') {
+        respond(200, $intelligenceLab->submitAdvisoryObservation(request_body()));
+    }
     if ($method === 'GET' && $path === '/syn-plus-paper') {
         respond(200, $paper->status());
     }

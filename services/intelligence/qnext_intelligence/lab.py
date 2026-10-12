@@ -486,6 +486,54 @@ class IntelligenceLabRegistry:
             decoded = json.load(handle)
         return decoded if isinstance(decoded, dict) else None
 
+    def save_certified_advisory(
+        self,
+        experiment_id: str,
+        advisory: Mapping[str, Any],
+    ) -> Path:
+        experiment = self.get(experiment_id)
+        if experiment.lifecycle_state != "CERTIFIED":
+            raise ValueError("certified advisory requires CERTIFIED state")
+        advisory_id = str(advisory.get("advisory_id", ""))
+        self._validate_id(advisory_id)
+        material = dict(advisory)
+        path = (
+            self._experiment_dir(experiment_id)
+            / "advisory"
+            / "observations"
+            / f"{advisory_id}.json"
+        )
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            existing_compare = dict(existing) if isinstance(existing, dict) else {}
+            material_compare = dict(material)
+            existing_compare.pop("created_at_ms", None)
+            material_compare.pop("created_at_ms", None)
+            if existing_compare != material_compare:
+                raise ValueError("certified advisory id already exists with different content")
+        else:
+            self._write_json(path, material, overwrite=False)
+
+        self._write_json(
+            self._experiment_dir(experiment_id) / "advisory" / "latest.json",
+            material,
+            overwrite=True,
+        )
+        return path
+
+    def read_certified_advisory(
+        self,
+        experiment_id: str,
+    ) -> dict[str, Any] | None:
+        self.get(experiment_id)
+        path = self._experiment_dir(experiment_id) / "advisory" / "latest.json"
+        if not path.is_file():
+            return None
+        with path.open("r", encoding="utf-8") as handle:
+            decoded = json.load(handle)
+        return decoded if isinstance(decoded, dict) else None
+
     def save_candidate_artifact(
         self,
         experiment_id: str,

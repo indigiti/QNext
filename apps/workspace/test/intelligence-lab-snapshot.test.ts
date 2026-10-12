@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  captureActiveChartLabContext,
   captureActiveChartLabSnapshot,
   LAB_CHART_SNAPSHOT_SCHEMA,
 } from '../src/intelligence-lab-snapshot';
@@ -97,6 +98,18 @@ describe('Intelligence Lab chart snapshot', () => {
       'indicator.ema_1.var.colorbars': 1,
     });
     expect(snapshot.indicator_configuration_hash).toMatch(/^[a-f0-9]{64}$/);
+
+    const context = await captureActiveChartLabContext(
+      workspace,
+      async () => 'NSE:NIFTY50',
+    );
+    expect(context.instrument_id).toBe(snapshot.instrument_id);
+    expect(context.timeframe).toBe(snapshot.timeframe);
+    expect(context.feature_schema_version).toBe(snapshot.feature_schema_version);
+    expect(context.indicator_ids).toEqual(['ema-1']);
+    expect(context.indicator_configuration_hash).toBe(
+      snapshot.indicator_configuration_hash,
+    );
   });
 
   it('rejects a chart with no enabled indicators', async () => {
