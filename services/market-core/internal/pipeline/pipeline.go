@@ -27,6 +27,8 @@ type SubminuteSnapshot struct {
 	FiveSecondFinals    uint64            `json:"five_second_finals"`
 	CarryForwardFinals  uint64            `json:"carry_forward_finals"`
 	ClockAdvanceCalls   uint64            `json:"clock_advance_calls"`
+	OutOfSessionTicks   uint64            `json:"out_of_session_ticks"`
+	OutOfSessionVolume  uint64            `json:"out_of_session_volume"`
 	FinalizedByInterval map[string]uint64 `json:"finalized_by_interval,omitempty"`
 	IncompleteBuckets   map[string]uint64 `json:"incomplete_buckets,omitempty"`
 	Integrity           IntegritySnapshot `json:"integrity"`
@@ -116,6 +118,15 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// Quotes may continue after the regular market session. Feedstatus/raw
+	// capture still see them via MarketSink.Observer, but they must not create
+	// invalid 5s/15s buckets or turn a healthy provider connection into a
+	// reconnect/recovery loop.
+	if p.hasCanonical5s && !tick.EventTime.IsZero() && !candle.InRegularSession(tick.EventTime) {
+		p.stats.OutOfSessionTicks++
+		return nil, nil
+	}
+
 	p.lastTicks[tick.InstrumentID] = tick
 	var updates []domain.Bar
 	var fiveSecondUpdates []domain.Bar
@@ -153,6 +164,11 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 func (p *Pipeline) ApplyVolume(tick domain.Tick) ([]domain.Bar, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.hasCanonical5s && !tick.EventTime.IsZero() && !candle.InRegularSession(tick.EventTime) {
+		p.stats.OutOfSessionVolume++
+		return nil, nil
+	}
 
 	var updates []domain.Bar
 	var fiveSecondUpdates []domain.Bar
@@ -242,11 +258,24 @@ func defaultCarryHealthy(lastTick domain.Tick, at time.Time) bool {
 }
 
 func (p *Pipeline) observeMissingSince(instrumentID string, lastTick domain.Tick, at time.Time) {
+	// Never count the closed-session wall clock as a stream of missing
+	// market candles. Bound observations to the last real tick's session,
+	// so an overnight restart cannot generate tens of thousands of gaps.
+	if !candle.InRegularSession(lastTick.EventTime) {
+		return
+	}
+	_, sessionClose := candle.RegularSessionBounds(lastTick.EventTime)
+	if at.After(sessionClose) {
+		at = sessionClose
+	}
+	if !at.After(lastTick.EventTime) {
+		return
+	}
 	open, closeAt, err := candle.Bucket(lastTick.EventTime.UTC(), "5s")
 	if err != nil || !closeAt.After(open) {
 		return
 	}
-	for nextOpen := closeAt; ; nextOpen = nextOpen.Add(5 * time.Second) {
+	for nextOpen := closeAt; nextOpen.Before(sessionClose); nextOpen = nextOpen.Add(5 * time.Second) {
 		nextClose := nextOpen.Add(5 * time.Second)
 		if nextClose.After(at) {
 			break

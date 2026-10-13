@@ -113,3 +113,74 @@ func TestSupportedTimeframesValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestIntradayBucketRejectsTicksOutsideRegularSession(t *testing.T) {
+	for _, input := range []string{
+		"2026-10-13T09:14:59+05:30",
+		"2026-10-13T15:30:00+05:30",
+		"2026-10-13T15:30:05+05:30",
+		"2026-10-13T23:00:00+05:30",
+	} {
+		at, err := time.Parse(time.RFC3339, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, timeframe := range []string{"5s", "15s", "30s", "1m", "3m"} {
+			_, _, err := Bucket(at, timeframe)
+			if !errors.Is(err, ErrOutsideSession) {
+				t.Fatalf("%s at %s: want ErrOutsideSession, got %v", timeframe, input, err)
+			}
+		}
+	}
+}
+
+func TestRegularSessionLastBucketAndNextSessionOpen(t *testing.T) {
+	for _, input := range []struct {
+		at        string
+		timeframe string
+		open      string
+		closeAt   string
+	}{
+		{"2026-10-13T09:15:00+05:30", "5s", "2026-10-13T09:15:00+05:30", "2026-10-13T09:15:05+05:30"},
+		{"2026-10-13T15:29:55+05:30", "5s", "2026-10-13T15:29:55+05:30", "2026-10-13T15:30:00+05:30"},
+		{"2026-10-13T15:29:55+05:30", "15s", "2026-10-13T15:29:45+05:30", "2026-10-13T15:30:00+05:30"},
+		{"2026-10-13T15:29:55+05:30", "30s", "2026-10-13T15:29:30+05:30", "2026-10-13T15:30:00+05:30"},
+		{"2026-10-13T15:29:55+05:30", "1m", "2026-10-13T15:29:00+05:30", "2026-10-13T15:30:00+05:30"},
+		{"2026-10-14T09:15:00+05:30", "5s", "2026-10-14T09:15:00+05:30", "2026-10-14T09:15:05+05:30"},
+	} {
+		at, _ := time.Parse(time.RFC3339, input.at)
+		wantOpen, _ := time.Parse(time.RFC3339, input.open)
+		wantClose, _ := time.Parse(time.RFC3339, input.closeAt)
+		open, closeAt, err := Bucket(at, input.timeframe)
+		if err != nil || !open.Equal(wantOpen) || !closeAt.Equal(wantClose) || !closeAt.After(open) {
+			t.Fatalf("%s at %s: %s..%s err=%v, want %s..%s", input.timeframe, input.at, open, closeAt, err, wantOpen, wantClose)
+		}
+	}
+}
+
+func TestCarryFinalizerStopsCleanlyAtSessionClose(t *testing.T) {
+	engine := New("session-close-test")
+	at, _ := time.Parse(time.RFC3339, "2026-10-13T15:29:55+05:30")
+	input := domain.Tick{
+		InstrumentID: "NSE:NIFTY50",
+		Provider:     "upstox",
+		Price:        25000,
+		EventTime:    at,
+		Quality:      domain.QualityGood,
+	}
+	if _, err := engine.Apply(input, "5s"); err != nil {
+		t.Fatal(err)
+	}
+	closeAt, _ := time.Parse(time.RFC3339, "2026-10-13T15:30:00+05:30")
+	bars, err := engine.Advance("NSE:NIFTY50", "5s", closeAt, true)
+	if err != nil {
+		t.Fatalf("session close is not a candle error: %v", err)
+	}
+	if len(bars) != 1 || !bars[0].Final || !bars[0].CloseTime.Equal(closeAt) {
+		t.Fatalf("expected one terminal final and no phantom carry: %+v", bars)
+	}
+	repeated, err := engine.Advance("NSE:NIFTY50", "5s", closeAt.Add(8*time.Hour), true)
+	if err != nil || len(repeated) != 0 {
+		t.Fatalf("clock generated bars after session close: %+v err=%v", repeated, err)
+	}
+}
