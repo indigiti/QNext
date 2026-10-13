@@ -42,6 +42,14 @@ jobs:
       - name: Slow-client protection regression
         run: go test ./internal/stream -run 'TestBroker(CoalescesFormingUpdatesForSlowSubscriber|ProtectsFinalCandleUnderFormingPressure|DisconnectsOnlyAfterProtectedQueueExhaustionAndReplayRecovers)|TestReplayRingRetainsNewestEventsInOrder' -count=1 -v
 
+      - name: Streaming broker allocation and throughput benchmarks
+        run: go test ./internal/stream -run '^        env:
+          QNEXT_WSS_LOAD_CERT: '1'
+        run: |
+          ulimit -n 65535
+          go test ./internal/stream -run '^TestWebSocketLoadCertification$' -count=1 -v -timeout=8m
+ -bench 'Benchmark(BrokerPublish|SubscriberQueue)' -benchmem -benchtime=200ms -count=3
+
       - name: 100 to 1000 client websocket certification
         env:
           QNEXT_WSS_LOAD_CERT: '1'
