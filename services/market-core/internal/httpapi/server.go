@@ -33,6 +33,7 @@ type Options struct {
 	FeedStatus             func() any
 	HistoricalRepair       func(context.Context, int, []string, string) (any, error)
 	HistoricalRepairStatus func() any
+	Readiness              func() (bool, []string)
 	ChartTimeframes        []string
 	VolumeAliases          map[string]string
 }
@@ -128,7 +129,20 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func (s *Server) ready(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
+	if !requireGET(w, r) {
+		return
+	}
+	if s.options.Readiness != nil {
+		ok, reasons := s.options.Readiness()
+		if !ok {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"status":  "not_ready",
+				"reasons": reasons,
+			})
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ready"})
 }
 
@@ -238,6 +252,16 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Protect canonical persistence from arbitrarily expensive public scans.
+	// This is a read-window guard, not a backfill/storage retention policy.
+	if toMS-fromMS > maxHistoryReadWindow(timeframe).Milliseconds() {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+			"error":         "history_window_too_large",
+			"max_window_ms": maxHistoryReadWindow(timeframe).Milliseconds(),
+		})
+		return
+	}
+
 	bars, err := s.history.LoadRange(
 		instrumentID,
 		timeframe,
@@ -287,6 +311,21 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// Allow interactive intraday chart recovery while bounding individual
+// requests. Full historical research must use bounded successive windows.
+func maxHistoryReadWindow(timeframe string) time.Duration {
+	switch {
+	case strings.HasSuffix(timeframe, "s"):
+		return 31 * 24 * time.Hour
+	case strings.HasSuffix(timeframe, "m"):
+		return 400 * 24 * time.Hour
+	case strings.HasSuffix(timeframe, "h"):
+		return 5 * 365 * 24 * time.Hour
+	default:
+		return 20 * 365 * 24 * time.Hour
+	}
 }
 
 func (s *Server) overlayVolume(

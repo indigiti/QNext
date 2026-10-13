@@ -217,3 +217,75 @@ func TestBarsEndpointIncludesCurrentFormingBar(t *testing.T) {
 		t.Fatalf("unexpected forming bar: %+v", got)
 	}
 }
+
+func TestReadyReflectsRuntimePersistenceHealth(t *testing.T) {
+	handler := New(fakeHistory{}, Options{
+		Readiness: func() (bool, []string) {
+			return false, []string{"history_persistence_error", "history_queue_pressure"}
+		},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected readiness 503, got %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Status  string   `json:"status"`
+		Reasons []string `json:"reasons"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Status != "not_ready" || len(payload.Reasons) != 2 {
+		t.Fatalf("unexpected readiness: %+v", payload)
+	}
+}
+
+func TestReadyAllowsHealthyPersistence(t *testing.T) {
+	handler := New(fakeHistory{}, Options{
+		Readiness: func() (bool, []string) { return true, nil },
+	})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("healthy runtime must be ready: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestBarsRejectOversizedRangeWithoutReadingHistory(t *testing.T) {
+	for _, testcase := range []struct {
+		timeframe string
+		days      int
+	}{
+		{"15s", 32},
+		{"1m", 401},
+		{"1D", 21 * 365},
+	} {
+		handler := New(fakeHistory{}, Options{})
+		from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		to := from.Add(time.Duration(testcase.days) * 24 * time.Hour)
+		path := "/api/v1/bars?instrument_id=NSE%3ANIFTY50&timeframe=" + testcase.timeframe +
+			"&from_ms=" + strconv.FormatInt(from.UnixMilli(), 10) +
+			"&to_ms=" + strconv.FormatInt(to.UnixMilli(), 10)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("%s: expected 413, got %d: %s", testcase.timeframe, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestBarsKeepsThirtyDaySubminuteRecoveryAvailable(t *testing.T) {
+	handler := New(fakeHistory{}, Options{})
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	to := from.Add(30 * 24 * time.Hour)
+	path := "/api/v1/bars?instrument_id=NSE%3ANIFTY50&timeframe=15s" +
+		"&from_ms=" + strconv.FormatInt(from.UnixMilli(), 10) +
+		"&to_ms=" + strconv.FormatInt(to.UnixMilli(), 10)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("30-day chart recovery should remain available: %d %s", response.Code, response.Body.String())
+	}
+}
