@@ -226,3 +226,92 @@ func TestPipelineRequiresCanonicalMinuteForDerivedIntervals(t *testing.T) {
 		t.Fatal("expected 1m requirement for derived intervals")
 	}
 }
+
+func TestPipelineIgnoresPostCloseTicksWithoutRestartOrFakeBar(t *testing.T) {
+	store := history.New(t.TempDir())
+	p, err := New(candle.New("session-boundary-test"), syncHistoryWriter{store: store}, []string{"15s", "30s", "1m", "3m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, value := range []string{
+		"2026-10-13T15:29:55+05:30",
+		"2026-10-13T15:30:00+05:30",
+		"2026-10-13T15:30:05+05:30",
+		"2026-10-13T23:00:00+05:30",
+		"2026-10-14T08:59:55+05:30",
+		"2026-10-14T09:15:00+05:30",
+	} {
+		at, _ := time.Parse(time.RFC3339, value)
+		tick := domain.Tick{
+			InstrumentID: "NSE:NIFTY50",
+			Provider: "upstox",
+			Price: 25000 + float64(i),
+			EventTime: at,
+			ReceivedTime: at,
+			Quality: domain.QualityGood,
+			Sequence: uint64(i + 1),
+		}
+		if _, err := p.ApplyTick(tick); err != nil {
+			t.Fatalf("tick %s disconnected pipeline: %v", value, err)
+		}
+	}
+	if got := p.SubminuteSnapshot().OutOfSessionTicks; got != 4 {
+		t.Fatalf("out-of-session ticks=%d, want 4", got)
+	}
+	if last := p.lastTicks["NSE:NIFTY50"]; !last.EventTime.Equal(time.Date(2026, 10, 14, 3, 45, 0, 0, time.UTC)) {
+		t.Fatalf("next-session tick was not accepted: %+v", last)
+	}
+	if _, err := p.AdvanceClock(time.Date(2026, 10, 14, 3, 45, 5, 0, time.UTC), nil); err != nil {
+		t.Fatalf("clock after new session: %v", err)
+	}
+}
+
+func TestPipelineMissingIntegrityStopsAtSessionClose(t *testing.T) {
+	p, err := New(candle.New("session-boundary-test"), nil, []string{"15s", "30s", "1m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, _ := time.Parse(time.RFC3339, "2026-10-13T15:29:00+05:30")
+	if _, err := p.ApplyTick(domain.Tick{
+		InstrumentID: "NSE:NIFTY50",
+		Provider: "upstox",
+		Price: 25000,
+		EventTime: start,
+		ReceivedTime: start,
+		Quality: domain.QualityGood,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	closeAt, _ := time.Parse(time.RFC3339, "2026-10-13T15:30:00+05:30")
+	for _, at := range []time.Time{closeAt, closeAt.Add(30 * time.Second), closeAt.Add(8 * time.Hour), closeAt.Add(24 * time.Hour)} {
+		if _, err := p.AdvanceClock(at, func(string, domain.Tick, time.Time) bool { return false }); err != nil {
+			t.Fatalf("advance at %s: %v", at, err)
+		}
+	}
+	snapshot := p.SubminuteSnapshot()
+	if got := snapshot.Integrity.Counts[IntegrityMissing]; got != 11 {
+		t.Fatalf("expected exactly 11 in-session absent buckets, got %d", got)
+	}
+	if latest := snapshot.Integrity.Latest["NSE:NIFTY50"]; latest.CloseTimeMS > closeAt.UnixMilli() {
+		t.Fatalf("missing-bucket accounting crossed session close: %+v", latest)
+	}
+	if snapshot.ClockAdvanceCalls != 4 {
+		t.Fatalf("wrong clock advances: %d", snapshot.ClockAdvanceCalls)
+	}
+}
+
+func TestPipelineVolumeOverlayIgnoresPostClose(t *testing.T) {
+	p, err := New(candle.New("session-boundary-test"), nil, []string{"15s", "30s", "1m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at, _ := time.Parse(time.RFC3339, "2026-10-13T15:30:05+05:30")
+	out, err := p.ApplyVolume(domain.Tick{InstrumentID: "NSE:NIFTY50", EventTime: at, Quantity: 50})
+	if err != nil || len(out) != 0 {
+		t.Fatalf("out-of-session volume caused bars=%+v err=%v", out, err)
+	}
+	if got := p.SubminuteSnapshot().OutOfSessionVolume; got != 1 {
+		t.Fatalf("out-of-session volume counter = %d, want 1", got)
+	}
+}

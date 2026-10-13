@@ -13,7 +13,31 @@ import (
 
 var ErrLateTick = errors.New("tick belongs to an already closed candle")
 
+// ErrOutsideSession is returned for intraday buckets outside the regular
+// NSE/BSE trading window. This must never be treated as a provider failure.
+var ErrOutsideSession = errors.New("tick is outside the regular trading session")
+
 var indiaLocation = time.FixedZone("IST", 5*60*60+30*60)
+
+// RegularSessionBounds returns the existing candle engine's 09:15–15:30 IST
+// regular-session boundary for the calendar date containing at. Specialized
+// sessions require a separate, explicitly configured exchange calendar.
+func RegularSessionBounds(at time.Time) (time.Time, time.Time) {
+	local := at.In(indiaLocation)
+	open := time.Date(local.Year(), local.Month(), local.Day(), 9, 15, 0, 0, indiaLocation)
+	closeAt := time.Date(local.Year(), local.Month(), local.Day(), 15, 30, 0, 0, indiaLocation)
+	return open.UTC(), closeAt.UTC()
+}
+
+// InRegularSession uses a half-open interval: the 15:29:55 5s bar is valid,
+// but a price update timestamped exactly 15:30:00 is not a new candle.
+func InRegularSession(at time.Time) bool {
+	if at.IsZero() {
+		return false
+	}
+	open, closeAt := RegularSessionBounds(at)
+	return !at.Before(open) && at.Before(closeAt)
+}
 
 type timeframeSpec struct {
 	value int
@@ -115,6 +139,9 @@ func Bucket(at time.Time, timeframe string) (time.Time, time.Time, error) {
 	local := at.In(indiaLocation)
 	switch spec.unit {
 	case 's', 'm', 'h':
+		if !InRegularSession(at) {
+			return time.Time{}, time.Time{}, ErrOutsideSession
+		}
 		var duration time.Duration
 		switch spec.unit {
 		case 's':
@@ -125,27 +152,14 @@ func Bucket(at time.Time, timeframe string) (time.Time, time.Time, error) {
 			duration = time.Duration(spec.value) * time.Hour
 		}
 
-		sessionOpen := time.Date(
-			local.Year(), local.Month(), local.Day(),
-			9, 15, 0, 0, indiaLocation,
-		)
-		if local.Before(sessionOpen) {
-			sessionOpen = time.Date(
-				local.Year(), local.Month(), local.Day(),
-				0, 0, 0, 0, indiaLocation,
-			)
-		}
-		elapsed := local.Sub(sessionOpen)
+		sessionOpen, sessionClose := RegularSessionBounds(at)
+		elapsed := at.UTC().Sub(sessionOpen)
 		open := sessionOpen.Add((elapsed / duration) * duration)
 		closeAt := open.Add(duration)
-		sessionClose := time.Date(
-			local.Year(), local.Month(), local.Day(),
-			15, 30, 0, 0, indiaLocation,
-		)
 		if closeAt.After(sessionClose) {
 			closeAt = sessionClose
 		}
-		return open.UTC(), closeAt.UTC(), nil
+		return open, closeAt, nil
 
 	case 'D':
 		open := time.Date(
