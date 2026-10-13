@@ -48,6 +48,21 @@ jobs:
       - name: Race + certification tests
         run: go test -race ./...
 
+      - name: Benchmark stream hot-path allocations
+        run: go test ./internal/stream -run '^        run: go build ./cmd/qnext-market-core
+
+      - name: Build data collector
+        run: go build ./cmd/qnext-data-collector
+
+      - name: Capture module lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: q1-market-core-go-sum
+          path: services/market-core/go.sum
+          if-no-files-found: ignore
+ -bench 'Benchmark(BrokerPublish|SubscriberQueue)' -benchmem -benchtime=200ms -count=3
+
       - name: Build market core
         run: go build ./cmd/qnext-market-core
 
