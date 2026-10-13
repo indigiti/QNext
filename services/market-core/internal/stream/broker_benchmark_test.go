@@ -61,7 +61,7 @@ func TestReplayRingGrowsWithoutChangingResumeWindow(t *testing.T) {
 			t.Fatalf("replay capacity exceeds limit: %d > %d", len(ring.items), ring.limit)
 		}
 		first, ok := ring.First()
-		if !ok || first.Seq != seq - uint64(wantLen) + 1 {
+		if !ok || first.Seq != seq-uint64(wantLen)+1 {
 			t.Fatalf("seq=%d wrong oldest replay event: %+v", seq, first)
 		}
 		last, ok := ring.Last()
