@@ -1,0 +1,91 @@
+name: QNext ML Dependencies
+
+# The large ML package is built independently of normal application releases.
+# Manual dispatch is also available for rebuilding a pinned wheelhouse.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - config/intelligence-lab-ml.requirements.lock
+      - deploy/qnext-ml-dependencies
+      - deploy/qnext-intelligence-lab-python
+      - .github/workflows/qnext-ml-dependencies.yml
+  pull_request:
+    paths:
+      - config/intelligence-lab-ml.requirements.lock
+      - deploy/qnext-ml-dependencies
+      - deploy/qnext-intelligence-lab-python
+      - .github/workflows/qnext-ml-dependencies.yml
+
+permissions:
+  contents: read
+
+jobs:
+  wheelhouse:
+    name: Build and certify isolated ML dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download pinned binary wheels and create immutable checksum manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/intelligence-lab-wheels
+          cp config/intelligence-lab-ml.requirements.lock build/intelligence-lab-wheels/requirements.lock
+          python -m pip download \
+            --disable-pip-version-check \
+            --only-binary=:all: \
+            --dest build/intelligence-lab-wheels \
+            -r build/intelligence-lab-wheels/requirements.lock
+          (
+            cd build/intelligence-lab-wheels
+            sha256sum requirements.lock *.whl > wheelhouse.sha256
+            sha256sum -c wheelhouse.sha256
+          )
+
+      - name: Verify installer, isolate Lab Python and check exact versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/certification/qnext-ml-dependencies.sh
+          runtime_root="$(mktemp -d)"
+          trap 'rm -rf "$runtime_root"' EXIT
+          mkdir -p "$runtime_root/releases/test/private/config"
+          cp config/intelligence-lab-ml.requirements.lock "$runtime_root/releases/test/private/config/"
+          ln -s "$runtime_root/releases/test" "$runtime_root/current"
+          QNEXT_PRIVATE_ROOT="$runtime_root" \
+            bash deploy/qnext-ml-dependencies install build/intelligence-lab-wheels
+          QNEXT_PRIVATE_ROOT="$runtime_root" \
+            bash deploy/qnext-ml-dependencies status
+          lab_python="$(QNEXT_PRIVATE_ROOT="$runtime_root" \
+            QNEXT_LAB_BOOTSTRAP_PYTHON=python3.11 \
+            bash deploy/qnext-intelligence-lab-python bootstrap)"
+          "$lab_python" - <<'PY'
+          import lightgbm
+          import sklearn
+          assert sklearn.__version__ == "1.9.1"
+          assert lightgbm.__version__ == "4.7.0"
+          PY
+          test "$(QNEXT_PRIVATE_ROOT="$runtime_root" \
+            QNEXT_LAB_BOOTSTRAP_PYTHON=python3.11 \
+            bash deploy/qnext-intelligence-lab-python python)" = "$lab_python"
+
+      - name: Set content-addressed artifact name
+        id: version
+        shell: bash
+        run: |
+          echo "hash=$(sha256sum build/intelligence-lab-wheels/wheelhouse.sha256 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload independently versioned Lab ML dependency package
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnext-ml-dependencies-${{ steps.version.outputs.hash }}
+          path: build/intelligence-lab-wheels/
+          if-no-files-found: error
+          retention-days: 30

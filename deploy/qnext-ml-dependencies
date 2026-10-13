@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Install a separately downloaded, immutable QNext Lab ML wheelhouse.
+# The QNext release and both Go processes are never modified by this helper.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PRIVATE_ROOT="${QNEXT_PRIVATE_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+PRIVATE_ROOT="${PRIVATE_ROOT%/}"
+PAYLOAD_PRIVATE="$PRIVATE_ROOT"
+if [[ -L "$PRIVATE_ROOT/current" ]]; then
+  current_target="$(readlink -f "$PRIVATE_ROOT/current" 2>/dev/null || true)"
+  if [[ -n "$current_target" && -d "$current_target/private" ]]; then
+    PAYLOAD_PRIVATE="$current_target/private"
+  fi
+elif [[ -f "$PRIVATE_ROOT/private/config/intelligence-lab-ml.requirements.lock" ]]; then
+  PAYLOAD_PRIVATE="$PRIVATE_ROOT/private"
+fi
+
+EXPECTED_LOCK="$PAYLOAD_PRIVATE/config/intelligence-lab-ml.requirements.lock"
+ML_ROOT="$PRIVATE_ROOT/ml-dependencies"
+VERSIONS="$ML_ROOT/versions"
+
+die() {
+  echo "QNext ML dependencies: $*" >&2
+  exit 2
+}
+
+# Verify the complete, flat wheelhouse; reject symlinks, extra files, missing
+# hashes and unexpected manifest filenames before copying to a trusted location.
+verify() {
+  local candidate="$1"
+  [[ -d "$candidate" && ! -L "$candidate" ]] || die "wheelhouse directory missing"
+  [[ -s "$EXPECTED_LOCK" ]] || die "deploy a QNext core release with its ML lock first"
+  python3 - "$candidate" "$EXPECTED_LOCK" <<'PY'
+import hashlib
+import hmac
+import re
+import sys
+from pathlib import Path
+
+root, expected_lock = Path(sys.argv[1]), Path(sys.argv[2])
+manifest = root / "wheelhouse.sha256"
+lock = root / "requirements.lock"
+files = list(root.iterdir())
+if not files or any(not p.is_file() or p.is_symlink() for p in files):
+    raise SystemExit("invalid wheelhouse: expected regular files only")
+if not manifest.is_file() or not lock.is_file():
+    raise SystemExit("wheelhouse manifest or lock missing")
+if lock.read_bytes() != expected_lock.read_bytes():
+    raise SystemExit("wheelhouse dependency lock differs from this QNext release")
+allowed = {"requirements.lock"}
+allowed.update(p.name for p in files if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*\.whl", p.name))
+if len(allowed) < 2 or {p.name for p in files} != allowed | {"wheelhouse.sha256"}:
+    raise SystemExit("wheelhouse has missing/unexpected files")
+found = set()
+for row in manifest.read_text(encoding="ascii").splitlines():
+    match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._+-]*)", row)
+    if not match:
+        raise SystemExit("invalid manifest entry")
+    digest, name = match.groups()
+    if name not in allowed or name in found:
+        raise SystemExit("unexpected or duplicate manifest entry")
+    found.add(name)
+    actual = hashlib.file_digest((root / name).open("rb"), "sha256").hexdigest()
+    if not hmac.compare_digest(actual, digest):
+        raise SystemExit("wheelhouse checksum mismatch: " + name)
+if found != allowed:
+    raise SystemExit("wheelhouse manifest is incomplete")
+PY
+}
+
+action="${1:-status}"
+case "$action" in
+  verify)
+    [[ $# -eq 2 ]] || die "usage: $0 verify <unpacked-wheelhouse-directory>"
+    verify "$2"
+    echo "wheelhouse verified"
+    ;;
+  install)
+    [[ $# -eq 2 ]] || die "usage: $0 install <unpacked-wheelhouse-directory>"
+    command -v flock >/dev/null 2>&1 || die "flock is required for serialized installation"
+    mkdir -p "$VERSIONS"
+    chmod 0750 "$ML_ROOT" "$VERSIONS"
+    exec 9>"$ML_ROOT/.install.lock"
+    flock -x 9
+    stage="$(mktemp -d "$ML_ROOT/.incoming.XXXXXXXX")"
+    trap 'rm -rf "$stage"' EXIT
+    cp -a "$2/." "$stage/"
+    verify "$stage"
+    version="$(sha256sum "$stage/wheelhouse.sha256" | awk '{print $1}')"
+    target="$VERSIONS/$version"
+    if [[ -e "$target" ]]; then
+      verify "$target"
+    else
+      chmod -R u+rwX,go-rwx "$stage"
+      mv "$stage" "$target"
+    fi
+    [[ ! -e "$ML_ROOT/current" || -L "$ML_ROOT/current" ]] || die "current is not a symbolic link"
+    ln -s "versions/$version" "$ML_ROOT/.current.$$"
+    mv -Tf "$ML_ROOT/.current.$$" "$ML_ROOT/current"
+    printf 'installed QNext ML wheelhouse %s\n' "$version"
+    ;;
+  status)
+    [[ $# -eq 1 ]] || die "usage: $0 status"
+    [[ -L "$ML_ROOT/current" ]] || die "no versioned ML wheelhouse installed"
+    target="$(readlink -f "$ML_ROOT/current" 2>/dev/null || true)"
+    [[ -n "$target" && "$target" == "$VERSIONS/"* && -d "$target" ]] || die "invalid current ML wheelhouse"
+    verify "$target"
+    printf 'verified QNext ML wheelhouse %s\n' "${target##*/}"
+    ;;
+  *)
+    die "usage: $0 {verify|install|status} [unpacked-wheelhouse-directory]"
+    ;;
+esac

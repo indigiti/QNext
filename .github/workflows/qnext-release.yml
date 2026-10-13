@@ -63,20 +63,6 @@ jobs:
           PYTHONPATH=. python3 -m qnext_intelligence.learning_cli --help
           PYTHONPATH=. python3 -m qnext_intelligence.lab_worker --help
 
-      - name: Build isolated Lab ML wheelhouse
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf build/intelligence-lab-wheels
-          mkdir -p build/intelligence-lab-wheels
-          printf '%s\n'             'scikit-learn==1.9.1'             'lightgbm==4.7.0'             > build/intelligence-lab-wheels/requirements.lock
-          python -m pip download             --disable-pip-version-check             --only-binary=:all:             --dest build/intelligence-lab-wheels             -r build/intelligence-lab-wheels/requirements.lock
-          (
-            cd build/intelligence-lab-wheels
-            sha256sum requirements.lock *.whl > wheelhouse.sha256
-            sha256sum -c wheelhouse.sha256
-          )
-
       - name: Validate Ops PHP control plane
         shell: bash
         run: |
@@ -130,6 +116,10 @@ jobs:
             exit 1
           fi
           rm -rf "$adopt_root"
+
+      - name: Verify split ML release contract
+        shell: bash
+        run: bash tests/certification/qnext-ml-dependencies.sh
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -191,7 +181,7 @@ jobs:
           set -euo pipefail
           rm -rf release
           mkdir -p release/public/admin
-          mkdir -p release/private/bin release/private/config release/private/deploy release/private/strategy-lab release/private/intelligence release/private/intelligence-lab-wheels
+          mkdir -p release/private/bin release/private/config release/private/deploy release/private/strategy-lab release/private/intelligence
 
           cp -a apps/workspace/dist/. release/public/
           cp apps/workspace/public/.htaccess release/public/.htaccess
@@ -206,23 +196,25 @@ jobs:
           cp -a services/strategy-lab/qnext_strategy_lab release/private/strategy-lab/
           cp -a services/intelligence/qnext_intelligence release/private/intelligence/
           cp services/intelligence/README.md release/private/intelligence/README.md
-          cp -a build/intelligence-lab-wheels/. release/private/intelligence-lab-wheels/
           cp -a services/ops-api release/private/ops-api
 
           cp config/q1-market.example.json release/private/config/q1-market.example.json
           cp config/q3-resilience.example.json release/private/config/q3-resilience.example.json
           cp config/q3-intelligence.example.json release/private/config/q3-intelligence.example.json
           cp config/qnext-indicators.example.json release/private/config/qnext-indicators.example.json
+          cp config/intelligence-lab-ml.requirements.lock release/private/config/intelligence-lab-ml.requirements.lock
 
           install -m 0750 deploy/qnext-ops-helper release/private/deploy/qnext-ops-helper
           install -m 0750 deploy/qnext-ops-web release/private/deploy/qnext-ops-web
           install -m 0750 deploy/qnext-ops-user release/private/deploy/qnext-ops-user
           install -m 0750 deploy/qnext-intelligence-lab-python release/private/deploy/qnext-intelligence-lab-python
+          install -m 0750 deploy/qnext-ml-dependencies release/private/deploy/qnext-ml-dependencies
           cp deploy/qnext-market-core.service release/private/deploy/
           cp deploy/qnext-ops.env.example release/private/deploy/
           cp deploy/qnext-runtime.env.example release/private/deploy/
           cp deploy/qnext-sudoers.example release/private/deploy/
 
+          ml_lock_sha="$(sha256sum config/intelligence-lab-ml.requirements.lock | awk '{print $1}')"
           cat > release/release-manifest.json <<EOF
           {
             "schema": "QNEXT.RELEASE/1",
@@ -239,7 +231,12 @@ jobs:
               "data_collector": "${collector_binary_name}",
               "syn_plus_paper": "strategy-lab/qnext_strategy_lab/syn_plus_runtime.py",
               "quant_intelligence": "intelligence/qnext_intelligence/learning_cli.py",
-              "intelligence_lab_ml": "intelligence-lab-wheels/requirements.lock"
+              "intelligence_lab_ml": "external:ml-dependencies/current/requirements.lock"
+            },
+            "ml_dependencies": {
+              "mode": "separate-versioned-artifact",
+              "artifact_prefix": "qnext-ml-dependencies-",
+              "lock_sha256": "${ml_lock_sha}"
             },
             "routes": {
               "workspace": "/qnext/",
@@ -289,26 +286,24 @@ jobs:
           PYTHONPATH=release/private/intelligence python3 -m compileall -q release/private/intelligence/qnext_intelligence
           PYTHONPATH=release/private/intelligence python3 -m qnext_intelligence.learning_cli --help >/dev/null
           PYTHONPATH=release/private/intelligence python3 -m qnext_intelligence.lab_worker --help >/dev/null
-          test -s release/private/intelligence-lab-wheels/requirements.lock
-          test -s release/private/intelligence-lab-wheels/wheelhouse.sha256
-          (
-            cd release/private/intelligence-lab-wheels
-            sha256sum -c wheelhouse.sha256
-          )
-          QNEXT_PRIVATE_ROOT="$(pwd)/release/private"             QNEXT_LAB_BOOTSTRAP_PYTHON=python3             release/private/deploy/qnext-intelligence-lab-python bootstrap >/tmp/qnext-lab-python-path
-          lab_python="$(cat /tmp/qnext-lab-python-path)"
-          "$lab_python" - <<'PY'
-          import lightgbm
-          import sklearn
-          assert sklearn.__version__ == "1.9.1"
-          assert lightgbm.__version__ == "4.7.0"
-          PY
-          rm -rf release/private/runtime release/private/run /tmp/qnext-lab-python-path
+          test -s release/private/config/intelligence-lab-ml.requirements.lock
+          test ! -e release/private/intelligence-lab-wheels
+          # Core-only deployment remains fully usable via Ridge before the optional
+          # versioned ML wheelhouse is installed under the persistent private root.
+          if QNEXT_PRIVATE_ROOT="$(pwd)/release/private" \
+              QNEXT_LAB_BOOTSTRAP_PYTHON=python3.11 \
+              release/private/deploy/qnext-intelligence-lab-python status >/dev/null; then
+            echo "unexpectedly provisioned ML in the lightweight core bundle" >&2
+            exit 1
+          fi
+          grep -q '"state":"UNAVAILABLE"' release/private/run/intelligence-lab-python.json
+          rm -rf release/private/runtime release/private/run
           test -f release/private/ops-api/public/index.php
           test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
           test -x release/private/deploy/qnext-ops-user
           test -x release/private/deploy/qnext-intelligence-lab-python
+          test -x release/private/deploy/qnext-ml-dependencies
           test -s release/release-manifest.json
 
       - name: Upload DigiOps release artifact
