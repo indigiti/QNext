@@ -218,21 +218,15 @@ This is intentional. Until an isolated Lab ML environment is provisioned, deploy
 
 The deployed Lab ML stack is isolated from the production Intelligence interpreter.
 
-The release artifact contains:
+Normal releases now carry the lightweight QNext core application and the
+expected Lab dependency lock only. The compiled ML wheelhouse is published as a
+separate, content-addressed `qnext-ml-dependencies-<hash>` GitHub Actions
+artifact and installed under the persistent private root. See
+[the split release and installation guide](ml-release-split.md).
 
-```text
-private/
-  intelligence/
-    qnext_intelligence/          # dependency-light production/Lab source
-  intelligence-lab-wheels/
-    requirements.lock
-    wheelhouse.sha256
-    *.whl
-  deploy/
-    qnext-intelligence-lab-python
-```
-
-The wheelhouse is built on Python 3.11 with binary-only packages and SHA-256 verification. It contains the pinned Lab ML dependencies and their transitive wheels, so the server does not need network access to provision ML.
+The Lab runtime first resolves `<private-root>/ml-dependencies/current`,
+verifies compatibility with the active release lock, and retains support for
+the legacy per-release `intelligence-lab-wheels/` layout during migration.
 
 The first **backtest** that needs ML lazily creates:
 
@@ -259,7 +253,7 @@ Failure to create or verify the isolated environment writes a Lab runtime status
 CI exercises both paths:
 
 - missing wheelhouse → explicit Ridge-safe fallback status;
-- real local wheelhouse → isolated venv creation, scikit-learn/LightGBM imports, version checks and idempotent reuse.
+- independently versioned ML wheelhouse → isolated venv creation, scikit-learn/LightGBM imports, version checks and idempotent reuse.
 
 The live Go Market Core, Vela workspace, production Intelligence model pointer and production Python dependency set are unaffected.
 

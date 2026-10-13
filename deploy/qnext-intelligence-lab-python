@@ -23,7 +23,13 @@ elif [[ -d "$PRIVATE_ROOT/private/intelligence-lab-wheels" ]]; then
   PAYLOAD_PRIVATE="$PRIVATE_ROOT/private"
 fi
 
-WHEEL_ROOT="$PAYLOAD_PRIVATE/intelligence-lab-wheels"
+# A separately installed wheelhouse is stable across release activation/rollback.
+# Continue to accept older releases that carried a wheelhouse in their payload.
+WHEEL_ROOT="$PRIVATE_ROOT/ml-dependencies/current"
+if [[ ! -d "$WHEEL_ROOT" ]]; then
+  WHEEL_ROOT="$PAYLOAD_PRIVATE/intelligence-lab-wheels"
+fi
+EXPECTED_LOCK_FILE="$PAYLOAD_PRIVATE/config/intelligence-lab-ml.requirements.lock"
 LOCK_FILE="$WHEEL_ROOT/requirements.lock"
 MANIFEST_FILE="$WHEEL_ROOT/wheelhouse.sha256"
 RUNTIME_ROOT="$PRIVATE_ROOT/runtime"
@@ -75,8 +81,15 @@ os.replace(tmp, path)
 PY
 }
 
+wheelhouse_compatible() {
+  [[ -s "$LOCK_FILE" ]] || return 1
+  # Old releases have no separate expected lock, and retain their legacy layout.
+  [[ ! -s "$EXPECTED_LOCK_FILE" ]] || cmp -s "$EXPECTED_LOCK_FILE" "$LOCK_FILE"
+}
+
 fingerprint() {
   [[ -s "$MANIFEST_FILE" ]] || return 1
+  wheelhouse_compatible || return 1
   sha256sum "$MANIFEST_FILE" | awk '{print $1}'
 }
 
@@ -107,6 +120,11 @@ status() {
     return 1
   fi
 
+  if ! wheelhouse_compatible; then
+    json_status "UNAVAILABLE" "Lab ML wheelhouse does not match the active release lock; Ridge fallback remains active" "" ""
+    return 1
+  fi
+
   if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     json_status "UNAVAILABLE" "Python 3.11 is unavailable; Ridge fallback remains active" "" "$(fingerprint || true)"
     return 1
@@ -127,6 +145,10 @@ verify_wheelhouse() {
   }
   [[ -s "$MANIFEST_FILE" ]] || {
     echo "Lab ML wheelhouse manifest missing" >&2
+    return 2
+  }
+  wheelhouse_compatible || {
+    echo "Lab ML wheelhouse does not match active QNext release dependency lock" >&2
     return 2
   }
 
