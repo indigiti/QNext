@@ -150,3 +150,34 @@ func TestPublishedStreamIdentityStableAcrossResume(t *testing.T) {
 		t.Fatalf("resume changed cached stream identity: %+v", sub)
 	}
 }
+
+func TestBrokerResumeAcrossReplayGrowthAndWrap(t *testing.T) {
+	broker := NewBroker(65, 4)
+	at := time.Date(2026, 10, 13, 3, 45, 0, 0, time.UTC)
+	for i := 0; i < 66; i++ {
+		broker.PublishBar(bar("NSE:NIFTY50", "15s", at, float64(i)))
+	}
+
+	after := uint64(1)
+	sub, err := broker.Subscribe("NSE:NIFTY50", "15s", &after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.ResyncRequired {
+		t.Fatal("valid replay window unexpectedly requires resync")
+	}
+	if len(sub.Replay) != 65 || sub.Replay[0].Seq != 2 || sub.Replay[64].Seq != 66 {
+		t.Fatalf("replay window changed after ring growth and wrap: %+v", sub.Replay)
+	}
+	sub.Cancel()
+
+	expired := uint64(0)
+	older, err := broker.Subscribe("NSE:NIFTY50", "15s", &expired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !older.ResyncRequired {
+		older.Cancel()
+		t.Fatal("expired replay sequence must require resync")
+	}
+}
