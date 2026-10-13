@@ -245,12 +245,12 @@ func TestPipelineIgnoresPostCloseTicksWithoutRestartOrFakeBar(t *testing.T) {
 		at, _ := time.Parse(time.RFC3339, value)
 		tick := domain.Tick{
 			InstrumentID: "NSE:NIFTY50",
-			Provider: "upstox",
-			Price: 25000 + float64(i),
-			EventTime: at,
+			Provider:     "upstox",
+			Price:        25000 + float64(i),
+			EventTime:    at,
 			ReceivedTime: at,
-			Quality: domain.QualityGood,
-			Sequence: uint64(i + 1),
+			Quality:      domain.QualityGood,
+			Sequence:     uint64(i + 1),
 		}
 		if _, err := p.ApplyTick(tick); err != nil {
 			t.Fatalf("tick %s disconnected pipeline: %v", value, err)
@@ -275,11 +275,11 @@ func TestPipelineMissingIntegrityStopsAtSessionClose(t *testing.T) {
 	start, _ := time.Parse(time.RFC3339, "2026-10-13T15:29:00+05:30")
 	if _, err := p.ApplyTick(domain.Tick{
 		InstrumentID: "NSE:NIFTY50",
-		Provider: "upstox",
-		Price: 25000,
-		EventTime: start,
+		Provider:     "upstox",
+		Price:        25000,
+		EventTime:    start,
 		ReceivedTime: start,
-		Quality: domain.QualityGood,
+		Quality:      domain.QualityGood,
 	}); err != nil {
 		t.Fatal(err)
 	}
