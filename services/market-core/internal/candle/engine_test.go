@@ -157,3 +157,30 @@ func TestRegularSessionLastBucketAndNextSessionOpen(t *testing.T) {
 		}
 	}
 }
+
+func TestCarryFinalizerStopsCleanlyAtSessionClose(t *testing.T) {
+	engine := New("session-close-test")
+	at, _ := time.Parse(time.RFC3339, "2026-10-13T15:29:55+05:30")
+	input := domain.Tick{
+		InstrumentID: "NSE:NIFTY50",
+		Provider:     "upstox",
+		Price:        25000,
+		EventTime:    at,
+		Quality:      domain.QualityGood,
+	}
+	if _, err := engine.Apply(input, "5s"); err != nil {
+		t.Fatal(err)
+	}
+	closeAt, _ := time.Parse(time.RFC3339, "2026-10-13T15:30:00+05:30")
+	bars, err := engine.Advance("NSE:NIFTY50", "5s", closeAt, true)
+	if err != nil {
+		t.Fatalf("session close is not a candle error: %v", err)
+	}
+	if len(bars) != 1 || !bars[0].Final || !bars[0].CloseTime.Equal(closeAt) {
+		t.Fatalf("expected one terminal final and no phantom carry: %+v", bars)
+	}
+	repeated, err := engine.Advance("NSE:NIFTY50", "5s", closeAt.Add(8*time.Hour), true)
+	if err != nil || len(repeated) != 0 {
+		t.Fatalf("clock generated bars after session close: %+v err=%v", repeated, err)
+	}
+}
