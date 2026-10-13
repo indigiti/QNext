@@ -29,6 +29,7 @@ type Broker struct {
 }
 
 type streamState struct {
+	id                string
 	seq               uint64
 	replay            *replayRing
 	subs              map[uint64]*subscriberState
@@ -42,6 +43,7 @@ type replayRing struct {
 	items []BarEvent
 	start int
 	size  int
+	limit int
 }
 
 type subscriberState struct {
@@ -51,6 +53,7 @@ type subscriberState struct {
 	done         chan struct{}
 	once         sync.Once
 	queue        []BarEvent
+	queueStorage []BarEvent
 	maxQueued    int
 	maxProtected int
 }
@@ -122,13 +125,13 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	b.mu.Lock()
 	state := b.streams[key]
 	if state == nil {
-		state = b.newStreamState()
+		state = b.newStreamState(bar.InstrumentID, bar.Timeframe)
 		b.streams[key] = state
 	}
 	state.seq++
 	state.lastPublishedAtMS = time.Now().UTC().UnixMilli()
 	event := BarEvent{
-		StreamID: streamID(bar.InstrumentID, bar.Timeframe),
+		StreamID: state.id,
 		Seq:      state.seq,
 		Bar:      bar,
 	}
@@ -165,7 +168,7 @@ func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
 		b.mu.Unlock()
 		return
 	}
-	event := BarEvent{StreamID: streamID(instrumentID, timeframe), ResyncRequired: true, Reason: reason}
+	event := BarEvent{StreamID: state.id, ResyncRequired: true, Reason: reason}
 	var released int
 	for id, subscriber := range state.subs {
 		result := subscriber.enqueue(event)
@@ -255,13 +258,13 @@ func (b *Broker) SubscribeByID(id string, afterSeq uint64) (*Subscription, error
 }
 
 func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, error) {
+	instrumentID, timeframe := splitStreamKey(key)
 	b.mu.Lock()
 	state := b.streams[key]
 	if state == nil {
-		state = b.newStreamState()
+		state = b.newStreamState(instrumentID, timeframe)
 		b.streams[key] = state
 	}
-	instrumentID, _ := splitStreamKey(key)
 	sub := &Subscription{
 		StreamID:         id,
 		CurrentSeq:       state.seq,
@@ -323,21 +326,43 @@ func (s *Subscription) Cancel() {
 	})
 }
 
-func (b *Broker) newStreamState() *streamState {
+// Cache the canonical stream ID once rather than encoding it on every
+// forming-bar revision. The identity is stable across subscribers and resume.
+func (b *Broker) newStreamState(instrumentID, timeframe string) *streamState {
 	return &streamState{
+		id:     streamID(instrumentID, timeframe),
 		replay: newReplayRing(b.retention),
 		subs:   make(map[uint64]*subscriberState),
 	}
 }
 
+// Grow replay capacity only as a stream becomes active. Streams with a short
+// lifetime should not allocate the entire retention window eagerly. Once
+// full, the ring still preserves the exact same sequence/resume semantics.
 func newReplayRing(capacity int) *replayRing {
 	if capacity <= 0 {
 		capacity = 1
 	}
-	return &replayRing{items: make([]BarEvent, capacity)}
+	initial := capacity
+	if initial > 16 {
+		initial = 16
+	}
+	return &replayRing{items: make([]BarEvent, initial), limit: capacity}
 }
 
 func (r *replayRing) Append(event BarEvent) {
+	if r.size == len(r.items) && r.size < r.limit {
+		nextCapacity := len(r.items) * 2
+		if nextCapacity > r.limit {
+			nextCapacity = r.limit
+		}
+		next := make([]BarEvent, nextCapacity)
+		for i := 0; i < r.size; i++ {
+			next[i] = r.items[(r.start+i)%len(r.items)]
+		}
+		r.items = next
+		r.start = 0
+	}
 	if r.size < len(r.items) {
 		index := (r.start + r.size) % len(r.items)
 		r.items[index] = event
@@ -389,11 +414,13 @@ func newSubscriberState(buffer int) *subscriberState {
 	if protectedBurst < 8 {
 		protectedBurst = 8
 	}
+	storage := make([]BarEvent, 0, buffer+protectedBurst)
 	return &subscriberState{
 		out:          make(chan BarEvent),
 		wake:         make(chan struct{}, 1),
 		done:         make(chan struct{}),
-		queue:        make([]BarEvent, 0, buffer+protectedBurst),
+		queue:        storage,
+		queueStorage: storage,
 		maxQueued:    buffer,
 		maxProtected: buffer + protectedBurst,
 	}
@@ -410,8 +437,7 @@ func (s *subscriberState) enqueue(event BarEvent) enqueueResult {
 	}
 
 	if len(s.queue) < s.maxQueued {
-		s.queue = append(s.queue, event)
-		s.signal()
+		s.appendQueued(event)
 		return enqueueResult{}
 	}
 
@@ -429,8 +455,7 @@ func (s *subscriberState) enqueue(event BarEvent) enqueueResult {
 		if len(s.queue) >= s.maxProtected {
 			return enqueueResult{droppedForming: dropped, overflow: true}
 		}
-		s.queue = append(s.queue, event)
-		s.signal()
+		s.appendQueued(event)
 		return enqueueResult{droppedForming: dropped}
 	}
 
@@ -446,6 +471,18 @@ func (s *subscriberState) enqueue(event BarEvent) enqueueResult {
 		}
 	}
 	return enqueueResult{droppedForming: 1}
+}
+
+// Queue consumption advances the slice window. Compact only when its tail
+// is exhausted, reusing the original bounded backing array rather than
+// allocating a new array on every long-running subscription.
+func (s *subscriberState) appendQueued(event BarEvent) {
+	if len(s.queue) == cap(s.queue) && len(s.queue) < cap(s.queueStorage) {
+		copy(s.queueStorage[:len(s.queue)], s.queue)
+		s.queue = s.queueStorage[:len(s.queue)]
+	}
+	s.queue = append(s.queue, event)
+	s.signal()
 }
 
 func (s *subscriberState) signal() {
@@ -477,6 +514,9 @@ func (s *subscriberState) next() (BarEvent, bool) {
 			event := s.queue[0]
 			s.queue[0] = BarEvent{}
 			s.queue = s.queue[1:]
+			if len(s.queue) == 0 {
+				s.queue = s.queueStorage[:0]
+			}
 			s.mu.Unlock()
 			return event, true
 		}
