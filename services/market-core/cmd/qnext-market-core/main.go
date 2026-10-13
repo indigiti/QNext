@@ -42,6 +42,10 @@ func main() {
 
 	addr := env("QNEXT_HTTP_ADDR", "127.0.0.1:18080")
 	storageRoot := env("QNEXT_STORAGE_ROOT", "./storage")
+	if err := ensureStorageWritable(storageRoot); err != nil {
+		log.Fatalf("prepare QNext storage root: %v", err)
+	}
+	requireLiveReady := envBool("QNEXT_REQUIRE_LIVE_READY", false)
 	started := time.Now().UTC()
 
 	var config *marketconfig.Config
@@ -140,6 +144,14 @@ func main() {
 	}
 	volumeAliases[synPlusID] = niftyVolumeSource
 
+	readiness := qruntime.ReadinessEvaluator{
+		RequireLive: requireLiveReady,
+		Config:      config,
+		Calendars:   calendars,
+		Feed:        feedTracker,
+		History:     store,
+	}
+
 	handler := httpapi.New(store, httpapi.Options{
 		Version:         version,
 		Commit:          commit,
@@ -173,6 +185,10 @@ func main() {
 				return upstox.HistoricalRepairStatus{}
 			}
 			return historicalRepairer.Status()
+		},
+		Readiness: func() (bool, any) {
+			ready, snapshot := readiness.Snapshot()
+			return ready, snapshot
 		},
 		FeedStatus: func() any {
 			snapshot := feedTracker.Snapshot()
@@ -616,6 +632,45 @@ func regularMarketSessionActive(at time.Time) bool {
 		0, 0, location,
 	)
 	return !local.Before(open) && local.Before(closeAt)
+}
+
+func ensureStorageWritable(root string) error {
+	if strings.TrimSpace(root) == "" {
+		return errors.New("storage root is required")
+	}
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(root, ".qnext-readiness-*")
+	if err != nil {
+		return err
+	}
+	name := file.Name()
+	defer os.Remove(name)
+	if _, err := file.WriteString("qnext-readiness\n"); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
+func envBool(key string, fallback bool) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if value == "" {
+		return fallback
+	}
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 func env(key, fallback string) string {

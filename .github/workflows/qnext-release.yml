@@ -82,6 +82,8 @@ jobs:
           php -l services/ops-api/src/PaperProxy.php
           php -l services/ops-api/src/OpsController.php
           bash -n deploy/qnext-ops-user
+          bash -n deploy/qnext-ops-helper
+          bash -n deploy/qnext-market-core-launcher
           bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php
 
@@ -207,6 +209,7 @@ jobs:
           install -m 0750 deploy/qnext-ops-helper release/private/deploy/qnext-ops-helper
           install -m 0750 deploy/qnext-ops-web release/private/deploy/qnext-ops-web
           install -m 0750 deploy/qnext-ops-user release/private/deploy/qnext-ops-user
+          install -m 0750 deploy/qnext-market-core-launcher release/private/deploy/qnext-market-core-launcher
           install -m 0750 deploy/qnext-intelligence-lab-python release/private/deploy/qnext-intelligence-lab-python
           install -m 0750 deploy/qnext-ml-dependencies release/private/deploy/qnext-ml-dependencies
           cp deploy/qnext-market-core.service release/private/deploy/
@@ -302,6 +305,7 @@ jobs:
           test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
           test -x release/private/deploy/qnext-ops-user
+          test -x release/private/deploy/qnext-market-core-launcher
           test -x release/private/deploy/qnext-intelligence-lab-python
           test -x release/private/deploy/qnext-ml-dependencies
           test -s release/release-manifest.json

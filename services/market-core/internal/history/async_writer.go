@@ -79,6 +79,19 @@ func (s *Store) AppendBarAsync(bar domain.Bar) error {
 	return writer.AppendBar(bar)
 }
 
+func (s *Store) PersistenceStats() PersistenceStats {
+	if s == nil {
+		return PersistenceStats{}
+	}
+	asyncRegistry.Lock()
+	writer := asyncRegistry.writers[s]
+	asyncRegistry.Unlock()
+	if writer == nil {
+		return PersistenceStats{}
+	}
+	return writer.Stats()
+}
+
 func (s *Store) FlushAsync(ctx context.Context) error {
 	if s == nil {
 		return nil

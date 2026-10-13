@@ -22,9 +22,9 @@ const (
 )
 
 type Store struct {
-	root  string
-	mu    sync.Mutex
-	cache *currentDayCache
+	root      string
+	fileLocks sync.Map
+	cache     *currentDayCache
 }
 
 type barRecord struct {
@@ -90,8 +90,9 @@ func (s *Store) appendBarDisk(bar domain.Bar) error {
 
 	path := s.dayPath(bar.InstrumentID, bar.Timeframe, bar.OpenTime)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	lock := s.fileLock(path)
+	lock.Lock()
+	defer lock.Unlock()
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
@@ -127,12 +128,12 @@ func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain
 }
 
 func (s *Store) loadDayDisk(instrumentID, timeframe string, day time.Time) ([]domain.Bar, error) {
-	// Keep scans mutually exclusive with append+fsync so a reader can never
-	// observe a partially-written trailing JSONL record.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	// Protect only this history partition. Reads of closed/other partitions
+	// must not block the live writer for today's canonical file.
 	path := s.dayPath(instrumentID, timeframe, day)
+	lock := s.fileLock(path)
+	lock.RLock()
+	defer lock.RUnlock()
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -174,6 +175,15 @@ func sortedBars(latest map[string]domain.Bar) []domain.Bar {
 		return bars[i].OpenTime.Before(bars[j].OpenTime)
 	})
 	return bars
+}
+
+func (s *Store) fileLock(path string) *sync.RWMutex {
+	if existing, ok := s.fileLocks.Load(path); ok {
+		return existing.(*sync.RWMutex)
+	}
+	lock := &sync.RWMutex{}
+	actual, _ := s.fileLocks.LoadOrStore(path, lock)
+	return actual.(*sync.RWMutex)
 }
 
 func (s *Store) dayPath(instrumentID, timeframe string, at time.Time) string {

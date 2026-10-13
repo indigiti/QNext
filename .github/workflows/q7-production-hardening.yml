@@ -1,0 +1,76 @@
+name: Q7 Production Hardening
+
+on:
+  pull_request:
+    paths:
+      - "services/market-core/**"
+      - "apps/workspace/public/api/v1/bars/**"
+      - "deploy/**"
+      - "config/q3-intelligence.example.json"
+      - "schemas/openapi/qnext.yaml"
+      - "tools/q0_validate.py"
+      - ".github/workflows/q7-production-hardening.yml"
+      - ".github/workflows/qnext-release.yml"
+      - ".github/workflows/q6-web-ops.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/market-core/**"
+      - "apps/workspace/public/api/v1/bars/**"
+      - "deploy/**"
+      - "config/q3-intelligence.example.json"
+      - "schemas/openapi/qnext.yaml"
+      - "tools/q0_validate.py"
+      - ".github/workflows/q7-production-hardening.yml"
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.sum
+
+      - name: Verify Go formatting
+        working-directory: services/market-core
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l .)"
+          if [[ -n "$files" ]]; then
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Vet and race-test Market Core
+        working-directory: services/market-core
+        run: |
+          go vet ./...
+          go test -race ./...
+
+      - name: Validate Q0 route contracts
+        run: python3 tools/q0_validate.py
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+
+      - name: Validate history proxy syntax
+        run: php -l apps/workspace/public/api/v1/bars/index.php
+
+      - name: Validate production launch contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/qnext-ops-user
+          bash -n deploy/qnext-ops-helper
+          bash -n deploy/qnext-market-core-launcher
+          grep -Fq 'QNEXT_REQUIRE_LIVE_READY="1"' deploy/qnext-ops-user
+          grep -Fq 'QNEXT_REQUIRE_LIVE_READY=1' deploy/qnext-runtime.env.example
+          grep -Fq 'qnext-market-core-launcher' deploy/qnext-market-core.service
+          grep -Fq 'qnext-market-core.current' deploy/qnext-ops-helper
+          grep -Fq 'qnext-market-core-launcher' .github/workflows/qnext-release.yml

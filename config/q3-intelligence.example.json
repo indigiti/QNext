@@ -1,10 +1,10 @@
 {
   "version": "q3.v1",
-  "market_core_url": "http://127.0.0.1:8080",
-  "storage_root": "/private_html/qnext/storage/intelligence",
+  "market_core_url": "http://127.0.0.1:18080",
+  "storage_root": "/home/ACCOUNT/private_html/qnext/storage/intelligence",
   "instruments": [
     {
-      "instrument_id": "QNEXT:NIFTY",
+      "instrument_id": "NSE:NIFTY50",
       "timeframe": "1m",
       "lookback_bars": 20,
       "horizon_bars": 3

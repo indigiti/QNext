@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PRIVATE_ROOT="${1:-${QNEXT_PRIVATE_ROOT:-}}"
+if [[ -z "$PRIVATE_ROOT" ]]; then
+  echo "QNEXT_PRIVATE_ROOT or private-root argument is required" >&2
+  exit 2
+fi
+
+BIN_ROOT="$PRIVATE_ROOT/current/private/bin"
+POINTER="$BIN_ROOT/qnext-market-core.current"
+
+if [[ ! -s "$POINTER" ]]; then
+  echo "Market Core pointer is missing: $POINTER" >&2
+  exit 3
+fi
+
+name="$(tr -d '\r\n' < "$POINTER")"
+if [[ ! "$name" =~ ^qnext-market-core-[A-Za-z0-9._-]+$ ]]; then
+  echo "Market Core pointer is invalid" >&2
+  exit 3
+fi
+
+binary="$BIN_ROOT/$name"
+if [[ ! -x "$binary" ]]; then
+  echo "Market Core versioned binary is missing or not executable: $binary" >&2
+  exit 3
+fi
+
+exec "$binary"

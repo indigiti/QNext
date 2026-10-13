@@ -72,6 +72,7 @@ jobs:
           bash -n deploy/qnext-ops-helper
           bash -n deploy/qnext-ops-web
           bash -n deploy/qnext-ops-user
+          bash -n deploy/qnext-market-core-launcher
           bash -n deploy/qnext-intelligence-lab-python
       - name: Lab ML runtime fallback smoke
         shell: bash
@@ -153,5 +154,8 @@ jobs:
           test -x deploy/qnext-ops-helper
           test -x deploy/qnext-ops-web
           test -f deploy/qnext-intelligence-lab-python
+          test -f deploy/qnext-market-core-launcher
+          grep -q 'qnext-market-core-launcher' deploy/qnext-market-core.service
+          grep -q 'qnext-market-core.current' deploy/qnext-ops-helper
           grep -q 'intelligence-lab-wheels' .github/workflows/qnext-release.yml
           grep -q 'qnext-intelligence-lab-python' .github/workflows/qnext-release.yml
