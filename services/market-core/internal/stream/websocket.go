@@ -73,6 +73,7 @@ type serverMessage struct {
 	Code      string   `json:"code,omitempty"`
 	Message   string   `json:"message,omitempty"`
 	Bar       *wireBar `json:"bar,omitempty"`
+	LivePublishedAt time.Time `json:"-"`
 }
 
 type wireBar struct {
@@ -165,6 +166,9 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer writeMu.Unlock()
 		err := connection.WriteJSON(message)
 		h.Broker.writeLatency.observe(time.Since(started))
+		if err == nil && !message.LivePublishedAt.IsZero() {
+			h.Broker.publishToWriteLatency.observe(time.Since(message.LivePublishedAt))
+		}
 		return err
 	}
 
@@ -458,7 +462,9 @@ func forwardSubscription(
 				}
 				continue
 			}
-			if err := write(updateMessage(event)); err != nil {
+			message := updateMessage(event)
+			message.LivePublishedAt = event.PublishedAt
+			if err := write(message); err != nil {
 				return
 			}
 		}
