@@ -437,7 +437,12 @@ export class QNextProvider {
       } catch {
         return;
       }
+      const sample = liveWSSDispatchLatency.shouldSample();
+      const started = sample ? performance.now() : 0;
       this.handleStreamMessage(message);
+      if (sample && message.op === 'update') {
+        liveWSSDispatchLatency.observe(performance.now() - started);
+      }
     };
 
     socket.onerror = () => {
