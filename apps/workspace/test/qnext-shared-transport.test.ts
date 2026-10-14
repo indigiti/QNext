@@ -288,6 +288,34 @@ describe('QNextProvider shared live transport', () => {
       polling_streams: 0,
     });
   });
+
+  it('unsubscribes a closed chart even when its subscribe acknowledgment arrives late', async () => {
+    const sockets: FakeSocket[] = [];
+    const provider = new QNextProvider({
+      fetchImpl: jsonFetch(),
+      webSocketFactory: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    const unsubscribeFirst = provider.subscribe('NIFTY', '15s', vi.fn());
+    const unsubscribeSecond = provider.subscribe('NIFTY-SYN', '30s', vi.fn());
+    await waitFor(() => sockets.length === 1);
+    sockets[0].open();
+    await waitFor(() => sockets[0].sent.length === 2);
+    unsubscribeFirst();
+    sockets[0].message({
+      op: 'subscribed', stream_id: 'bars:NSE:NIFTY50:15s',
+      seq: 1, symbol: 'NSE:NIFTY50', timeframe: '15s',
+    });
+    expect(sockets[0].sent).toContainEqual({
+      op: 'unsubscribe', stream_id: 'bars:NSE:NIFTY50:15s',
+    });
+    expect(provider.transportSnapshot()).toMatchObject({ mode: 'wss', streams: 1 });
+    unsubscribeSecond();
+  });
+
 });
 
 function jsonFetch(): typeof fetch {
