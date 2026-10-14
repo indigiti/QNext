@@ -6,6 +6,7 @@ import type { QNextBar } from '../qnext-provider';
 // bars can be reconstructed from an unrelated instrument.
 const DAY_MS = 86_400_000;
 export const OLDER_HISTORY_CHUNK = 500;
+export const MAX_CHART_HISTORY = 12_000;
 export const MAX_EMPTY_HISTORY_WINDOWS = 3;
 
 export function historyPageSpanMs(timeframe: string): number {
