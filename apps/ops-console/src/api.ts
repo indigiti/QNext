@@ -271,6 +271,28 @@ export interface DhanStandbyCheck {
   reason?: string;
 }
 
+export interface BackendPerformanceReport {
+  schema: 'QNEXT.PERFORMANCE/1';
+  status: 'warming' | 'ready';
+  message?: string;
+  release?: { commit?: string; version?: string; started_at?: string };
+  window?: { start_ms: number; end_ms: number; duration_ms: number; collected_samples: number };
+  broker?: Record<string, number | null>;
+  latencies?: Record<string, {
+    new_samples: number | null;
+    total_samples_since_restart: number | null;
+    latest_p50_us: number | null;
+    latest_p95_us: number | null;
+    latest_p99_us: number | null;
+  }>;
+  provider_observations_delta?: number | null;
+  counter_deltas?: Record<string, number | null>;
+  persistence?: Record<string, number | null>;
+  capture?: Record<string, number | null>;
+  warnings?: string[];
+  notes?: string[];
+}
+
 export interface APIOptions {
   base?: string;
   token?: string;
@@ -314,6 +336,14 @@ export class OpsAPI {
 
   feedStatus(): Promise<FeedStatusResponse> {
     return this.request<FeedStatusResponse>('/feed-status');
+  }
+
+  backendPerformanceReport(): Promise<BackendPerformanceReport> {
+    return this.request<BackendPerformanceReport>('/performance-report');
+  }
+
+  captureBackendPerformanceReport(): Promise<BackendPerformanceReport> {
+    return this.request<BackendPerformanceReport>('/performance-report', { method: 'POST' });
   }
 
   historicalRepairStatus(): Promise<HistoricalRepairStatusResponse> {
