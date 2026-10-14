@@ -154,6 +154,8 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	h.Broker.connections.Add(1)
+	defer h.Broker.connections.Add(-1)
 	defer connection.Close()
 
 	var writeMu sync.Mutex
