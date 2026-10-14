@@ -1,4 +1,4 @@
-import type { QNextBar } from './qnext-provider';
+import type { QNextBar } from '../qnext-provider';
 
 // Requests are intentionally bounded: one chart fetches at most 500 candles
 // from each of three non-overlapping calendar windows per user pan event.
