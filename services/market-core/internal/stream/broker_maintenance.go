@@ -30,7 +30,7 @@ func (h *sampledLatencyHistogram) observe(elapsed time.Duration) {
 	}
 	var us uint64 = 1
 	if elapsed > 0 {
-		us = uint64(elapsed/time.Microsecond) + 1
+		us = uint64((elapsed-1)/time.Microsecond) + 1
 	}
 	index := bits.Len64(us - 1)
 	if index >= latencyBucketCount {
