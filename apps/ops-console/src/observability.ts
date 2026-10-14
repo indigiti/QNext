@@ -84,6 +84,8 @@ type FeedPayload = {
         evicted_empty_streams?: number;
         publish_latency?: { samples?: number; p50_us?: number; p95_us?: number; p99_us?: number };
         ws_write_latency?: { samples?: number; p50_us?: number; p95_us?: number; p99_us?: number };
+        tick_handle_latency?: { samples?: number; p50_us?: number; p95_us?: number; p99_us?: number };
+        publish_to_ws_write_latency?: { samples?: number; p50_us?: number; p95_us?: number; p99_us?: number };
         replay_events?: number;
         coalesced_forming?: number;
         dropped_forming?: number;
@@ -260,6 +262,9 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Broker publish p50 / p95 / p99</span><strong>${broker?.publish_latency?.samples ? `${broker.publish_latency.p50_us} / ${broker.publish_latency.p95_us} / ${broker.publish_latency.p99_us} µs` : 'warming'}</strong></div>
       <div class="feed-kv"><span>WSS write p50 / p95 / p99</span><strong>${broker?.ws_write_latency?.samples ? `${broker.ws_write_latency.p50_us} / ${broker.ws_write_latency.p95_us} / ${broker.ws_write_latency.p99_us} µs` : 'warming'}</strong></div>
       <div class="feed-kv"><span>Latency sample counts (publish / WSS)</span><strong>${broker?.publish_latency?.samples ?? 0} / ${broker?.ws_write_latency?.samples ?? 0}</strong></div>
+      <div class="feed-kv"><span>Tick processing p50 / p95 / p99</span><strong>${broker?.tick_handle_latency?.samples ? `${broker.tick_handle_latency.p50_us} / ${broker.tick_handle_latency.p95_us} / ${broker.tick_handle_latency.p99_us} µs` : 'warming'}</strong></div>
+      <div class="feed-kv"><span>Live publish → WSS write p50 / p95 / p99</span><strong>${broker?.publish_to_ws_write_latency?.samples ? `${broker.publish_to_ws_write_latency.p50_us} / ${broker.publish_to_ws_write_latency.p95_us} / ${broker.publish_to_ws_write_latency.p99_us} µs` : 'warming'}</strong></div>
+      <div class="feed-kv"><span>Trace samples (tick / WSS delivery)</span><strong>${broker?.tick_handle_latency?.samples ?? 0} / ${broker?.publish_to_ws_write_latency?.samples ?? 0}</strong></div>
       <div class="feed-kv"><span>Active stream subscriptions</span><strong>${details.filter((stream) => (stream.subscribers ?? 0) > 0).map((stream) => `${stream.instrument_id} ${stream.timeframe}: ${stream.subscribers}`).join(', ') || 'none'}</strong></div>
       <div class="feed-kv"><span>Coalesced forming</span><strong>${broker?.coalesced_forming ?? 0}</strong></div>
       <div class="feed-kv"><span>Dropped forming</span><strong>${broker?.dropped_forming ?? 0}</strong></div>

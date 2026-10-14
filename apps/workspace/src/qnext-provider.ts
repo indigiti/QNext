@@ -1,3 +1,5 @@
+import { liveWSSDispatchLatency } from './live-latency';
+
 export interface QNextProviderOptions {
   apiBase?: string;
   streamUrl?: string;
@@ -429,6 +431,8 @@ export class QNextProvider {
         return;
       }
 
+      const sample = liveWSSDispatchLatency.shouldSample();
+      const started = sample ? performance.now() : 0;
       let message: StreamMessage;
       try {
         message = JSON.parse(event.data) as StreamMessage;
@@ -436,6 +440,9 @@ export class QNextProvider {
         return;
       }
       this.handleStreamMessage(message);
+      if (sample && message.op === 'update') {
+        liveWSSDispatchLatency.observe(performance.now() - started);
+      }
     };
 
     socket.onerror = () => {

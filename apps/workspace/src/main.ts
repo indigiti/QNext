@@ -7,6 +7,7 @@ import {
   normalizeLightweightLayout,
 } from './charts/lightweight-workspace';
 import { QNextProvider } from './qnext-provider';
+import { qnextBrowserLatencySnapshot } from './live-latency';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
 import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
@@ -230,6 +231,9 @@ async function bootstrapLightweight(
 }
 
 async function bootstrap() {
+  // Browser-local DevTools diagnostic. Never mixes server/client clocks.
+  (window as Window & { __QNEXT_LATENCY__?: typeof qnextBrowserLatencySnapshot }).__QNEXT_LATENCY__ =
+    qnextBrowserLatencySnapshot;
   const [timeframes, settings] = await Promise.all([
     loadEnabledTimeframes(),
     loadWorkspaceSettings(),

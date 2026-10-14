@@ -62,6 +62,10 @@ type MarketSink struct {
 }
 
 func (s *MarketSink) Handle(tick domain.Tick) error {
+	if observer, ok := s.Publisher.(interface{ ObserveTickHandleLatency(time.Duration) }); ok {
+		started := time.Now()
+		defer func() { observer.ObserveTickHandleLatency(time.Since(started)) }()
+	}
 	if s.Pipeline == nil {
 		return errors.New("canonical tick pipeline is required")
 	}

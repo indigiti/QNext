@@ -39,6 +39,9 @@ var (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if err := startLocalProfiling(ctx); err != nil {
+		log.Fatalf("initialize local profiling: %v", err)
+	}
 
 	addr := env("QNEXT_HTTP_ADDR", "127.0.0.1:18080")
 	storageRoot := env("QNEXT_STORAGE_ROOT", "./storage")

@@ -20,20 +20,23 @@ type BarEvent struct {
 	Bar            domain.Bar
 	ResyncRequired bool
 	Reason         string
+	PublishedAt    time.Time
 }
 
 type Broker struct {
-	mu                   sync.Mutex
-	retention            int
-	subscriberBuffer     int
-	streams              map[string]*streamState
-	nextSubscriberID     uint64
-	webSocketConnections atomic.Int64
-	publishLatency       sampledLatencyHistogram
-	writeLatency         sampledLatencyHistogram
-	compactedStreams     uint64
-	reclaimedReplaySlots uint64
-	evictedEmptyStreams  uint64
+	mu                    sync.Mutex
+	retention             int
+	subscriberBuffer      int
+	streams               map[string]*streamState
+	nextSubscriberID      uint64
+	webSocketConnections  atomic.Int64
+	publishLatency        sampledLatencyHistogram
+	writeLatency          sampledLatencyHistogram
+	tickHandleLatency     sampledLatencyHistogram
+	publishToWriteLatency sampledLatencyHistogram
+	compactedStreams      uint64
+	reclaimedReplaySlots  uint64
+	evictedEmptyStreams   uint64
 }
 
 type streamState struct {
@@ -90,23 +93,25 @@ type BrokerStreamStats struct {
 }
 
 type BrokerStats struct {
-	Streams              int                 `json:"streams"`
-	ActiveStreams        int                 `json:"active_streams"`
-	IdleStreams          int                 `json:"idle_streams"`
-	Subscribers          int                 `json:"subscribers"`
-	WebSocketConnections int                 `json:"websocket_connections"`
-	ReplayEvents         int                 `json:"replay_events"`
-	ReplaySlots          int                 `json:"replay_slots"`
-	ReplayBytesEstimated int64               `json:"replay_bytes_estimated"`
-	CompactedStreams     uint64              `json:"compacted_streams"`
-	ReclaimedReplaySlots uint64              `json:"reclaimed_replay_slots"`
-	EvictedEmptyStreams  uint64              `json:"evicted_empty_streams"`
-	PublishLatency       LatencyStats        `json:"publish_latency"`
-	WSWriteLatency       LatencyStats        `json:"ws_write_latency"`
-	CoalescedForming     uint64              `json:"coalesced_forming"`
-	DroppedForming       uint64              `json:"dropped_forming"`
-	SlowDisconnects      uint64              `json:"slow_disconnects"`
-	Details              []BrokerStreamStats `json:"details"`
+	Streams               int                 `json:"streams"`
+	ActiveStreams         int                 `json:"active_streams"`
+	IdleStreams           int                 `json:"idle_streams"`
+	Subscribers           int                 `json:"subscribers"`
+	WebSocketConnections  int                 `json:"websocket_connections"`
+	ReplayEvents          int                 `json:"replay_events"`
+	ReplaySlots           int                 `json:"replay_slots"`
+	ReplayBytesEstimated  int64               `json:"replay_bytes_estimated"`
+	CompactedStreams      uint64              `json:"compacted_streams"`
+	ReclaimedReplaySlots  uint64              `json:"reclaimed_replay_slots"`
+	EvictedEmptyStreams   uint64              `json:"evicted_empty_streams"`
+	PublishLatency        LatencyStats        `json:"publish_latency"`
+	WSWriteLatency        LatencyStats        `json:"ws_write_latency"`
+	TickHandleLatency     LatencyStats        `json:"tick_handle_latency"`
+	PublishToWriteLatency LatencyStats        `json:"publish_to_ws_write_latency"`
+	CoalescedForming      uint64              `json:"coalesced_forming"`
+	DroppedForming        uint64              `json:"dropped_forming"`
+	SlowDisconnects       uint64              `json:"slow_disconnects"`
+	Details               []BrokerStreamStats `json:"details"`
 }
 
 type Subscription struct {
@@ -152,9 +157,10 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	state.seq++
 	state.lastPublishedAtMS = started.UnixMilli()
 	event := BarEvent{
-		StreamID: state.id,
-		Seq:      state.seq,
-		Bar:      bar,
+		StreamID:    state.id,
+		Seq:         state.seq,
+		Bar:         bar,
+		PublishedAt: started,
 	}
 	state.replay.Append(event)
 
@@ -180,6 +186,15 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		demand.Default().Release(bar.InstrumentID)
 	}
 	b.publishLatency.observe(time.Since(started))
+}
+
+// ObserveTickHandleLatency measures the canonical MarketSink.Handle path,
+// including synthetic processing, persistence enqueue and bar publishing.
+// It is not upstream exchange latency or browser render latency.
+func (b *Broker) ObserveTickHandleLatency(elapsed time.Duration) {
+	if b != nil {
+		b.tickHandleLatency.observe(elapsed)
+	}
 }
 
 func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
@@ -241,13 +256,15 @@ func (b *Broker) Stats() BrokerStats {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	stats := BrokerStats{
-		Streams:              len(b.streams),
-		WebSocketConnections: int(b.webSocketConnections.Load()),
-		CompactedStreams:     b.compactedStreams,
-		ReclaimedReplaySlots: b.reclaimedReplaySlots,
-		EvictedEmptyStreams:  b.evictedEmptyStreams,
-		PublishLatency:       b.publishLatency.snapshot(),
-		WSWriteLatency:       b.writeLatency.snapshot(),
+		Streams:               len(b.streams),
+		WebSocketConnections:  int(b.webSocketConnections.Load()),
+		CompactedStreams:      b.compactedStreams,
+		ReclaimedReplaySlots:  b.reclaimedReplaySlots,
+		EvictedEmptyStreams:   b.evictedEmptyStreams,
+		PublishLatency:        b.publishLatency.snapshot(),
+		WSWriteLatency:        b.writeLatency.snapshot(),
+		TickHandleLatency:     b.tickHandleLatency.snapshot(),
+		PublishToWriteLatency: b.publishToWriteLatency.snapshot(),
 	}
 	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
 	for key, state := range b.streams {
