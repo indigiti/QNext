@@ -123,6 +123,7 @@ export class QNextProvider {
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private readonly subscriptions = new Map<string, SharedBarSubscription>();
   private readonly streamToKey = new Map<string, string>();
+  private readonly pendingUnsubscribes = new Set<string>();
 
   constructor(options: QNextProviderOptions = {}) {
     this.apiBase = (options.apiBase ?? '').replace(/\/+$/, '');
@@ -344,6 +345,10 @@ export class QNextProvider {
       if (attached.streamID) {
         this.send({ op: 'unsubscribe', stream_id: attached.streamID });
         this.streamToKey.delete(attached.streamID);
+      } else if (this.socketConnected) {
+        // Subscribe is in flight. The server does not yet know our stream ID,
+        // so unsubscribe as soon as the acknowledgement identifies it.
+        this.pendingUnsubscribes.add(attached.key);
       }
       this.subscriptions.delete(attached.key);
       this.closeSharedSocketIfIdle();
@@ -445,6 +450,7 @@ export class QNextProvider {
       }
       this.socket = undefined;
       this.socketConnected = false;
+      this.pendingUnsubscribes.clear();
       if (this.subscriptions.size === 0) {
         return;
       }
@@ -477,8 +483,15 @@ export class QNextProvider {
           }
         }
         if (!subscription || !message.stream_id) {
+          if (message.stream_id && message.symbol && message.timeframe) {
+            const key = subscriptionKey(message.symbol, message.timeframe);
+            if (this.pendingUnsubscribes.delete(key)) {
+              this.send({ op: 'unsubscribe', stream_id: message.stream_id });
+            }
+          }
           return;
         }
+        this.pendingUnsubscribes.delete(subscription.key);
 
         if (subscription.streamID && subscription.streamID !== message.stream_id) {
           this.streamToKey.delete(subscription.streamID);
@@ -685,6 +698,7 @@ export class QNextProvider {
     const socket = this.socket;
     this.socket = undefined;
     this.socketConnected = false;
+    this.pendingUnsubscribes.clear();
     socket?.close();
   }
 

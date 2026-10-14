@@ -5,7 +5,9 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/indigiti/QNext/services/market-core/internal/demand"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
@@ -21,11 +23,12 @@ type BarEvent struct {
 }
 
 type Broker struct {
-	mu               sync.Mutex
-	retention        int
-	subscriberBuffer int
-	streams          map[string]*streamState
-	nextSubscriberID uint64
+	mu                   sync.Mutex
+	retention            int
+	subscriberBuffer     int
+	streams              map[string]*streamState
+	nextSubscriberID     uint64
+	webSocketConnections atomic.Int64
 }
 
 type streamState struct {
@@ -71,6 +74,7 @@ type BrokerStreamStats struct {
 	Seq               uint64 `json:"seq"`
 	Subscribers       int    `json:"subscribers"`
 	ReplayEvents      int    `json:"replay_events"`
+	ReplaySlots       int    `json:"replay_slots"`
 	LastPublishedAtMS int64  `json:"last_published_at_ms"`
 	LastBarOpenTimeMS int64  `json:"last_bar_open_time_ms,omitempty"`
 	LastBarFinal      bool   `json:"last_bar_final"`
@@ -80,15 +84,18 @@ type BrokerStreamStats struct {
 }
 
 type BrokerStats struct {
-	Streams          int                 `json:"streams"`
-	ActiveStreams    int                 `json:"active_streams"`
-	IdleStreams      int                 `json:"idle_streams"`
-	Subscribers      int                 `json:"subscribers"`
-	ReplayEvents     int                 `json:"replay_events"`
-	CoalescedForming uint64              `json:"coalesced_forming"`
-	DroppedForming   uint64              `json:"dropped_forming"`
-	SlowDisconnects  uint64              `json:"slow_disconnects"`
-	Details          []BrokerStreamStats `json:"details"`
+	Streams              int                 `json:"streams"`
+	ActiveStreams        int                 `json:"active_streams"`
+	IdleStreams          int                 `json:"idle_streams"`
+	Subscribers          int                 `json:"subscribers"`
+	WebSocketConnections int                 `json:"websocket_connections"`
+	ReplayEvents         int                 `json:"replay_events"`
+	ReplaySlots          int                 `json:"replay_slots"`
+	ReplayBytesEstimated int64               `json:"replay_bytes_estimated"`
+	CoalescedForming     uint64              `json:"coalesced_forming"`
+	DroppedForming       uint64              `json:"dropped_forming"`
+	SlowDisconnects      uint64              `json:"slow_disconnects"`
+	Details              []BrokerStreamStats `json:"details"`
 }
 
 type Subscription struct {
@@ -214,7 +221,7 @@ func (b *Broker) Stats() BrokerStats {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	stats := BrokerStats{Streams: len(b.streams)}
+	stats := BrokerStats{Streams: len(b.streams), WebSocketConnections: int(b.webSocketConnections.Load())}
 	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
 	for key, state := range b.streams {
 		instrumentID, timeframe := splitStreamKey(key)
@@ -225,6 +232,7 @@ func (b *Broker) Stats() BrokerStats {
 			Seq:               state.seq,
 			Subscribers:       len(state.subs),
 			ReplayEvents:      state.replay.Len(),
+			ReplaySlots:       len(state.replay.items),
 			LastPublishedAtMS: state.lastPublishedAtMS,
 			CoalescedForming:  state.coalescedForming,
 			DroppedForming:    state.droppedForming,
@@ -241,11 +249,15 @@ func (b *Broker) Stats() BrokerStats {
 		}
 		stats.Subscribers += streamStats.Subscribers
 		stats.ReplayEvents += streamStats.ReplayEvents
+		stats.ReplaySlots += streamStats.ReplaySlots
 		stats.CoalescedForming += streamStats.CoalescedForming
 		stats.DroppedForming += streamStats.DroppedForming
 		stats.SlowDisconnects += streamStats.SlowDisconnects
 		stats.Details = append(stats.Details, streamStats)
 	}
+	// This is a shallow allocated-slot estimate: BarEvent contains referenced
+	// strings, so it is not total heap/RSS. Query it only on Stats(), not on publish.
+	stats.ReplayBytesEstimated = int64(stats.ReplaySlots) * int64(unsafe.Sizeof(BarEvent{}))
 	return stats
 }
 
