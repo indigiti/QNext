@@ -188,9 +188,13 @@ final class PerformanceReport
         $first = $samples[0];
         $last = $samples[count($samples) - 1];
         $span = max(0, (int) $last['at_ms'] - (int) $first['at_ms']);
-        $ready = $span >= self::READY_MS && count($samples) >= 2;
+        $ageMS = (int) floor(microtime(true) * 1_000) - (int) $last['at_ms'];
+        $stale = $ageMS > self::WINDOW_MS;
+        $ready = $span >= self::READY_MS && count($samples) >= 2 && !$stale;
         $warnings = [];
-        if (!$ready) {
+        if ($stale) {
+            $warnings[] = 'Backend report is stale; open Admin and collect a fresh baseline';
+        } elseif (!$ready) {
             $warnings[] = '60 seconds of backend observations required before the baseline is ready';
         }
         $latencies = [];
@@ -234,7 +238,7 @@ final class PerformanceReport
         }
         return [
             'schema' => 'QNEXT.PERFORMANCE/1',
-            'status' => $ready ? 'ready' : 'warming',
+            'status' => $stale ? 'stale' : ($ready ? 'ready' : 'warming'),
             'release' => $state['release'] ?? [],
             'window' => [
                 'start_ms' => $first['at_ms'],
