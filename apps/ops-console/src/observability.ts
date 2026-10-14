@@ -12,7 +12,9 @@ function renderBackendReport(report: BackendPerformanceReport): void {
   if (download) download.disabled = report.status !== 'ready';
   if (report.status !== 'ready') {
     const elapsed = Math.round((report.window?.duration_ms ?? 0) / 1000);
-    output.textContent = `Collecting backend samples: ${elapsed}/60 seconds · ${report.window?.collected_samples ?? 0} samples. Keep this admin page open.`;
+    output.textContent = report.status === 'stale'
+      ? 'Previous report is stale. Collecting a fresh 60-second baseline…'
+      : `Collecting backend samples: ${elapsed}/60 seconds · ${report.window?.collected_samples ?? 0} samples. Keep this admin page open.`;
     return;
   }
   const broker = report.broker ?? {};
