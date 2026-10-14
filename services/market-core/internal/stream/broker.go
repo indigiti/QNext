@@ -93,25 +93,25 @@ type BrokerStreamStats struct {
 }
 
 type BrokerStats struct {
-	Streams              int                 `json:"streams"`
-	ActiveStreams        int                 `json:"active_streams"`
-	IdleStreams          int                 `json:"idle_streams"`
-	Subscribers          int                 `json:"subscribers"`
-	WebSocketConnections int                 `json:"websocket_connections"`
-	ReplayEvents         int                 `json:"replay_events"`
-	ReplaySlots          int                 `json:"replay_slots"`
-	ReplayBytesEstimated int64               `json:"replay_bytes_estimated"`
-	CompactedStreams     uint64              `json:"compacted_streams"`
-	ReclaimedReplaySlots uint64              `json:"reclaimed_replay_slots"`
-	EvictedEmptyStreams  uint64              `json:"evicted_empty_streams"`
-	PublishLatency       LatencyStats        `json:"publish_latency"`
-	WSWriteLatency       LatencyStats        `json:"ws_write_latency"`
-	TickHandleLatency    LatencyStats        `json:"tick_handle_latency"`
-	PublishToWriteLatency LatencyStats       `json:"publish_to_ws_write_latency"`
-	CoalescedForming     uint64              `json:"coalesced_forming"`
-	DroppedForming       uint64              `json:"dropped_forming"`
-	SlowDisconnects      uint64              `json:"slow_disconnects"`
-	Details              []BrokerStreamStats `json:"details"`
+	Streams               int                 `json:"streams"`
+	ActiveStreams         int                 `json:"active_streams"`
+	IdleStreams           int                 `json:"idle_streams"`
+	Subscribers           int                 `json:"subscribers"`
+	WebSocketConnections  int                 `json:"websocket_connections"`
+	ReplayEvents          int                 `json:"replay_events"`
+	ReplaySlots           int                 `json:"replay_slots"`
+	ReplayBytesEstimated  int64               `json:"replay_bytes_estimated"`
+	CompactedStreams      uint64              `json:"compacted_streams"`
+	ReclaimedReplaySlots  uint64              `json:"reclaimed_replay_slots"`
+	EvictedEmptyStreams   uint64              `json:"evicted_empty_streams"`
+	PublishLatency        LatencyStats        `json:"publish_latency"`
+	WSWriteLatency        LatencyStats        `json:"ws_write_latency"`
+	TickHandleLatency     LatencyStats        `json:"tick_handle_latency"`
+	PublishToWriteLatency LatencyStats        `json:"publish_to_ws_write_latency"`
+	CoalescedForming      uint64              `json:"coalesced_forming"`
+	DroppedForming        uint64              `json:"dropped_forming"`
+	SlowDisconnects       uint64              `json:"slow_disconnects"`
+	Details               []BrokerStreamStats `json:"details"`
 }
 
 type Subscription struct {
