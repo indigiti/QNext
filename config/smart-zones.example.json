@@ -1,0 +1,31 @@
+{
+  "schema": "QNEXT.SMART_ZONES.PROFILE/1",
+  "id": "adaptive-default",
+  "revision": 1,
+  "enabled_by_default": false,
+  "all_symbols": true,
+  "all_timeframes": true,
+  "multi_timeframe_confirmation": true,
+  "learning_mode": "adaptive",
+  "confirmation_policy": "strict_when_context_available",
+  "detector": {
+    "left_bars": 3,
+    "right_bars": 3,
+    "atr_period": 14,
+    "min_warmup_bars": 50,
+    "min_displacement_atr": 0.75,
+    "max_confirmation_bars": 12,
+    "invalidation_closes": 2,
+    "invalidation_buffer_atr": 0.1,
+    "max_visible_zones_per_side": 6
+  },
+  "renderer": {
+    "show_candidates": false,
+    "show_invalidated": false
+  },
+  "execution": {
+    "alerts": false,
+    "orders": false,
+    "automatic_promotion": false
+  }
+}
