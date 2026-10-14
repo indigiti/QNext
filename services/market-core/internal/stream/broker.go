@@ -157,9 +157,9 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	state.seq++
 	state.lastPublishedAtMS = started.UnixMilli()
 	event := BarEvent{
-		StreamID: state.id,
-		Seq:      state.seq,
-		Bar:      bar,
+		StreamID:    state.id,
+		Seq:         state.seq,
+		Bar:         bar,
 		PublishedAt: started,
 	}
 	state.replay.Append(event)
