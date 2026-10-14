@@ -431,14 +431,14 @@ export class QNextProvider {
         return;
       }
 
+      const sample = liveWSSDispatchLatency.shouldSample();
+      const started = sample ? performance.now() : 0;
       let message: StreamMessage;
       try {
         message = JSON.parse(event.data) as StreamMessage;
       } catch {
         return;
       }
-      const sample = liveWSSDispatchLatency.shouldSample();
-      const started = sample ? performance.now() : 0;
       this.handleStreamMessage(message);
       if (sample && message.op === 'update') {
         liveWSSDispatchLatency.observe(performance.now() - started);
