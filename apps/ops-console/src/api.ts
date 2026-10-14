@@ -273,7 +273,7 @@ export interface DhanStandbyCheck {
 
 export interface BackendPerformanceReport {
   schema: 'QNEXT.PERFORMANCE/1';
-  status: 'warming' | 'ready';
+  status: 'warming' | 'ready' | 'stale';
   message?: string;
   release?: { commit?: string; version?: string; started_at?: string };
   window?: { start_ms: number; end_ms: number; duration_ms: number; collected_samples: number };
