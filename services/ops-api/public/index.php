@@ -220,6 +220,14 @@ try {
     if ($method === 'GET' && $path === '/feed-status') {
         respond(200, $controller->feedStatus());
     }
+    // Routes below this point inherit the existing admin token/session gate.
+    // POST performs one rate-limited, read-only backend telemetry snapshot.
+    if ($method === 'GET' && $path === '/performance-report') {
+        respond(200, $controller->latestPerformanceReport());
+    }
+    if ($method === 'POST' && $path === '/performance-report') {
+        respond(200, $controller->capturePerformanceReport());
+    }
     if ($method === 'GET' && $path === '/intelligence') {
         respond(200, $intelligence->status());
     }
