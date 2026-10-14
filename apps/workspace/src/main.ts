@@ -2,6 +2,8 @@ import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 
 import { resolveChartEngine, type QNextChartEngine } from './charts/chart-engine';
+import { VELA_INITIAL_HISTORY } from './charts/history-pagination';
+import { installVelaPanHistory } from './charts/vela-history';
 import {
   QNextLightweightWorkspace,
   normalizeLightweightLayout,
@@ -145,6 +147,7 @@ async function bootstrapVela(timeframes: string[]) {
     layout: false,
     symbol: runtime.symbol ?? 'NSE:NIFTY',
     timeframe: resolveInitialTimeframe(timeframes),
+    bars: VELA_INITIAL_HISTORY,
     timeframes,
     live: true,
     theme: 'dark',
@@ -164,6 +167,7 @@ async function bootstrapVela(timeframes: string[]) {
   });
 
   window.__QNEXT_WORKSPACE__ = workspace;
+  installVelaPanHistory(workspace);
   const labResolverProvider = createProvider();
   mountIntelligenceLabBridge(
     workspace as unknown as Parameters<typeof mountIntelligenceLabBridge>[0],
