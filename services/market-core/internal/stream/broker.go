@@ -23,11 +23,11 @@ type BarEvent struct {
 }
 
 type Broker struct {
-	mu               sync.Mutex
-	retention        int
-	subscriberBuffer int
-	streams          map[string]*streamState
-	nextSubscriberID uint64
+	mu                   sync.Mutex
+	retention            int
+	subscriberBuffer     int
+	streams              map[string]*streamState
+	nextSubscriberID     uint64
 	webSocketConnections atomic.Int64
 }
 
