@@ -29,6 +29,11 @@ type Broker struct {
 	streams              map[string]*streamState
 	nextSubscriberID     uint64
 	webSocketConnections atomic.Int64
+	publishLatency       sampledLatencyHistogram
+	writeLatency         sampledLatencyHistogram
+	compactedStreams     uint64
+	reclaimedReplaySlots uint64
+	evictedEmptyStreams  uint64
 }
 
 type streamState struct {
@@ -37,6 +42,7 @@ type streamState struct {
 	replay            *replayRing
 	subs              map[uint64]*subscriberState
 	lastPublishedAtMS int64
+	idleSinceMS       int64
 	coalescedForming  uint64
 	droppedForming    uint64
 	slowDisconnects   uint64
@@ -92,6 +98,11 @@ type BrokerStats struct {
 	ReplayEvents         int                 `json:"replay_events"`
 	ReplaySlots          int                 `json:"replay_slots"`
 	ReplayBytesEstimated int64               `json:"replay_bytes_estimated"`
+	CompactedStreams     uint64              `json:"compacted_streams"`
+	ReclaimedReplaySlots uint64              `json:"reclaimed_replay_slots"`
+	EvictedEmptyStreams  uint64              `json:"evicted_empty_streams"`
+	PublishLatency       LatencyStats        `json:"publish_latency"`
+	WSWriteLatency       LatencyStats        `json:"ws_write_latency"`
 	CoalescedForming     uint64              `json:"coalesced_forming"`
 	DroppedForming       uint64              `json:"dropped_forming"`
 	SlowDisconnects      uint64              `json:"slow_disconnects"`
@@ -129,6 +140,7 @@ func NewBroker(retention, subscriberBuffer int) *Broker {
 }
 
 func (b *Broker) PublishBar(bar domain.Bar) {
+	started := time.Now()
 	key := streamKey(bar.InstrumentID, bar.Timeframe)
 
 	b.mu.Lock()
@@ -138,7 +150,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		b.streams[key] = state
 	}
 	state.seq++
-	state.lastPublishedAtMS = time.Now().UTC().UnixMilli()
+	state.lastPublishedAtMS = started.UnixMilli()
 	event := BarEvent{
 		StreamID: state.id,
 		Seq:      state.seq,
@@ -159,11 +171,15 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		state.slowDisconnects++
 		released++
 	}
+	if len(state.subs) == 0 && state.idleSinceMS == 0 {
+		state.idleSinceMS = time.Now().UnixMilli()
+	}
 	b.mu.Unlock()
 
 	for i := 0; i < released; i++ {
 		demand.Default().Release(bar.InstrumentID)
 	}
+	b.publishLatency.observe(time.Since(started))
 }
 
 func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
@@ -221,7 +237,15 @@ func (b *Broker) Stats() BrokerStats {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	stats := BrokerStats{Streams: len(b.streams), WebSocketConnections: int(b.webSocketConnections.Load())}
+	stats := BrokerStats{
+		Streams: len(b.streams),
+		WebSocketConnections: int(b.webSocketConnections.Load()),
+		CompactedStreams: b.compactedStreams,
+		ReclaimedReplaySlots: b.reclaimedReplaySlots,
+		EvictedEmptyStreams: b.evictedEmptyStreams,
+		PublishLatency: b.publishLatency.snapshot(),
+		WSWriteLatency: b.writeLatency.snapshot(),
+	}
 	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
 	for key, state := range b.streams {
 		instrumentID, timeframe := splitStreamKey(key)
@@ -314,6 +338,7 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 	b.nextSubscriberID++
 	subscriber := newSubscriberState(b.subscriberBuffer)
 	state.subs[b.nextSubscriberID] = subscriber
+	state.idleSinceMS = 0
 	sub.id = b.nextSubscriberID
 	sub.Events = subscriber.out
 	b.mu.Unlock()
@@ -335,6 +360,9 @@ func (s *Subscription) Cancel() {
 			if subscriber, ok := state.subs[s.id]; ok {
 				subscriber.stop()
 				delete(state.subs, s.id)
+				if len(state.subs) == 0 {
+					state.idleSinceMS = time.Now().UnixMilli()
+				}
 				removed = true
 			}
 		}
@@ -349,9 +377,10 @@ func (s *Subscription) Cancel() {
 // forming-bar revision. The identity is stable across subscribers and resume.
 func (b *Broker) newStreamState(instrumentID, timeframe string) *streamState {
 	return &streamState{
-		id:     streamID(instrumentID, timeframe),
-		replay: newReplayRing(b.retention),
-		subs:   make(map[uint64]*subscriberState),
+		id:          streamID(instrumentID, timeframe),
+		replay:      newReplayRing(b.retention),
+		subs:        make(map[uint64]*subscriberState),
+		idleSinceMS: time.Now().UnixMilli(),
 	}
 }
 
