@@ -231,6 +231,9 @@ async function bootstrapLightweight(
 }
 
 async function bootstrap() {
+  // Browser-local DevTools diagnostic. Never mixes server/client clocks.
+  (window as Window & { __QNEXT_LATENCY__?: typeof qnextBrowserLatencySnapshot }).__QNEXT_LATENCY__ =
+    qnextBrowserLatencySnapshot;
   const [timeframes, settings] = await Promise.all([
     loadEnabledTimeframes(),
     loadWorkspaceSettings(),
