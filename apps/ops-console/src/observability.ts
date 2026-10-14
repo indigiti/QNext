@@ -1,4 +1,59 @@
-export {};
+import { OpsAPI, type BackendPerformanceReport } from './api';
+
+const backendReportAPI = new OpsAPI();
+let backendReportSnapshot: BackendPerformanceReport | null = null;
+let backendReportSampling = false;
+
+function renderBackendReport(report: BackendPerformanceReport): void {
+  backendReportSnapshot = report;
+  const output = document.querySelector<HTMLElement>('#backend-performance-output');
+  const download = document.querySelector<HTMLButtonElement>('#backend-performance-download');
+  if (!output) return;
+  if (download) download.disabled = report.status !== 'ready';
+  if (report.status !== 'ready') {
+    const elapsed = Math.round((report.window?.duration_ms ?? 0) / 1000);
+    output.textContent = `Collecting backend samples: ${elapsed}/60 seconds · ${report.window?.collected_samples ?? 0} samples. Keep this admin page open.`;
+    return;
+  }
+  const broker = report.broker ?? {};
+  const rows = Object.entries(report.latencies ?? {}).map(([name, value]) =>
+    `${name}: p95 ${value.latest_p95_us ?? '—'} µs · p99 ${value.latest_p99_us ?? '—'} µs · new samples ${value.new_samples ?? '—'}`,
+  );
+  const warnings = report.warnings?.length ? `\nWarnings: ${report.warnings.join('; ')}` : '';
+  output.textContent = [
+    `Release: ${report.release?.commit?.slice(0, 12) ?? 'unknown'} · ${Math.round((report.window?.duration_ms ?? 0) / 1000)}s window`,
+    `Subscriptions: ${broker.subscribers ?? '—'} · WSS connections: ${broker.websocket_connections ?? '—'}`,
+    `Provider observations: +${report.provider_observations_delta ?? '—'} · Slow disconnects: +${report.counter_deltas?.slow_disconnects_delta ?? '—'}`,
+    ...rows,
+  ].join('\n') + warnings;
+}
+
+async function captureBackendReport(): Promise<void> {
+  if (!document.querySelector('#backend-performance-panel') || backendReportSampling) return;
+  backendReportSampling = true;
+  try {
+    renderBackendReport(await backendReportAPI.captureBackendPerformanceReport());
+  } catch (error) {
+    const output = document.querySelector<HTMLElement>('#backend-performance-output');
+    if (output) output.textContent = `Backend report unavailable: ${(error as Error).message}`;
+  } finally {
+    backendReportSampling = false;
+  }
+}
+
+function downloadBackendReport(): void {
+  if (!backendReportSnapshot || backendReportSnapshot.status !== 'ready') return;
+  const blob = new Blob([JSON.stringify(backendReportSnapshot, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'qnext-backend-performance-report.json';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 type InstrumentTelemetry = {
   provider?: string;
@@ -161,12 +216,26 @@ function ensurePanel(): HTMLDivElement | null {
       <span id="observability-health" class="badge good">LIVE</span>
     </div>
     <div id="live-observability" class="feed-provider-grid"></div>
+    <div id="backend-performance-panel" class="feed-provider-card" style="margin-top: 14px;">
+      <div class="line"><strong>Backend Performance Report</strong></div>
+      <p class="muted">Admin-only · 10s samples · 60s rolling baseline · read-only Market Core</p>
+      <pre id="backend-performance-output" style="white-space: pre-wrap; overflow-wrap: anywhere;">Collecting backend telemetry…</pre>
+      <div class="actions">
+        <button id="backend-performance-generate" class="secondary" type="button">Generate report</button>
+        <button id="backend-performance-download" class="secondary" type="button" disabled>Download JSON</button>
+      </div>
+    </div>
   `;
   if (actions) {
     card.insertBefore(section, actions);
   } else {
     card.appendChild(section);
   }
+  section.querySelector<HTMLButtonElement>('#backend-performance-generate')
+    ?.addEventListener('click', () => void captureBackendReport());
+  section.querySelector<HTMLButtonElement>('#backend-performance-download')
+    ?.addEventListener('click', downloadBackendReport);
+  void captureBackendReport();
   return section.querySelector<HTMLDivElement>('#live-observability');
 }
 
@@ -340,3 +409,5 @@ async function refreshObservability(): Promise<void> {
 
 void refreshObservability();
 window.setInterval(() => void refreshObservability(), 5_000);
+// Private Ops API computes and stores the rolling baseline server-side.
+window.setInterval(() => void captureBackendReport(), 10_000);
