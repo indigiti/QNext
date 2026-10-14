@@ -81,6 +81,8 @@ type BrokerStreamStats struct {
 
 type BrokerStats struct {
 	Streams          int                 `json:"streams"`
+	ActiveStreams    int                 `json:"active_streams"`
+	IdleStreams      int                 `json:"idle_streams"`
 	Subscribers      int                 `json:"subscribers"`
 	ReplayEvents     int                 `json:"replay_events"`
 	CoalescedForming uint64              `json:"coalesced_forming"`
@@ -231,6 +233,11 @@ func (b *Broker) Stats() BrokerStats {
 		if event, ok := state.replay.Last(); ok {
 			streamStats.LastBarOpenTimeMS = event.Bar.OpenTime.UTC().UnixMilli()
 			streamStats.LastBarFinal = event.Bar.Final
+		}
+		if streamStats.Subscribers > 0 {
+			stats.ActiveStreams++
+		} else {
+			stats.IdleStreams++
 		}
 		stats.Subscribers += streamStats.Subscribers
 		stats.ReplayEvents += streamStats.ReplayEvents
