@@ -160,9 +160,12 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var writeMu sync.Mutex
 	write := func(message serverMessage) error {
+		started := time.Now()
 		writeMu.Lock()
 		defer writeMu.Unlock()
-		return connection.WriteJSON(message)
+		err := connection.WriteJSON(message)
+		h.Broker.writeLatency.observe(time.Since(started))
+		return err
 	}
 
 	if err := write(serverMessage{Op: "hello", Protocol: "QNEXT.STREAM/1"}); err != nil {

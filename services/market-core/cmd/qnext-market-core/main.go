@@ -99,6 +99,9 @@ func main() {
 
 	store := history.New(storageRoot)
 	broker := stream.NewBroker(1024, 128)
+	// Reclaim idle replay capacity outside the candle hot path. Every active
+	// or recently published stream keeps its full replay/resume window.
+	go broker.RunMaintenance(ctx, 5*time.Minute, 45*time.Minute)
 	feedTracker := feedstatus.New()
 
 	var historicalRepairer *upstox.HistoricalRepairer

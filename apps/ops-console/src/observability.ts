@@ -79,6 +79,11 @@ type FeedPayload = {
         websocket_connections?: number;
         replay_slots?: number;
         replay_bytes_estimated?: number;
+        compacted_streams?: number;
+        reclaimed_replay_slots?: number;
+        evicted_empty_streams?: number;
+        publish_latency?: { samples?: number; p50_us?: number; p95_us?: number; p99_us?: number };
+        ws_write_latency?: { samples?: number; p50_us?: number; p95_us?: number; p99_us?: number };
         replay_events?: number;
         coalesced_forming?: number;
         dropped_forming?: number;
@@ -250,6 +255,11 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Subscribers</span><strong>${broker?.subscribers ?? 0}</strong></div>
       <div class="feed-kv"><span>Replay events / slots</span><strong>${broker?.replay_events ?? 0} / ${broker?.replay_slots ?? '—'}</strong></div>
       <div class="feed-kv"><span>Replay slot memory (shallow)</span><strong>${broker?.replay_bytes_estimated == null ? '—' : `${(broker.replay_bytes_estimated / 1024).toFixed(1)} KiB`}</strong></div>
+      <div class="feed-kv"><span>Compacted streams / reclaimed slots</span><strong>${broker?.compacted_streams ?? '—'} / ${broker?.reclaimed_replay_slots ?? '—'}</strong></div>
+      <div class="feed-kv"><span>Empty streams removed</span><strong>${broker?.evicted_empty_streams ?? '—'}</strong></div>
+      <div class="feed-kv"><span>Broker publish p50 / p95 / p99</span><strong>${broker?.publish_latency?.samples ? `${broker.publish_latency.p50_us} / ${broker.publish_latency.p95_us} / ${broker.publish_latency.p99_us} µs` : 'warming'}</strong></div>
+      <div class="feed-kv"><span>WSS write p50 / p95 / p99</span><strong>${broker?.ws_write_latency?.samples ? `${broker.ws_write_latency.p50_us} / ${broker.ws_write_latency.p95_us} / ${broker.ws_write_latency.p99_us} µs` : 'warming'}</strong></div>
+      <div class="feed-kv"><span>Latency sample counts (publish / WSS)</span><strong>${broker?.publish_latency?.samples ?? 0} / ${broker?.ws_write_latency?.samples ?? 0}</strong></div>
       <div class="feed-kv"><span>Active stream subscriptions</span><strong>${details.filter((stream) => (stream.subscribers ?? 0) > 0).map((stream) => `${stream.instrument_id} ${stream.timeframe}: ${stream.subscribers}`).join(', ') || 'none'}</strong></div>
       <div class="feed-kv"><span>Coalesced forming</span><strong>${broker?.coalesced_forming ?? 0}</strong></div>
       <div class="feed-kv"><span>Dropped forming</span><strong>${broker?.dropped_forming ?? 0}</strong></div>
