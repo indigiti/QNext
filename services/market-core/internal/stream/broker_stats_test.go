@@ -54,7 +54,7 @@ func TestBrokerStatsTrackStreamsSubscribersAndFreshness(t *testing.T) {
 func TestBrokerReplayCapacityAndConnectionAccounting(t *testing.T) {
 	broker := NewBroker(32, 4)
 	at := time.Date(2026, 10, 14, 3, 45, 0, 0, time.UTC)
-		broker.PublishBar(domain.Bar{InstrumentID: "NSE:NIFTY50", Timeframe: "15s", OpenTime: at})
+	broker.PublishBar(domain.Bar{InstrumentID: "NSE:NIFTY50", Timeframe: "15s", OpenTime: at})
 	stats := broker.Stats()
 	if stats.ActiveStreams != 0 || stats.IdleStreams != 1 || stats.WebSocketConnections != 0 {
 		t.Fatalf("unexpected idle stats: %+v", stats)
