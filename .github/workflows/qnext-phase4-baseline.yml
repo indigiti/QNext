@@ -1,0 +1,32 @@
+name: QNext Staging Baseline Collector
+
+on:
+  pull_request:
+    paths:
+      - "scripts/diagnostics/qnext_phase4_baseline.py"
+      - "scripts/diagnostics/test_phase4_baseline.py"
+      - ".github/workflows/qnext-phase4-baseline.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/diagnostics/qnext_phase4_baseline.py"
+      - "scripts/diagnostics/test_phase4_baseline.py"
+      - ".github/workflows/qnext-phase4-baseline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test read-only baseline collector
+        run: python -m unittest discover -s scripts/diagnostics -p "test_phase4_baseline.py" -v
+      - name: Syntax check
+        run: python -m py_compile scripts/diagnostics/qnext_phase4_baseline.py
