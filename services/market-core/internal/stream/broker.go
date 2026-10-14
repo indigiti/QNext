@@ -207,6 +207,9 @@ func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
 		state.slowDisconnects++
 		released++
 	}
+	if len(state.subs) == 0 && state.idleSinceMS == 0 {
+		state.idleSinceMS = time.Now().UnixMilli()
+	}
 	b.mu.Unlock()
 
 	for i := 0; i < released; i++ {
