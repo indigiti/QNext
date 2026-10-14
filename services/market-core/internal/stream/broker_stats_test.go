@@ -54,24 +54,24 @@ func TestBrokerStatsTrackStreamsSubscribersAndFreshness(t *testing.T) {
 func TestBrokerReplayCapacityAndConnectionAccounting(t *testing.T) {
 	broker := NewBroker(32, 4)
 	at := time.Date(2026, 10, 14, 3, 45, 0, 0, time.UTC)
-	broker.PublishBar(domain.Bar{InstrumentID: "NSE:NIFTY50", Timeframe: "15s", OpenTime: at})
+		broker.PublishBar(domain.Bar{InstrumentID: "NSE:NIFTY50", Timeframe: "15s", OpenTime: at})
 	stats := broker.Stats()
 	if stats.ActiveStreams != 0 || stats.IdleStreams != 1 || stats.WebSocketConnections != 0 {
-	t.Fatalf("unexpected idle stats: %+v", stats)
+		t.Fatalf("unexpected idle stats: %+v", stats)
 	}
 	if stats.ReplayEvents != 1 || stats.ReplaySlots != 16 || stats.ReplayBytesEstimated <= 0 {
-	t.Fatalf("unexpected replay footprint: %+v", stats)
+		t.Fatalf("unexpected replay footprint: %+v", stats)
 	}
 	for i := 0; i < 17; i++ {
-	broker.PublishBar(domain.Bar{InstrumentID: "NSE:NIFTY50", Timeframe: "15s", OpenTime: at})
+		broker.PublishBar(domain.Bar{InstrumentID: "NSE:NIFTY50", Timeframe: "15s", OpenTime: at})
 	}
 	stats = broker.Stats()
 	if stats.ReplaySlots != 32 || stats.ReplayEvents != 18 {
-	t.Fatalf("replay growth changed: %+v", stats)
+		t.Fatalf("replay growth changed: %+v", stats)
 	}
 	broker.webSocketConnections.Add(2)
 	if got := broker.Stats().WebSocketConnections; got != 2 {
-	t.Fatalf("physical connection count=%d", got)
+		t.Fatalf("physical connection count=%d", got)
 	}
 	broker.webSocketConnections.Add(-2)
 }
