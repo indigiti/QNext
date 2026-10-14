@@ -127,7 +127,9 @@ func TestBrokerActiveIdleStreamAccounting(t *testing.T) {
 		t.Fatalf("unexpected idle stats: %+v", stats)
 	}
 	sub, err := broker.Subscribe("NSE:NIFTY50", "1m", nil)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	stats = broker.Stats()
 	if stats.ActiveStreams != 1 || stats.IdleStreams != 0 || stats.Subscribers != 1 || stats.Details[0].Subscribers != 1 {
 		t.Fatalf("unexpected subscribed stats: %+v", stats)
