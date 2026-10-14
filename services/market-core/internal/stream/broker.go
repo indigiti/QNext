@@ -20,6 +20,7 @@ type BarEvent struct {
 	Bar            domain.Bar
 	ResyncRequired bool
 	Reason         string
+	PublishedAt    time.Time
 }
 
 type Broker struct {
@@ -31,6 +32,8 @@ type Broker struct {
 	webSocketConnections atomic.Int64
 	publishLatency       sampledLatencyHistogram
 	writeLatency         sampledLatencyHistogram
+	tickHandleLatency    sampledLatencyHistogram
+	publishToWriteLatency sampledLatencyHistogram
 	compactedStreams     uint64
 	reclaimedReplaySlots uint64
 	evictedEmptyStreams  uint64
@@ -103,6 +106,8 @@ type BrokerStats struct {
 	EvictedEmptyStreams  uint64              `json:"evicted_empty_streams"`
 	PublishLatency       LatencyStats        `json:"publish_latency"`
 	WSWriteLatency       LatencyStats        `json:"ws_write_latency"`
+	TickHandleLatency    LatencyStats        `json:"tick_handle_latency"`
+	PublishToWriteLatency LatencyStats       `json:"publish_to_ws_write_latency"`
 	CoalescedForming     uint64              `json:"coalesced_forming"`
 	DroppedForming       uint64              `json:"dropped_forming"`
 	SlowDisconnects      uint64              `json:"slow_disconnects"`
@@ -155,6 +160,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		StreamID: state.id,
 		Seq:      state.seq,
 		Bar:      bar,
+		PublishedAt: started,
 	}
 	state.replay.Append(event)
 
@@ -180,6 +186,15 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		demand.Default().Release(bar.InstrumentID)
 	}
 	b.publishLatency.observe(time.Since(started))
+}
+
+// ObserveTickHandleLatency measures the canonical MarketSink.Handle path,
+// including synthetic processing, persistence enqueue and bar publishing.
+// It is not upstream exchange latency or browser render latency.
+func (b *Broker) ObserveTickHandleLatency(elapsed time.Duration) {
+	if b != nil {
+		b.tickHandleLatency.observe(elapsed)
+	}
 }
 
 func (b *Broker) PublishResync(instrumentID, timeframe, reason string) {
@@ -248,6 +263,8 @@ func (b *Broker) Stats() BrokerStats {
 		EvictedEmptyStreams:  b.evictedEmptyStreams,
 		PublishLatency:       b.publishLatency.snapshot(),
 		WSWriteLatency:       b.writeLatency.snapshot(),
+		TickHandleLatency:    b.tickHandleLatency.snapshot(),
+		PublishToWriteLatency: b.publishToWriteLatency.snapshot(),
 	}
 	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
 	for key, state := range b.streams {
