@@ -1,3 +1,5 @@
+import { liveWSSDispatchLatency } from './live-latency';
+
 export interface QNextProviderOptions {
   apiBase?: string;
   streamUrl?: string;
