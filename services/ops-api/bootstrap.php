@@ -8,4 +8,5 @@ require_once __DIR__ . '/src/AtomicFile.php';
 require_once __DIR__ . '/src/ReleaseCatalog.php';
 require_once __DIR__ . '/src/ServiceControl.php';
 require_once __DIR__ . '/src/PaperProxy.php';
+require_once __DIR__ . '/src/PerformanceReport.php';
 require_once __DIR__ . '/src/OpsController.php';

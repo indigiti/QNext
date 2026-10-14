@@ -89,6 +89,25 @@ final class OpsController
         ];
     }
 
+    public function latestPerformanceReport(): array
+    {
+        return (new PerformanceReport($this->config->privateRoot . '/run/performance-baseline.json'))->latest();
+    }
+
+    public function capturePerformanceReport(): array
+    {
+        $report = new PerformanceReport($this->config->privateRoot . '/run/performance-baseline.json');
+        return $report->capture(function (): array {
+            $version = $this->probe('/version');
+            $feed = $this->probe('/api/v1/feed-status');
+            if (!($version['ok'] ?? false) || !($feed['ok'] ?? false)
+                || !is_array($version['body'] ?? null) || !is_array($feed['body'] ?? null)) {
+                throw new RuntimeException('Market Core telemetry is unavailable');
+            }
+            return [$version['body'], $feed['body']];
+        });
+    }
+
     public function feedStatus(): array
     {
         $probe = $this->probe('/api/v1/feed-status');

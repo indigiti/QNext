@@ -81,6 +81,8 @@ jobs:
           php -l services/ops-api/src/ServiceControl.php
           php -l services/ops-api/src/PaperProxy.php
           php -l services/ops-api/src/OpsController.php
+          php -l services/ops-api/src/PerformanceReport.php
+          php services/ops-api/tests/performance_report.php
           bash -n deploy/qnext-ops-user
           bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php
