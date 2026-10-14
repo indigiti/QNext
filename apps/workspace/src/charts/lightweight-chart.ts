@@ -11,6 +11,7 @@ import {
 
 import { QNextProvider, type QNextBar } from '../qnext-provider';
 import { toCandlestickData, toVolumeData } from './lightweight-adapter';
+import { loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY } from './history-pagination';
 import {
   toLightweightPaperMarker,
   type QNextPaperMarker,
@@ -42,6 +43,14 @@ export class QNextLightweightChart {
   private readonly historyLimit: number;
   private chart?: IChartApi;
   private candleSeries?: ISeriesApi<'Candlestick'>;
+  private volumeSeries?: ISeriesApi<'Histogram'>;
+  private bars: QNextBar[] = [];
+  private historyExhausted = false;
+  private historyInFlight = false;
+  private lastLogicalFrom?: number;
+  private historyDebounce?: ReturnType<typeof setTimeout>;
+  private unbindHistory?: () => void;
+  private disposed = false;
   private markerSetter?: (markers: QNextPaperMarker[]) => void;
   private unsubscribe?: () => void;
   private resizeObserver?: ResizeObserver;
@@ -100,6 +109,7 @@ export class QNextLightweightChart {
 
     this.chart = chart;
     this.candleSeries = candleSeries;
+    this.volumeSeries = volumeSeries;
     this.markerSetter = (markers) => {
       markerPrimitive.setMarkers(markers.map(toLightweightPaperMarker));
     };
@@ -107,14 +117,32 @@ export class QNextLightweightChart {
     const bars = await this.provider.getBars(this.ticker, this.timeframe, {
       limit: this.historyLimit,
     });
+    if (this.disposed) return;
+    this.bars = bars;
     candleSeries.setData(bars.map(toCandlestickData));
     volumeSeries.setData(bars.map(toVolumeData).filter((bar) => bar !== undefined));
     chart.timeScale().fitContent();
+    const scale = chart.timeScale();
+    const onPan: Parameters<typeof scale.subscribeVisibleLogicalRangeChange>[0] = (range) => {
+      if (!range || this.disposed || !this.bars.length) return;
+      const previous = this.lastLogicalFrom;
+      this.lastLogicalFrom = range.from;
+      // Initial fitContent does not fetch. Only leftward user navigation does.
+      if (previous === undefined || range.from >= previous - 1 || range.from > 150) return;
+      if (this.historyDebounce) clearTimeout(this.historyDebounce);
+      this.historyDebounce = setTimeout(() => void this.fetchEarlier(), 120);
+    };
+    scale.subscribeVisibleLogicalRangeChange(onPan);
+    this.unbindHistory = () => scale.unsubscribeVisibleLogicalRangeChange(onPan);
 
     this.unsubscribe = this.provider.subscribe(
       this.ticker,
       this.timeframe,
       (bar: QNextBar) => {
+        const last = this.bars[this.bars.length - 1];
+        if (last && bar.time < last.time) return;
+        if (last && bar.time === last.time) this.bars[this.bars.length - 1] = bar;
+        else this.bars.push(bar);
         candleSeries.update(toCandlestickData(bar));
         const volume = toVolumeData(bar);
         if (volume) volumeSeries.update(volume);
@@ -128,6 +156,68 @@ export class QNextLightweightChart {
       });
     });
     this.resizeObserver.observe(this.container);
+  }
+
+  private async fetchEarlier(): Promise<void> {
+    if (this.disposed || this.historyExhausted || this.historyInFlight || !this.bars.length) return;
+    if (this.bars.length >= MAX_CHART_HISTORY) {
+      this.historyExhausted = true;
+      this.container.dataset.qnextHistory = 'depth-limit';
+      this.container.title = 'Loaded the maximum 12,000 chart candles';
+      return;
+    }
+    const firstTime = this.bars[0].time;
+    this.historyInFlight = true;
+    this.container.dataset.qnextHistory = 'loading';
+    try {
+      const page = await loadOlderHistoryPage(
+        firstTime, this.timeframe,
+        (from, to, limit) => this.provider.getBars(this.ticker, this.timeframe, { from, to, limit }),
+      );
+      if (this.disposed) return;
+      if (page.exhausted) {
+        this.historyExhausted = true;
+        this.container.dataset.qnextHistory = 'unavailable';
+        this.container.title = 'No older candles found in the configured history search window';
+        return;
+      }
+      const previousFirst = this.bars[0].time;
+      const combined = mergeHistoricalBars(this.bars, page.bars);
+      const merged = combined.slice(-MAX_CHART_HISTORY);
+      const prepended = merged.filter((bar) => bar.time < previousFirst).length;
+      if (!prepended) {
+        this.historyExhausted = true;
+        this.container.dataset.qnextHistory = 'unavailable';
+        return;
+      }
+      const chart = this.chart;
+      const scale = chart?.timeScale();
+      const visible = scale?.getVisibleLogicalRange();
+      this.bars = merged;
+      this.candleSeries?.setData(merged.map(toCandlestickData));
+      this.volumeSeries?.setData(merged.map(toVolumeData).filter((bar) => bar !== undefined));
+      if (visible && scale) {
+        // Logical coordinates shift when earlier bars are prepended.
+        scale.setVisibleLogicalRange({
+          from: visible.from + prepended,
+          to: visible.to + prepended,
+        });
+      }
+      if (merged.length >= MAX_CHART_HISTORY) {
+        this.historyExhausted = true;
+        this.container.dataset.qnextHistory = 'depth-limit';
+        this.container.title = 'Loaded the maximum 12,000 chart candles';
+      } else {
+        this.container.dataset.qnextHistory = 'loaded';
+      }
+    } catch (error) {
+      if (!this.disposed) {
+        this.container.dataset.qnextHistory = 'retryable-error';
+        console.warn('QNext historical pan fetch failed', error);
+      }
+    } finally {
+      this.historyInFlight = false;
+    }
   }
 
   setPaperMarkers(markers: QNextPaperMarker[]): void {
@@ -188,6 +278,11 @@ export class QNextLightweightChart {
   }
 
   destroy(): void {
+    this.disposed = true;
+    if (this.historyDebounce) clearTimeout(this.historyDebounce);
+    this.historyDebounce = undefined;
+    this.unbindHistory?.();
+    this.unbindHistory = undefined;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.resizeObserver?.disconnect();
@@ -197,5 +292,7 @@ export class QNextLightweightChart {
     this.chart?.remove();
     this.chart = undefined;
     this.candleSeries = undefined;
+    this.volumeSeries = undefined;
+    this.bars = [];
   }
 }

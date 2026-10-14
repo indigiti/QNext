@@ -237,6 +237,15 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_query"})
 		return
 	}
+	limit := 0
+	if raw := query.Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 5000 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_limit"})
+			return
+		}
+		limit = parsed
+	}
 
 	bars, err := s.history.LoadRange(
 		instrumentID,
@@ -269,6 +278,11 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 
 	if sourceID := strings.TrimSpace(s.options.VolumeAliases[instrumentID]); sourceID != "" {
 		s.overlayVolume(bars, sourceID, timeframe, fromMS, toMS)
+	}
+	if limit > 0 && len(bars) > limit {
+		// Return the latest candles within this exclusive upper time bound.
+		// This is response pagination only; storage and authority are unchanged.
+		bars = bars[len(bars)-limit:]
 	}
 
 	response := barsResponse{Bars: make([]barResponse, 0, len(bars))}

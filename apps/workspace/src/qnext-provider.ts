@@ -195,6 +195,7 @@ export class QNextProvider {
       timeframe,
       from_ms: String(from),
       to_ms: String(to),
+      ...(limit > 0 ? { limit: String(Math.min(limit, 5000)) } : {}),
     });
 
     const response = await this.fetchImpl(
@@ -226,6 +227,7 @@ export class QNextProvider {
       timeframe,
       from_ms: String(from),
       to_ms: String(to),
+      ...(limit > 0 ? { limit: String(Math.min(limit, 5000)) } : {}),
     });
 
     const response = await this.fetchImpl(

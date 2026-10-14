@@ -120,6 +120,47 @@ func TestBarsEndpointOverlaysConfiguredProxyVolume(t *testing.T) {
 	}
 }
 
+func TestBarsEndpointBoundedHistoryPagination(t *testing.T) {
+	base := time.Date(2026, 10, 14, 3, 45, 0, 0, time.UTC)
+	bars := make([]domain.Bar, 0, 5)
+	for i := 0; i < 5; i++ {
+		bars = append(bars, domain.Bar{
+			InstrumentID: "QNEXT:NIFTY-SYN+",
+			Timeframe:    "15s",
+			OpenTime:     base.Add(time.Duration(i) * 15 * time.Second),
+			Open:         25000 + float64(i),
+			High:         25001 + float64(i),
+			Low:          24999 + float64(i),
+			Close:        25000 + float64(i),
+			Final:        true,
+		})
+	}
+	handler := New(fakeHistory{bars: bars}, Options{})
+	path := "/api/v1/bars?instrument_id=QNEXT%3ANIFTY-SYN%2B&timeframe=15s&from_ms=" +
+		strconv.FormatInt(base.UnixMilli(), 10) + "&to_ms=" +
+		strconv.FormatInt(base.Add(2*time.Minute).UnixMilli(), 10)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path+"&limit=2", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("bounded history status=%d: %s", response.Code, response.Body.String())
+	}
+	var payload barsResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Bars) != 2 || payload.Bars[0].Time != bars[3].OpenTime.UnixMilli() ||
+		payload.Bars[1].Time != bars[4].OpenTime.UnixMilli() {
+		t.Fatalf("expected last two SYN+ bars; got %+v", payload.Bars)
+	}
+	for _, bad := range []string{"0", "-1", "5001", "invalid"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path+"&limit="+bad, nil))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("limit %s accepted: status=%d", bad, response.Code)
+		}
+	}
+}
+
 func TestBarsEndpointRejectsInvalidQuery(t *testing.T) {
 	handler := New(fakeHistory{}, Options{})
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/bars", nil)
