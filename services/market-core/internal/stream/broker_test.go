@@ -117,3 +117,26 @@ func TestBrokerPublishesResyncControlWithoutReplacingLatestBar(t *testing.T) {
 		t.Fatalf("resync control must not replace latest bar: %+v ok=%v", latest, ok)
 	}
 }
+
+func TestBrokerActiveIdleStreamAccounting(t *testing.T) {
+	broker := NewBroker(8, 8)
+	at := time.Date(2026, 10, 14, 3, 30, 0, 0, time.UTC)
+	broker.PublishBar(bar("NSE:NIFTY50", "1m", at, 25000))
+	stats := broker.Stats()
+	if stats.Streams != 1 || stats.ActiveStreams != 0 || stats.IdleStreams != 1 {
+		t.Fatalf("unexpected idle stats: %+v", stats)
+	}
+	sub, err := broker.Subscribe("NSE:NIFTY50", "1m", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats = broker.Stats()
+	if stats.ActiveStreams != 1 || stats.IdleStreams != 0 || stats.Subscribers != 1 || stats.Details[0].Subscribers != 1 {
+		t.Fatalf("unexpected subscribed stats: %+v", stats)
+	}
+	sub.Cancel()
+	stats = broker.Stats()
+	if stats.ActiveStreams != 0 || stats.IdleStreams != 1 || stats.Subscribers != 0 {
+		t.Fatalf("unexpected cancelled stats: %+v", stats)
+	}
+}
