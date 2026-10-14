@@ -62,9 +62,9 @@ func (h *sampledLatencyHistogram) snapshot() LatencyStats {
 	}
 	return LatencyStats{
 		Samples: count,
-		P50US: percentile(50),
-		P95US: percentile(95),
-		P99US: percentile(99),
+		P50US:   percentile(50),
+		P95US:   percentile(95),
+		P99US:   percentile(99),
 	}
 }
 
