@@ -27,7 +27,7 @@ func TestLocalProfilingHandlerRequiresToken(t *testing.T) {
 	const token = "one-long-random-token-for-tests-123456789"
 	handler := localProfilingHandler(token)
 	for _, tc := range []struct {
-		token string
+		token  string
 		method string
 		status int
 	}{
