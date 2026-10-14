@@ -11,7 +11,7 @@ import {
 
 import { QNextProvider, type QNextBar } from '../qnext-provider';
 import { toCandlestickData, toVolumeData } from './lightweight-adapter';
-import { loadOlderHistoryPage, mergeHistoricalBars } from './history-pagination';
+import { loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY } from './history-pagination';
 import {
   toLightweightPaperMarker,
   type QNextPaperMarker,
@@ -160,6 +160,12 @@ export class QNextLightweightChart {
 
   private async fetchEarlier(): Promise<void> {
     if (this.disposed || this.historyExhausted || this.historyInFlight || !this.bars.length) return;
+    if (this.bars.length >= MAX_CHART_HISTORY) {
+      this.historyExhausted = true;
+      this.container.dataset.qnextHistory = 'depth-limit';
+      this.container.title = 'Loaded the maximum 12,000 chart candles';
+      return;
+    }
     const firstTime = this.bars[0].time;
     this.historyInFlight = true;
     this.container.dataset.qnextHistory = 'loading';
@@ -176,7 +182,8 @@ export class QNextLightweightChart {
         return;
       }
       const previousFirst = this.bars[0].time;
-      const merged = mergeHistoricalBars(this.bars, page.bars);
+      const combined = mergeHistoricalBars(this.bars, page.bars);
+      const merged = combined.slice(-MAX_CHART_HISTORY);
       const prepended = merged.filter((bar) => bar.time < previousFirst).length;
       if (!prepended) {
         this.historyExhausted = true;
@@ -196,7 +203,13 @@ export class QNextLightweightChart {
           to: visible.to + prepended,
         });
       }
-      this.container.dataset.qnextHistory = 'loaded';
+      if (merged.length >= MAX_CHART_HISTORY) {
+        this.historyExhausted = true;
+        this.container.dataset.qnextHistory = 'depth-limit';
+        this.container.title = 'Loaded the maximum 12,000 chart candles';
+      } else {
+        this.container.dataset.qnextHistory = 'loaded';
+      }
     } catch (error) {
       if (!this.disposed) {
         this.container.dataset.qnextHistory = 'retryable-error';
