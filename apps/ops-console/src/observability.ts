@@ -15,6 +15,7 @@ type BrokerStream = {
   seq?: number;
   subscribers?: number;
   replay_events?: number;
+  replay_slots?: number;
   last_published_at_ms?: number;
   last_bar_open_time_ms?: number;
   last_bar_final?: boolean;
@@ -72,7 +73,12 @@ type FeedPayload = {
       };
       broker?: {
         streams?: number;
+        active_streams?: number;
+        idle_streams?: number;
         subscribers?: number;
+        websocket_connections?: number;
+        replay_slots?: number;
+        replay_bytes_estimated?: number;
         replay_events?: number;
         coalesced_forming?: number;
         dropped_forming?: number;
@@ -239,8 +245,12 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
     <div class="feed-provider-card">
       <div class="line"><strong>LIVE BROKER</strong>${stateBadge((broker?.subscribers ?? 0) > 0, (broker?.subscribers ?? 0) > 0 ? 'ACTIVE' : 'IDLE')}</div>
       <div class="feed-kv"><span>Logical streams</span><strong>${broker?.streams ?? 0}</strong></div>
+      <div class="feed-kv"><span>Active / idle streams</span><strong>${broker?.active_streams ?? '—'} / ${broker?.idle_streams ?? '—'}</strong></div>
+      <div class="feed-kv"><span>Physical WSS connections</span><strong>${broker?.websocket_connections ?? '—'}</strong></div>
       <div class="feed-kv"><span>Subscribers</span><strong>${broker?.subscribers ?? 0}</strong></div>
-      <div class="feed-kv"><span>Replay events</span><strong>${broker?.replay_events ?? 0}</strong></div>
+      <div class="feed-kv"><span>Replay events / slots</span><strong>${broker?.replay_events ?? 0} / ${broker?.replay_slots ?? '—'}</strong></div>
+      <div class="feed-kv"><span>Replay slot memory (shallow)</span><strong>${broker?.replay_bytes_estimated == null ? '—' : `${(broker.replay_bytes_estimated / 1024).toFixed(1)} KiB`}</strong></div>
+      <div class="feed-kv"><span>Active stream subscriptions</span><strong>${details.filter((stream) => (stream.subscribers ?? 0) > 0).map((stream) => `${stream.instrument_id} ${stream.timeframe}: ${stream.subscribers}`).join(', ') || 'none'}</strong></div>
       <div class="feed-kv"><span>Coalesced forming</span><strong>${broker?.coalesced_forming ?? 0}</strong></div>
       <div class="feed-kv"><span>Dropped forming</span><strong>${broker?.dropped_forming ?? 0}</strong></div>
       <div class="feed-kv"><span>Slow disconnects</span><strong>${broker?.slow_disconnects ?? 0}</strong></div>
