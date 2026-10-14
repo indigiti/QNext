@@ -7,6 +7,7 @@ import {
   normalizeLightweightLayout,
 } from './charts/lightweight-workspace';
 import { QNextProvider } from './qnext-provider';
+import { qnextBrowserLatencySnapshot } from './live-latency';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
 import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
