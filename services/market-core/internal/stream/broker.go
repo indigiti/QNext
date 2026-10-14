@@ -241,13 +241,13 @@ func (b *Broker) Stats() BrokerStats {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	stats := BrokerStats{
-		Streams: len(b.streams),
+		Streams:              len(b.streams),
 		WebSocketConnections: int(b.webSocketConnections.Load()),
-		CompactedStreams: b.compactedStreams,
+		CompactedStreams:     b.compactedStreams,
 		ReclaimedReplaySlots: b.reclaimedReplaySlots,
-		EvictedEmptyStreams: b.evictedEmptyStreams,
-		PublishLatency: b.publishLatency.snapshot(),
-		WSWriteLatency: b.writeLatency.snapshot(),
+		EvictedEmptyStreams:  b.evictedEmptyStreams,
+		PublishLatency:       b.publishLatency.snapshot(),
+		WSWriteLatency:       b.writeLatency.snapshot(),
 	}
 	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
 	for key, state := range b.streams {
