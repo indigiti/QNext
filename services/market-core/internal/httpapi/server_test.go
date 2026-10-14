@@ -120,20 +120,19 @@ func TestBarsEndpointOverlaysConfiguredProxyVolume(t *testing.T) {
 	}
 }
 
-
 func TestBarsEndpointBoundedHistoryPagination(t *testing.T) {
 	base := time.Date(2026, 10, 14, 3, 45, 0, 0, time.UTC)
 	bars := make([]domain.Bar, 0, 5)
 	for i := 0; i < 5; i++ {
 		bars = append(bars, domain.Bar{
 			InstrumentID: "QNEXT:NIFTY-SYN+",
-			Timeframe: "15s",
-			OpenTime: base.Add(time.Duration(i) * 15 * time.Second),
-			Open: 25000 + float64(i),
-			High: 25001 + float64(i),
-			Low: 24999 + float64(i),
-			Close: 25000 + float64(i),
-			Final: true,
+			Timeframe:    "15s",
+			OpenTime:     base.Add(time.Duration(i) * 15 * time.Second),
+			Open:         25000 + float64(i),
+			High:         25001 + float64(i),
+			Low:          24999 + float64(i),
+			Close:        25000 + float64(i),
+			Final:        true,
 		})
 	}
 	handler := New(fakeHistory{bars: bars}, Options{})
