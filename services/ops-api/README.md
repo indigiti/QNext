@@ -32,4 +32,16 @@ For a new installation, configure `QNEXT_OPS_BOOTSTRAP_TOKEN` with a strong rand
 
 The web wrapper invokes `sudo -n /usr/local/libexec/qnext-ops-helper`. The sudoers contract permits only the documented fixed operations.
 
+The Admin LIVE BROKER section can also generate a backend performance report: authenticated
+`POST /performance-report` records a single rate-limited, sanitized metric snapshot
+every 10 seconds while an authenticated Admin page is open, and authenticated
+`GET /performance-report` retrieves the most recently generated window.
+After 60 seconds of sampling, the Admin button can download a JSON report.
+The last 120 seconds (max 24 samples) are held under the private
+`run/performance-baseline.json` path, with mode 0600. No access without
+an Admin session or token, no public performance endpoint, no Go service
+restart, no background process, no WebSocket subscription, and no profiler
+activation. Opening Admin begins sampling; closing it stops new samples.
+Percentiles are cumulative histograms, not end-to-end market-to-paint latencies.
+
 The current file-backed Admin session is suitable for QNext stage/controlled production use. A future DigiOps identity integration can replace the local token bootstrap without changing the Market Core data path.
