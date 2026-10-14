@@ -24,19 +24,19 @@ type BarEvent struct {
 }
 
 type Broker struct {
-	mu                   sync.Mutex
-	retention            int
-	subscriberBuffer     int
-	streams              map[string]*streamState
-	nextSubscriberID     uint64
-	webSocketConnections atomic.Int64
-	publishLatency       sampledLatencyHistogram
-	writeLatency         sampledLatencyHistogram
-	tickHandleLatency    sampledLatencyHistogram
+	mu                    sync.Mutex
+	retention             int
+	subscriberBuffer      int
+	streams               map[string]*streamState
+	nextSubscriberID      uint64
+	webSocketConnections  atomic.Int64
+	publishLatency        sampledLatencyHistogram
+	writeLatency          sampledLatencyHistogram
+	tickHandleLatency     sampledLatencyHistogram
 	publishToWriteLatency sampledLatencyHistogram
-	compactedStreams     uint64
-	reclaimedReplaySlots uint64
-	evictedEmptyStreams  uint64
+	compactedStreams      uint64
+	reclaimedReplaySlots  uint64
+	evictedEmptyStreams   uint64
 }
 
 type streamState struct {
@@ -256,14 +256,14 @@ func (b *Broker) Stats() BrokerStats {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	stats := BrokerStats{
-		Streams:              len(b.streams),
-		WebSocketConnections: int(b.webSocketConnections.Load()),
-		CompactedStreams:     b.compactedStreams,
-		ReclaimedReplaySlots: b.reclaimedReplaySlots,
-		EvictedEmptyStreams:  b.evictedEmptyStreams,
-		PublishLatency:       b.publishLatency.snapshot(),
-		WSWriteLatency:       b.writeLatency.snapshot(),
-		TickHandleLatency:    b.tickHandleLatency.snapshot(),
+		Streams:               len(b.streams),
+		WebSocketConnections:  int(b.webSocketConnections.Load()),
+		CompactedStreams:      b.compactedStreams,
+		ReclaimedReplaySlots:  b.reclaimedReplaySlots,
+		EvictedEmptyStreams:   b.evictedEmptyStreams,
+		PublishLatency:        b.publishLatency.snapshot(),
+		WSWriteLatency:        b.writeLatency.snapshot(),
+		TickHandleLatency:     b.tickHandleLatency.snapshot(),
 		PublishToWriteLatency: b.publishToWriteLatency.snapshot(),
 	}
 	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
