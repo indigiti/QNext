@@ -2,6 +2,7 @@ package stream
 
 import (
 	"encoding/base64"
+	"sync/atomic"
 	"errors"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ type Broker struct {
 	subscriberBuffer int
 	streams          map[string]*streamState
 	nextSubscriberID uint64
+	connections      atomic.Int64
 }
 
 type streamState struct {
@@ -81,6 +83,7 @@ type BrokerStreamStats struct {
 
 type BrokerStats struct {
 	Streams          int                 `json:"streams"`
+	Connections      int64               `json:"connections"`
 	ActiveStreams    int                 `json:"active_streams"`
 	IdleStreams      int                 `json:"idle_streams"`
 	Subscribers      int                 `json:"subscribers"`
@@ -214,7 +217,7 @@ func (b *Broker) Stats() BrokerStats {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	stats := BrokerStats{Streams: len(b.streams)}
+	stats := BrokerStats{Streams: len(b.streams), Connections: b.connections.Load()}
 	stats.Details = make([]BrokerStreamStats, 0, len(b.streams))
 	for key, state := range b.streams {
 		instrumentID, timeframe := splitStreamKey(key)

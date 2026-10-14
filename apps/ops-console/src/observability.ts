@@ -238,6 +238,9 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
 
     <div class="feed-provider-card">
       <div class="line"><strong>LIVE BROKER</strong>${stateBadge((broker?.subscribers ?? 0) > 0, (broker?.subscribers ?? 0) > 0 ? 'ACTIVE' : 'IDLE')}</div>
+      <div class="feed-kv"><span>WebSocket connections</span><strong>${broker?.connections ?? 0}</strong></div>
+      <div class="feed-kv"><span>Active streams</span><strong>${broker?.active_streams ?? 0}</strong></div>
+      <div class="feed-kv"><span>Idle streams</span><strong>${broker?.idle_streams ?? 0}</strong></div>
       <div class="feed-kv"><span>Logical streams</span><strong>${broker?.streams ?? 0}</strong></div>
       <div class="feed-kv"><span>Subscribers</span><strong>${broker?.subscribers ?? 0}</strong></div>
       <div class="feed-kv"><span>Replay events</span><strong>${broker?.replay_events ?? 0}</strong></div>
