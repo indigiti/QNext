@@ -326,22 +326,16 @@ jobs:
           test -x release/private/deploy/qnext-ml-dependencies
           test -s release/release-manifest.json
 
-      # Actions artifact ZIP extraction does not guarantee POSIX modes or
-      # symlinks. Keep the existing DigiOps artifact unchanged for backwards
-      # compatibility and publish a separate canonical staging tarball.
+      # GitHub artifact ZIPs do not guarantee POSIX execute modes or symlinks.
+      # Keep the existing DigiOps artifact for compatibility and upload an
+      # additional tarball with the exact release layout for staging installs.
       - name: Create immutable staging install package
         shell: bash
         run: |
           set -euo pipefail
           tar -C release -czf qnext-staging-release.tar.gz .
           sha256sum qnext-staging-release.tar.gz > qnext-staging-release.tar.gz.sha256
-          tar -tzf qnext-staging-release.tar.gz | grep -q '^./release-manifest.json
-        with:
-          name: digiops-release
-          path: release/
-          if-no-files-found: error
-          retention-days: 14
-
+          tar -tzf qnext-staging-release.tar.gz | grep -F './release-manifest.json' >/dev/null
 
       - name: Upload staging install package
         uses: actions/upload-artifact@v4
