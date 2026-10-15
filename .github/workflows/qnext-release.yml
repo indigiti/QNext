@@ -86,6 +86,7 @@ jobs:
           php services/ops-api/tests/performance_report.php
           php services/ops-api/tests/login_throttle.php
           php services/ops-api/tests/paper_markers_visibility.php
+          python3 -m unittest scripts/diagnostics/test_staging_audit_probe.py
           bash -n deploy/qnext-ops-user
           bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php
