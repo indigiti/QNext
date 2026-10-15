@@ -32,6 +32,15 @@ test ! -e "$private/current"
 test -d "$private/storage"
 test -d "$private/logs"
 
+# POSIX tar round-trip is the canonical host handoff: it retains executable
+# permissions and relative symlinks that Actions ZIP artifacts may discard.
+mkdir "$root/unpacked" "$root/from-tar"
+tar -C "$payload" -czf "$root/immutable.tar.gz" .
+tar -C "$root/unpacked" -xzf "$root/immutable.tar.gz"
+bash "$repo_root/deploy/qnext-stage-release" "$root/unpacked" "$root/from-tar" "$sha" >/dev/null
+test -x "$root/from-tar/releases/$version/private/bin/qnext-market-core"
+test "$(readlink "$root/from-tar/releases/$version/private/bin/qnext-data-collector")" = "qnext-data-collector-$version"
+
 # Staged releases are immutable and must not be replaced after upload.
 if bash "$repo_root/deploy/qnext-stage-release" "$payload" "$private" "$sha" >/dev/null 2>&1; then
   echo 'FAILED: staging an existing release was allowed' >&2
