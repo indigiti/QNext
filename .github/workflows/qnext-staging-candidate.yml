@@ -1,0 +1,20 @@
+name: QNext Staging Candidate
+
+# Staging candidate branches build the same DigiOps release as main,
+# but never activate a server release. Production release remains main-only.
+on:
+  push:
+    branches:
+      - 'staging/**'
+      - 'fix/staging-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-candidate:
+    name: Build immutable staging candidate
+    uses: ./.github/workflows/qnext-release.yml
+    permissions:
+      contents: read
