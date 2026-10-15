@@ -11,7 +11,7 @@ import {
 
 import { QNextProvider, type QNextBar } from '../qnext-provider';
 import { toCandlestickData, toVolumeData } from './lightweight-adapter';
-import { loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY } from './history-pagination';
+import { applyRevisedHistoricalBar, loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY } from './history-pagination';
 import {
   toLightweightPaperMarker,
   type QNextPaperMarker,
@@ -144,9 +144,7 @@ export class QNextLightweightChart {
           // A corrected SYN+ proxy volume may arrive after the next minute
           // opened. Lightweight Charts.update() rejects older timestamps,
           // so replace only a known recent bar when its revision advances.
-          const index = this.bars.findIndex((existing) => existing.time === bar.time);
-          if (index < 0 || (bar.revision ?? 0) <= (this.bars[index].revision ?? 0)) return;
-          this.bars[index] = bar;
+          if (!applyRevisedHistoricalBar(this.bars, bar)) return;
           candleSeries.setData(this.bars.map(toCandlestickData));
           volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
           return;
