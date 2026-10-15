@@ -43,12 +43,15 @@ type synPlusShadowBridge struct {
 	receivedAt time.Time
 
 	volumeMu     sync.Mutex
-	volumeMirror map[string]synPlusVolumeMirror
+	volumeMirror map[string][]synPlusVolumeMirror
+	recentBars   map[string][]domain.Bar
 }
 
 type synPlusVolumeMirror struct {
 	openTime time.Time
 	volume   float64
+	revision uint32
+	final    bool
 }
 
 type clientMessage struct {
@@ -93,6 +96,9 @@ func NewWebSocketHandler(broker *Broker) http.Handler {
 		shadow: newSynPlusShadowBridge(broker),
 	}
 	if handler.shadow != nil {
+		// Keep SYN+ proxy volume in sync with the actual source bars, not only
+		// with irregular SYN+ price snapshots. Callback runs outside broker lock.
+		broker.SetBarObserver(handler.shadow.volumeSourceID, handler.shadow.observeVolumeSource)
 		feedstatus.SetDefaultSyntheticStatusFor(handler.shadow.instrumentID, handler.shadow.status)
 	}
 	return handler
@@ -127,7 +133,8 @@ func newSynPlusShadowBridge(broker *Broker) *synPlusShadowBridge {
 		instrumentID:   instrumentID,
 		volumeSourceID: volumeSourceID,
 		timeframes:     append([]string(nil), timeframes...),
-		volumeMirror:   make(map[string]synPlusVolumeMirror),
+		volumeMirror:   make(map[string][]synPlusVolumeMirror),
+		recentBars:     make(map[string][]domain.Bar),
 	}
 }
 
@@ -334,61 +341,144 @@ func (b *synPlusShadowBridge) observe(snapshot research.SynPlusSnapshot) error {
 		return nil
 	}
 
+	// Serialize shadow price updates with source-volume notifications so a
+	// later price snapshot cannot overwrite already-mirrored candle volume.
+	b.volumeMu.Lock()
+	defer b.volumeMu.Unlock()
 	for _, timeframe := range b.timeframes {
+		// On restart, the source may already have a forming bar before the
+		// first SYN+ snapshot. Seed the bounded cache from its live state.
+		if b.volumeSourceID != "" {
+			if source, ok := b.broker.LatestBar(b.volumeSourceID, timeframe); ok {
+				b.rememberVolume(source)
+			}
+		}
 		bars, err := b.engine.Apply(tick, timeframe)
 		if err != nil {
 			return err
 		}
 		for _, bar := range bars {
-			b.broker.PublishBar(bar)
-		}
-
-		if b.volumeSourceID == "" {
-			continue
-		}
-		source, ok := b.broker.LatestBar(b.volumeSourceID, timeframe)
-		if !ok {
-			continue
-		}
-		openTime, _, bucketErr := candle.Bucket(tick.EventTime, timeframe)
-		if bucketErr != nil || !source.OpenTime.Equal(openTime) {
-			continue
-		}
-		delta := b.proxyVolumeDelta(timeframe, source)
-		if delta <= 0 {
-			continue
-		}
-		volumeTick := tick
-		volumeTick.Provider = "qnext-syn-plus-volume-proxy"
-		volumeTick.Quantity = delta
-		volumeBars, volumeErr := b.engine.ApplyVolume(volumeTick, timeframe)
-		if volumeErr != nil {
-			return volumeErr
-		}
-		for _, bar := range volumeBars {
+			if volume, ok := b.sourceVolume(bar.Timeframe, bar.OpenTime); ok {
+				bar.Volume = volume
+			}
+			if previous, ok := b.recentBar(bar.Timeframe, bar.OpenTime); ok && previous.Revision > bar.Revision {
+				bar.Revision = previous.Revision
+			}
+			b.rememberBar(bar)
 			b.broker.PublishBar(bar)
 		}
 	}
 	return nil
 }
 
-func (b *synPlusShadowBridge) proxyVolumeDelta(timeframe string, source domain.Bar) float64 {
+// observeVolumeSource is invoked by the broker for each configured NIFTY
+// source-volume candle. Unlike snapshot-triggered sampling, it also catches
+// updates that arrive with no fresh SYN+ price observation and final 1m volume
+// arriving shortly after the SYN+ price candle has rolled over.
+func (b *synPlusShadowBridge) observeVolumeSource(source domain.Bar) {
+	if source.InstrumentID != b.volumeSourceID {
+		return
+	}
 	b.volumeMu.Lock()
 	defer b.volumeMu.Unlock()
+	if !b.rememberVolume(source) {
+		return
+	}
+	bar, ok := b.recentBar(source.Timeframe, source.OpenTime)
+	if !ok || bar.Volume == source.Volume {
+		return
+	}
+	// Only the volume field is sourced from the NIFTY futures proxy.
+	// Price OHLC, finality and synthetic lineage remain SYN+ owned.
+	bar.Volume = source.Volume
+	bar.Revision++
+	if bar.Final {
+		bar.Corrected = true
+		bar.CorrectedAt = time.Now().UTC()
+	}
+	b.rememberBar(bar)
+	b.broker.PublishBar(bar)
+}
 
-	previous := b.volumeMirror[timeframe]
-	delta := source.Volume
-	if previous.openTime.Equal(source.OpenTime) {
-		delta = source.Volume - previous.volume
-		if delta < 0 {
-			delta = 0
+// Cache only the latest two buckets per timeframe. This is enough to align
+// the current minute and its just-finalized predecessor without retaining
+// arbitrary historical data or introducing extra market subscriptions.
+func (b *synPlusShadowBridge) rememberVolume(source domain.Bar) bool {
+	entries := b.volumeMirror[source.Timeframe]
+	for i, previous := range entries {
+		if !previous.openTime.Equal(source.OpenTime) {
+			continue
+		}
+		if source.Revision < previous.revision ||
+			(source.Revision == previous.revision && source.Volume < previous.volume) {
+			// Out-of-order source updates may not reduce a newer cumulative
+			// volume observation unless an explicit correction revision exists.
+			return false
+		}
+		changed := source.Volume != previous.volume || source.Revision != previous.revision || (source.Final && !previous.final)
+		entries[i] = synPlusVolumeMirror{
+			openTime: source.OpenTime, volume: source.Volume,
+			revision: source.Revision, final: source.Final,
+		}
+		b.volumeMirror[source.Timeframe] = entries
+		return changed
+	}
+	entry := synPlusVolumeMirror{
+		openTime: source.OpenTime, volume: source.Volume,
+		revision: source.Revision, final: source.Final,
+	}
+	if len(entries) >= 2 {
+		if !source.OpenTime.After(entries[0].openTime) {
+			return false
+		}
+		entries = entries[1:]
+	}
+	entries = append(entries, entry)
+	if len(entries) == 2 && entries[0].openTime.After(entries[1].openTime) {
+		entries[0], entries[1] = entries[1], entries[0]
+	}
+	b.volumeMirror[source.Timeframe] = entries
+	return true
+}
+
+func (b *synPlusShadowBridge) sourceVolume(timeframe string, open time.Time) (float64, bool) {
+	for _, entry := range b.volumeMirror[timeframe] {
+		if entry.openTime.Equal(open) {
+			return entry.volume, true
 		}
 	}
-	b.volumeMirror[timeframe] = synPlusVolumeMirror{
-		openTime: source.OpenTime,
-		volume:   source.Volume,
+	return 0, false
+}
+
+func (b *synPlusShadowBridge) recentBar(timeframe string, open time.Time) (domain.Bar, bool) {
+	for _, bar := range b.recentBars[timeframe] {
+		if bar.OpenTime.Equal(open) {
+			return bar, true
+		}
 	}
-	return delta
+	return domain.Bar{}, false
+}
+
+func (b *synPlusShadowBridge) rememberBar(bar domain.Bar) {
+	entries := b.recentBars[bar.Timeframe]
+	for i := range entries {
+		if entries[i].OpenTime.Equal(bar.OpenTime) {
+			entries[i] = bar
+			b.recentBars[bar.Timeframe] = entries
+			return
+		}
+	}
+	if len(entries) >= 2 {
+		if !bar.OpenTime.After(entries[0].OpenTime) {
+			return
+		}
+		entries = entries[1:]
+	}
+	entries = append(entries, bar)
+	if len(entries) == 2 && entries[0].OpenTime.After(entries[1].OpenTime) {
+		entries[0], entries[1] = entries[1], entries[0]
+	}
+	b.recentBars[bar.Timeframe] = entries
 }
 
 func (b *synPlusShadowBridge) status() any {
