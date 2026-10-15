@@ -5,12 +5,15 @@ on:
     branches:
       - main
   workflow_dispatch:
+  # Allows staging-branch candidates to build the exact same immutable package
+  # without merging the branch or deploying anything remotely.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: qnext-release-main
+  group: qnext-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
