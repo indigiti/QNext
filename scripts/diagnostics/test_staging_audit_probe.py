@@ -17,7 +17,12 @@ class StagingProbeTests(unittest.TestCase):
         if path.startswith("/api/v1/timeframes/"):
             return (200, b'{"timeframes":["1m"]}', "application/json")
         if path.startswith("/api/v1/symbols/"):
-            return (200, b'{"symbols":[{"ticker":"NSE:NIFTY","instrument_id":"NSE:NIFTY50"}]}', "application/json")
+            symbols = [
+                {"ticker": "NSE:NIFTY", "instrument_id": "NSE:NIFTY50"},
+                {"ticker": "QNEXT:NIFTY-SYN", "instrument_id": "QNEXT:NIFTY-SYN"},
+                {"ticker": "QNEXT:NIFTY-SYN+", "instrument_id": "QNEXT:NIFTY-SYN+"},
+            ]
+            return (200, json.dumps({"symbols": symbols}).encode(), "application/json")
         if path.startswith("/api/v1/workspace-settings/"):
             return (200, b'{"chartEngine":"vela"}', "application/json")
         if path.startswith("/api/v1/feed-status/"):
@@ -25,7 +30,11 @@ class StagingProbeTests(unittest.TestCase):
         if path.startswith("/api/v1/paper-markers/"):
             return (200, b'{"available":false,"enabled":false,"markers":[]}', "application/json")
         if path.startswith("/api/v1/bars/"):
-            return (200, b'{"bars":[]}', "application/json")
+            bars = [
+                {"time": 1700000000000, "open": 100, "high": 103, "low": 98, "close": 101, "volume": 42},
+                {"time": 1700000060000, "open": 101, "high": 104, "low": 100, "close": 103, "volume": 13},
+            ]
+            return (200, json.dumps({"bars": bars}).encode(), "application/json")
         raise AssertionError("unexpected request: " + path)
 
     def test_read_only_clean_smoke(self):
@@ -33,7 +42,43 @@ class StagingProbeTests(unittest.TestCase):
             checks = probe.inspect("https://test.example/qnext", 1, public_markers=False)
         self.assertTrue(checks)
         self.assertTrue(all(x["result"] == "PASS" for x in checks), checks)
-        self.assertTrue(any(x["check"] == "historical NIFTY candles response" for x in checks))
+        self.assertEqual(
+            len([x for x in checks if x["check"].startswith("historical ") and x["result"] == "PASS"]),
+            3,
+        )
+
+    def test_empty_history_is_a_failure_not_a_pass(self):
+        def empty_fetch(base, path, timeout):
+            if path.startswith("/api/v1/bars/"):
+                return (200, b'{"bars":[]}', "application/json")
+            return self.fake_fetch(base, path, timeout)
+        with patch.object(probe, "fetch", side_effect=empty_fetch):
+            checks = probe.inspect("https://test.example/qnext", 1, public_markers=False)
+        self.assertEqual(
+            len([x for x in checks if x["check"].startswith("historical ") and x["result"] == "FAIL"]),
+            3,
+        )
+
+    def test_market_candle_validation(self):
+        good = [
+            {"time": 1700000000000, "open": 100, "high": 101, "low": 99, "close": 100, "volume": 0},
+            {"time": 1700000060000, "open": 101, "high": 102, "low": 100, "close": 101, "volume": 10},
+        ]
+        probe.validate_bars(good, "NIFTY")
+        with self.assertRaisesRegex(ValueError, "non-increasing"):
+            probe.validate_bars([good[0], good[0]], "NIFTY")
+        with self.assertRaisesRegex(ValueError, "OHLC invariant"):
+            probe.validate_bars([dict(good[0], high=98)], "NIFTY")
+        with self.assertRaisesRegex(ValueError, "volume"):
+            probe.validate_bars([dict(good[0], volume=-1)], "NIFTY")
+        with self.assertRaisesRegex(ValueError, "volumes unavailable"):
+            probe.validate_bars([dict(good[0], volume=None)], "NIFTY")
+
+    def test_synthetic_symbol_classification(self):
+        self.assertEqual(probe.classify_nifty("QNEXT:NIFTY-SYN+"), "NIFTY SYN+")
+        self.assertEqual(probe.classify_nifty("QNEXT:NIFTY-SYN"), "NIFTY SYN")
+        self.assertEqual(probe.classify_nifty("NSE:NIFTY"), "NIFTY")
+        self.assertIsNone(probe.classify_nifty("NSE:BANKNIFTY"))
 
     def test_execution_marker_exposure_is_rejected(self):
         def leaking_fetch(base, path, timeout):
