@@ -37,6 +37,8 @@ type Broker struct {
 	compactedStreams      uint64
 	reclaimedReplaySlots  uint64
 	evictedEmptyStreams   uint64
+	volumeObserverID      string
+	volumeObserver        func(domain.Bar)
 }
 
 type streamState struct {
@@ -49,6 +51,8 @@ type streamState struct {
 	coalescedForming  uint64
 	droppedForming    uint64
 	slowDisconnects   uint64
+	latestBar         domain.Bar
+	hasLatestBar      bool
 }
 
 type replayRing struct {
@@ -144,6 +148,17 @@ func NewBroker(retention, subscriberBuffer int) *Broker {
 	return broker
 }
 
+// SetBarObserver registers an in-process observer for one source instrument.
+// The callback runs after the broker mutex is released, so it may safely
+// publish an aligned derived (SYN+) bar without locking the broker recursively.
+// No additional upstream market subscription is created.
+func (b *Broker) SetBarObserver(instrumentID string, observe func(domain.Bar)) {
+	b.mu.Lock()
+	b.volumeObserverID = instrumentID
+	b.volumeObserver = observe
+	b.mu.Unlock()
+}
+
 func (b *Broker) PublishBar(bar domain.Bar) {
 	started := time.Now()
 	key := streamKey(bar.InstrumentID, bar.Timeframe)
@@ -156,6 +171,12 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	}
 	state.seq++
 	state.lastPublishedAtMS = started.UnixMilli()
+	// Older revision events may be emitted after a newer candle has opened.
+	// Preserve chronological latest for REST live overlay and volume mirroring.
+	if !state.hasLatestBar || !bar.OpenTime.Before(state.latestBar.OpenTime) {
+		state.latestBar = bar
+		state.hasLatestBar = true
+	}
 	event := BarEvent{
 		StreamID:    state.id,
 		Seq:         state.seq,
@@ -180,8 +201,15 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	if len(state.subs) == 0 && state.idleSinceMS == 0 {
 		state.idleSinceMS = time.Now().UnixMilli()
 	}
+	observer := b.volumeObserver
+	if bar.InstrumentID != b.volumeObserverID {
+		observer = nil
+	}
 	b.mu.Unlock()
 
+	if observer != nil {
+		observer(bar)
+	}
 	for i := 0; i < released; i++ {
 		demand.Default().Release(bar.InstrumentID)
 	}
@@ -242,11 +270,10 @@ func (b *Broker) LatestBar(instrumentID, timeframe string) (domain.Bar, bool) {
 	if state == nil {
 		return domain.Bar{}, false
 	}
-	event, ok := state.replay.Last()
-	if !ok {
+	if !state.hasLatestBar {
 		return domain.Bar{}, false
 	}
-	return event.Bar, true
+	return state.latestBar, true
 }
 
 func (b *Broker) Stats() BrokerStats {
