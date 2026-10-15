@@ -14,7 +14,7 @@ import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
 import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
 import './style.css';
-import { applyTheme, currentTheme, mountThemeControl } from './theme';
+import { applyTheme, currentTheme } from './theme';
 import { registerVelaAppearanceAction } from './vela-theme-action';
 import './theme.css';
 
@@ -235,8 +235,6 @@ async function bootstrapLightweight(
   });
 
   await workspace.mount();
-  const toolbar = app.querySelector<HTMLElement>('.qnext-lightweight-toolbar');
-  if (toolbar) mountThemeControl({ container: toolbar });
   window.__QNEXT_LIGHTWEIGHT_WORKSPACE__ = workspace;
 }
 
