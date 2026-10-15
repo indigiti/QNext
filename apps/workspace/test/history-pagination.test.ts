@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { QNextBar } from '../src/qnext-provider';
 import {
-  loadOlderHistoryPage, mergeHistoricalBars, historyPageSpanMs,
+  applyRevisedHistoricalBar, loadOlderHistoryPage, mergeHistoricalBars, historyPageSpanMs,
   nextVelaHistoryDepth, VELA_MAX_HISTORY,
 } from '../src/charts/history-pagination';
 import { shouldFetchOlderVela } from '../src/charts/vela-history';
@@ -11,6 +11,21 @@ const bar = (time: number, close = time): QNextBar => ({
 });
 
 describe('automatic pan history', () => {
+  it('applies late finalized volume only for a newer known revision', () => {
+    const bars = [
+      { ...bar(1_000, 100), volume: 200, revision: 0 },
+      { ...bar(61_000, 101), volume: 10, revision: 0 },
+    ];
+    const corrected = { ...bars[0], volume: 350, revision: 1 };
+    expect(applyRevisedHistoricalBar(bars, corrected)).toBe(true);
+    expect(bars[0].volume).toBe(350);
+    expect(bars[1].volume).toBe(10);
+    expect(applyRevisedHistoricalBar(bars, { ...corrected, volume: 50, revision: 0 })).toBe(false);
+    expect(applyRevisedHistoricalBar(bars, { ...corrected, time: 121_000, revision: 2 })).toBe(false);
+    expect(bars).toHaveLength(2);
+    expect(bars[0].volume).toBe(350);
+  });
+
   it('prevents duplicate bars and preserves newer live revisions', () => {
     expect(mergeHistoricalBars([bar(200, 999), bar(300)], [bar(100), bar(200, 111)]))
       .toEqual([bar(100), bar(200, 999), bar(300)]);
