@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - main
-      # Candidate builds can appear under the familiar QNext Release workflow
-      # without merging into main or triggering any remote deployment.
-      - fix/staging-audit-theme-reliability-20261015
   workflow_dispatch:
   # Allows staging-branch candidates to build the exact same immutable package
   # without merging the branch or deploying anything remotely.
@@ -360,5 +357,45 @@ jobs:
         with:
           name: digiops-release
           path: release/
+          # Must include public/.htaccess for QNeXT WSS/REST routing;
+          # upload-artifact v4 excludes hidden files by default.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
+
+  verify-deployment-artifact:
+    name: Verify downloaded DigiOps release payload
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: digiops-release
+          path: downloaded-release
+
+      - name: Certify uploaded routing rules and SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s downloaded-release/public/index.html
+          test -s downloaded-release/public/admin/index.html
+          test -f downloaded-release/public/.htaccess
+          grep -Fq 'RewriteRule ^api/v1/stream/?$' downloaded-release/public/.htaccess
+          grep -Fq 'ws://127.0.0.1:18080/api/v1/stream' downloaded-release/public/.htaccess
+          test -f downloaded-release/public/api/v1/bars/index.php
+          test -f downloaded-release/private/ops-api/public/index.php
+          test -s downloaded-release/release-manifest.json
+          test -s downloaded-release/public/qnext-release.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root=Path('downloaded-release')
+          packaged=json.loads((root/'release-manifest.json').read_text())
+          published=json.loads((root/'public/qnext-release.json').read_text())
+          assert packaged==published, "release manifest and public release ID mismatch"
+          assert packaged['commit']==os.environ['GITHUB_SHA'], "artifact identity mismatch"
+          assert packaged['artifact']=='digiops-release', "unexpected artifact name"
+          PY
+          echo "DigiOps artifact routing, identity and split payload: PASS"
