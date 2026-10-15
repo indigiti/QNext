@@ -11,7 +11,7 @@ import {
 
 import { QNextProvider, type QNextBar } from '../qnext-provider';
 import { toCandlestickData, toVolumeData } from './lightweight-adapter';
-import { loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY } from './history-pagination';
+import { loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY, trimLiveChartBars } from './history-pagination';
 import {
   toLightweightPaperMarker,
   type QNextPaperMarker,
@@ -54,6 +54,7 @@ export class QNextLightweightChart {
   private markerSetter?: (markers: QNextPaperMarker[]) => void;
   private unsubscribe?: () => void;
   private resizeObserver?: ResizeObserver;
+  private themeListener?: () => void;
 
   constructor(options: LightweightChartOptions) {
     this.container = options.container;
@@ -66,22 +67,23 @@ export class QNextLightweightChart {
   async mount(): Promise<void> {
     if (this.chart) return;
 
+    const palette = chartPalette();
     const chart = createChart(this.container, {
       width: this.container.clientWidth,
       height: this.container.clientHeight,
       layout: {
-        background: { type: ColorType.Solid, color: '#0b0d12' },
-        textColor: '#d5d9e0',
+        background: { type: ColorType.Solid, color: palette.background },
+        textColor: palette.text,
       },
       grid: {
-        vertLines: { color: '#1a1f2b' },
-        horzLines: { color: '#1a1f2b' },
+        vertLines: { color: palette.grid },
+        horzLines: { color: palette.grid },
       },
       rightPriceScale: {
-        borderColor: '#2a3140',
+        borderColor: palette.border,
       },
       timeScale: {
-        borderColor: '#2a3140',
+        borderColor: palette.border,
         timeVisible: true,
         secondsVisible: true,
       },
@@ -107,6 +109,16 @@ export class QNextLightweightChart {
       scaleMargins: { top: 0.82, bottom: 0 },
     });
 
+    this.themeListener = () => {
+      const next = chartPalette();
+      chart.applyOptions({
+        layout: { background: { type: ColorType.Solid, color: next.background }, textColor: next.text },
+        grid: { vertLines: { color: next.grid }, horzLines: { color: next.grid } },
+        rightPriceScale: { borderColor: next.border },
+        timeScale: { borderColor: next.border },
+      });
+    };
+    window.addEventListener('qnext-theme-change', this.themeListener);
     this.chart = chart;
     this.candleSeries = candleSeries;
     this.volumeSeries = volumeSeries;
@@ -143,9 +155,17 @@ export class QNextLightweightChart {
         if (last && bar.time < last.time) return;
         if (last && bar.time === last.time) this.bars[this.bars.length - 1] = bar;
         else this.bars.push(bar);
-        candleSeries.update(toCandlestickData(bar));
-        const volume = toVolumeData(bar);
-        if (volume) volumeSeries.update(volume);
+        const exceeded = this.bars.length > MAX_CHART_HISTORY;
+        if (exceeded) {
+          this.bars = trimLiveChartBars(this.bars);
+          this.historyExhausted = true;
+          candleSeries.setData(this.bars.map(toCandlestickData));
+          volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
+        } else {
+          candleSeries.update(toCandlestickData(bar));
+          // A missing volume update must not retain a stale histogram value.
+          volumeSeries.update(toVolumeData(bar) ?? { time: Math.floor(bar.time / 1000) as import('lightweight-charts').UTCTimestamp, value: 0 });
+        }
       },
     );
 
@@ -286,6 +306,8 @@ export class QNextLightweightChart {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.resizeObserver?.disconnect();
+    if (this.themeListener) window.removeEventListener('qnext-theme-change', this.themeListener);
+    this.themeListener = undefined;
     this.resizeObserver = undefined;
     this.markerSetter?.([]);
     this.markerSetter = undefined;
@@ -295,4 +317,10 @@ export class QNextLightweightChart {
     this.volumeSeries = undefined;
     this.bars = [];
   }
+}
+
+function chartPalette(): { background: string; text: string; grid: string; border: string } {
+  return document.documentElement.dataset.qnextTheme === 'light'
+    ? { background: '#ffffff', text: '#26364c', grid: '#e4e9f0', border: '#c3cedc' }
+    : { background: '#0b0d12', text: '#d5d9e0', grid: '#1a1f2b', border: '#2a3140' };
 }
