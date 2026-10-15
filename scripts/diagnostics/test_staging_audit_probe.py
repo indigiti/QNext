@@ -1,6 +1,7 @@
 """Test the read-only staging acceptance probe without contacting staging."""
 import json
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts.diagnostics import staging_audit_probe as probe
@@ -79,6 +80,23 @@ class StagingProbeTests(unittest.TestCase):
         self.assertEqual(probe.classify_nifty("QNEXT:NIFTY-SYN"), "NIFTY SYN")
         self.assertEqual(probe.classify_nifty("NSE:NIFTY"), "NIFTY")
         self.assertIsNone(probe.classify_nifty("NSE:BANKNIFTY"))
+
+    def test_admin_mutation_helpers_include_browser_csrf_header(self):
+        # Prevent recurrence: distinct panel request helpers used to miss this
+        # header, making legitimate cookie-authenticated POST operations fail.
+        repo = Path(__file__).resolve().parents[2]
+        helpers = (
+            "apps/ops-console/src/api.ts",
+            "apps/ops-console/src/admin-bootstrap.ts",
+            "apps/ops-console/src/admin-access.ts",
+            "apps/ops-console/src/intelligence-panel.mts",
+            "apps/ops-console/src/intelligence-lab-panel.mts",
+            "apps/ops-console/src/syn-plus-panel.ts",
+        )
+        for name in helpers:
+            with self.subTest(name=name):
+                contents = (repo / name).read_text(encoding="utf-8")
+                self.assertIn("X-QNext-Admin-Request", contents)
 
     def test_execution_marker_exposure_is_rejected(self):
         def leaking_fetch(base, path, timeout):
