@@ -1,4 +1,4 @@
-import { QNextProvider } from '../qnext-provider';
+import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
 import {
   QNextLightweightChart,
   type LightweightCrosshairPoint,
@@ -10,6 +10,15 @@ import {
 } from './paper-markers';
 
 export type LightweightLayout = 1 | 2 | 4;
+
+export function transportModeLabel(mode: QNextTransportSnapshot['mode']): string {
+  switch (mode) {
+    case 'wss': return 'WSS connected';
+    case 'rest_fallback': return 'REST fallback';
+    case 'connecting': return 'Connecting';
+    default: return 'Idle';
+  }
+}
 
 export interface LightweightSymbol {
   ticker: string;
@@ -150,8 +159,7 @@ export class QNextLightweightWorkspace {
   private refreshTransportBadge(): void {
     if (!this.transportBadge) return;
     const state = this.provider.transportSnapshot();
-    const display = { wss: 'LIVE · WSS', rest_fallback: 'LIVE · REST', connecting: 'Connecting', idle: 'Idle' } as const;
-    this.transportBadge.textContent = display[state.mode];
+    this.transportBadge.textContent = transportModeLabel(state.mode);
     this.transportBadge.dataset.transport = state.mode;
   }
 
