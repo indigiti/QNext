@@ -140,9 +140,23 @@ export class QNextLightweightChart {
       this.timeframe,
       (bar: QNextBar) => {
         const last = this.bars[this.bars.length - 1];
-        if (last && bar.time < last.time) return;
-        if (last && bar.time === last.time) this.bars[this.bars.length - 1] = bar;
-        else this.bars.push(bar);
+        if (last && bar.time < last.time) {
+          // A corrected SYN+ proxy volume may arrive after the next minute
+          // opened. Lightweight Charts.update() rejects older timestamps,
+          // so replace only a known recent bar when its revision advances.
+          const index = this.bars.findIndex((existing) => existing.time === bar.time);
+          if (index < 0 || (bar.revision ?? 0) <= (this.bars[index].revision ?? 0)) return;
+          this.bars[index] = bar;
+          candleSeries.setData(this.bars.map(toCandlestickData));
+          volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
+          return;
+        }
+        if (last && bar.time === last.time) {
+          if ((bar.revision ?? 0) < (last.revision ?? 0)) return;
+          this.bars[this.bars.length - 1] = bar;
+        } else {
+          this.bars.push(bar);
+        }
         candleSeries.update(toCandlestickData(bar));
         const volume = toVolumeData(bar);
         if (volume) volumeSeries.update(volume);
