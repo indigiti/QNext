@@ -1,4 +1,4 @@
-import { QNextProvider } from '../qnext-provider';
+import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
 import {
   QNextLightweightChart,
   type LightweightCrosshairPoint,
@@ -10,6 +10,15 @@ import {
 } from './paper-markers';
 
 export type LightweightLayout = 1 | 2 | 4;
+
+export function transportModeLabel(mode: QNextTransportSnapshot['mode']): string {
+  switch (mode) {
+    case 'wss': return 'WSS connected';
+    case 'rest_fallback': return 'REST fallback';
+    case 'connecting': return 'Connecting';
+    default: return 'Idle';
+  }
+}
 
 export interface LightweightSymbol {
   ticker: string;
@@ -93,6 +102,8 @@ export class QNextLightweightWorkspace {
   private markerTimer?: ReturnType<typeof setTimeout>;
   private markerPolling = false;
   private markerSignature = '';
+  private transportBadge?: HTMLSpanElement;
+  private transportTimer?: ReturnType<typeof setTimeout>;
   private shell?: HTMLElement;
   private grid?: HTMLElement;
   private symbolSelect?: HTMLSelectElement;
@@ -127,10 +138,14 @@ export class QNextLightweightWorkspace {
     this.renderShell();
     await this.rebuildAllCharts();
     this.startMarkerPolling();
+    this.refreshTransportBadge();
+    this.transportTimer = setInterval(() => this.refreshTransportBadge(), 1000);
   }
 
   destroy(): void {
     this.stopMarkerPolling();
+    if (this.transportTimer) clearInterval(this.transportTimer);
+    this.transportTimer = undefined;
     this.unbindSync();
     for (const chart of this.charts) chart.destroy();
     this.charts = [];
@@ -138,6 +153,14 @@ export class QNextLightweightWorkspace {
     this.container.replaceChildren();
     this.shell = undefined;
     this.grid = undefined;
+    this.transportBadge = undefined;
+  }
+
+  private refreshTransportBadge(): void {
+    if (!this.transportBadge) return;
+    const state = this.provider.transportSnapshot();
+    this.transportBadge.textContent = transportModeLabel(state.mode);
+    this.transportBadge.dataset.transport = state.mode;
   }
 
   private renderShell(): void {
@@ -228,7 +251,8 @@ export class QNextLightweightWorkspace {
 
     const engineBadge = document.createElement('span');
     engineBadge.className = 'qnext-lightweight-engine-badge';
-    engineBadge.textContent = 'LIVE · WSS';
+    engineBadge.textContent = 'Connecting';
+    this.transportBadge = engineBadge;
 
     toolbar.append(
       brand,

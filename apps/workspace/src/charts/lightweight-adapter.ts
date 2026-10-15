@@ -17,7 +17,7 @@ export function toCandlestickData(bar: QNextBar): CandlestickData<UTCTimestamp> 
 }
 
 export function toVolumeData(bar: QNextBar): HistogramData<UTCTimestamp> | undefined {
-  if (bar.volume === undefined) {
+  if (bar.volume === undefined || !Number.isFinite(bar.volume) || bar.volume < 0) {
     return undefined;
   }
 

@@ -348,6 +348,7 @@ async function requestPaper(payload?: Record<string, unknown>): Promise<PaperSta
     method: payload ? 'POST' : 'GET',
     headers: {
       Accept: 'application/json',
+      'X-QNext-Admin-Request': '1',
       ...(payload ? { 'Content-Type': 'application/json' } : {}),
     },
     credentials: 'same-origin',

@@ -5,12 +5,15 @@ on:
     branches:
       - main
   workflow_dispatch:
+  # Allows staging-branch candidates to build the exact same immutable package
+  # without merging the branch or deploying anything remotely.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: qnext-release-main
+  group: qnext-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -76,6 +79,7 @@ jobs:
           php -l apps/workspace/public/api/v1/indicators/index.php
           php -l services/ops-api/public/index.php
           php -l services/ops-api/src/Auth.php
+          php -l services/ops-api/src/LoginThrottle.php
           php -l services/ops-api/src/OpsConfig.php
           php -l services/ops-api/src/ReleaseCatalog.php
           php -l services/ops-api/src/ServiceControl.php
@@ -83,7 +87,11 @@ jobs:
           php -l services/ops-api/src/OpsController.php
           php -l services/ops-api/src/PerformanceReport.php
           php services/ops-api/tests/performance_report.php
+          php services/ops-api/tests/login_throttle.php
+          php services/ops-api/tests/paper_markers_visibility.php
+          python3 -m unittest scripts/diagnostics/test_staging_audit_probe.py
           bash -n deploy/qnext-ops-user
+          bash tests/certification/qnext-stage-release.sh
           bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php
 
@@ -209,6 +217,7 @@ jobs:
           install -m 0750 deploy/qnext-ops-helper release/private/deploy/qnext-ops-helper
           install -m 0750 deploy/qnext-ops-web release/private/deploy/qnext-ops-web
           install -m 0750 deploy/qnext-ops-user release/private/deploy/qnext-ops-user
+          install -m 0750 deploy/qnext-stage-release release/private/deploy/qnext-stage-release
           install -m 0750 deploy/qnext-intelligence-lab-python release/private/deploy/qnext-intelligence-lab-python
           install -m 0750 deploy/qnext-ml-dependencies release/private/deploy/qnext-ml-dependencies
           cp deploy/qnext-market-core.service release/private/deploy/
@@ -276,6 +285,8 @@ jobs:
           test -s release/public/admin/index.html
           test -f release/public/admin/api/index.php
           php -l release/public/admin/api/index.php
+          # Keep the original compressed DigiOps release lean and versioned.
+          # The staging-only tar below adds stable symlinks for legacy systemd.
           test ! -e release/private/bin/qnext-market-core
           test ! -e release/private/bin/qnext-data-collector
           test -s "release/private/bin/qnext-market-core-${version}"
@@ -304,14 +315,87 @@ jobs:
           test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
           test -x release/private/deploy/qnext-ops-user
+          test -x release/private/deploy/qnext-stage-release
           test -x release/private/deploy/qnext-intelligence-lab-python
           test -x release/private/deploy/qnext-ml-dependencies
           test -s release/release-manifest.json
+
+      # GitHub artifact ZIPs do not guarantee POSIX execute modes or symlinks.
+      # Keep the existing DigiOps artifact for compatibility and upload an
+      # additional tarball with the exact release layout for staging installs.
+      - name: Create immutable staging install package
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_payload="$(mktemp -d)"
+          cp -a release/. "$stage_payload/"
+          market_name="$(cat "$stage_payload/private/bin/qnext-market-core.current")"
+          collector_name="$(cat "$stage_payload/private/bin/qnext-data-collector.current")"
+          test -x "$stage_payload/private/bin/$market_name"
+          test -x "$stage_payload/private/bin/$collector_name"
+          # Only the POSIX tar contains stable entrypoints; the legacy
+          # GitHub ZIP stays small and keeps immutable versioned binaries.
+          ln -s "$market_name" "$stage_payload/private/bin/qnext-market-core"
+          ln -s "$collector_name" "$stage_payload/private/bin/qnext-data-collector"
+          tar -C "$stage_payload" -czf qnext-staging-release.tar.gz .
+          rm -rf "$stage_payload"
+          sha256sum qnext-staging-release.tar.gz > qnext-staging-release.tar.gz.sha256
+          tar -tzf qnext-staging-release.tar.gz | grep -F './release-manifest.json' >/dev/null
+
+      - name: Upload staging install package
+        uses: actions/upload-artifact@v4
+        with:
+          name: digiops-stage-package
+          path: |
+            qnext-staging-release.tar.gz
+            qnext-staging-release.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload DigiOps release artifact
         uses: actions/upload-artifact@v4
         with:
           name: digiops-release
           path: release/
+          # Must include public/.htaccess for QNeXT WSS/REST routing;
+          # upload-artifact v4 excludes hidden files by default.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
+
+  verify-deployment-artifact:
+    name: Verify downloaded DigiOps release payload
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: digiops-release
+          path: downloaded-release
+
+      - name: Certify uploaded routing rules and SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s downloaded-release/public/index.html
+          test -s downloaded-release/public/admin/index.html
+          test -f downloaded-release/public/.htaccess
+          grep -Fq 'RewriteRule ^api/v1/stream/?$' downloaded-release/public/.htaccess
+          grep -Fq 'ws://127.0.0.1:18080/api/v1/stream' downloaded-release/public/.htaccess
+          test -f downloaded-release/public/api/v1/bars/index.php
+          test -f downloaded-release/private/ops-api/public/index.php
+          test -s downloaded-release/release-manifest.json
+          test -s downloaded-release/public/qnext-release.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          root=Path('downloaded-release')
+          packaged=json.loads((root/'release-manifest.json').read_text())
+          published=json.loads((root/'public/qnext-release.json').read_text())
+          assert packaged==published, "release manifest and public release ID mismatch"
+          assert packaged['commit']==os.environ['GITHUB_SHA'], "artifact identity mismatch"
+          assert packaged['artifact']=='digiops-release', "unexpected artifact name"
+          PY
+          echo "DigiOps artifact routing, identity and split payload: PASS"

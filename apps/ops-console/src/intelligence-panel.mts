@@ -75,6 +75,7 @@ const html = (value: unknown) => String(value ?? '')
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
+  headers.set('X-QNext-Admin-Request', '1');
   if (init.body) headers.set('Content-Type', 'application/json');
   const separator = base.includes('?') ? '&' : '?';
   const response = await fetch(base + separator + 'route=' + encodeURIComponent(path), {

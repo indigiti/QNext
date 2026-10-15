@@ -56,3 +56,12 @@ describe('automatic pan history', () => {
     expect(nextVelaHistoryDepth(VELA_MAX_HISTORY)).toBe(VELA_MAX_HISTORY);
   });
 });
+
+import { trimLiveChartBars } from '../src/charts/history-pagination';
+
+describe('live chart bar limit', () => {
+  it('keeps only the most recent candles once the cap is reached', () => {
+    expect(trimLiveChartBars([1, 2, 3, 4], 2)).toEqual([3, 4]);
+    expect(trimLiveChartBars([1, 2], 2)).toEqual([1, 2]);
+  });
+});

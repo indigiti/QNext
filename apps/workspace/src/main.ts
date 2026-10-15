@@ -14,6 +14,8 @@ import { QNextIndicatorEngine } from './qnext-indicator-engine';
 import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
 import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
 import './style.css';
+import { applyTheme, currentTheme, mountThemeControl } from './theme';
+import './theme.css';
 
 declare global {
   interface Window {
@@ -150,7 +152,7 @@ async function bootstrapVela(timeframes: string[]) {
     bars: VELA_INITIAL_HISTORY,
     timeframes,
     live: true,
-    theme: 'dark',
+    theme: currentTheme(),
     timezone: 'exchange',
     providers: {
       qnext: () => createProvider(),
@@ -243,6 +245,7 @@ async function bootstrap() {
     loadWorkspaceSettings(),
   ]);
   const engine = resolveChartEngine(runtime.chartEngine ?? settings.chartEngine);
+  mountThemeControl({ reloadOnChange: engine !== 'lightweight' });
 
   if (engine === 'lightweight') {
     await bootstrapLightweight(timeframes, settings);
@@ -252,4 +255,5 @@ async function bootstrap() {
   await bootstrapVela(timeframes);
 }
 
+applyTheme();
 void bootstrap();

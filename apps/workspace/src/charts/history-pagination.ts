@@ -7,6 +7,10 @@ import type { QNextBar } from '../qnext-provider';
 const DAY_MS = 86_400_000;
 export const OLDER_HISTORY_CHUNK = 500;
 export const MAX_CHART_HISTORY = 12_000;
+
+export function trimLiveChartBars<T>(bars: T[], max = MAX_CHART_HISTORY): T[] {
+  return bars.length > max ? bars.slice(-max) : bars;
+}
 export const MAX_EMPTY_HISTORY_WINDOWS = 3;
 
 export function historyPageSpanMs(timeframe: string): number {

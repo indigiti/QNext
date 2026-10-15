@@ -41,3 +41,13 @@ describe('lightweight chart adapter', () => {
     expect(toVolumeData({ ...bar, volume: undefined })).toBeUndefined();
   });
 });
+
+
+describe('volume validation', () => {
+  it('rejects nonfinite and negative volumes while retaining valid zero', () => {
+    expect(toVolumeData({ ...bar, volume: Number.NaN })).toBeUndefined();
+    expect(toVolumeData({ ...bar, volume: Number.POSITIVE_INFINITY })).toBeUndefined();
+    expect(toVolumeData({ ...bar, volume: -1 })).toBeUndefined();
+    expect(toVolumeData({ ...bar, volume: 0 })).toEqual({ time: 1_700_000_000, value: 0 });
+  });
+});
