@@ -23,6 +23,8 @@ export interface QNextBar {
   low: number;
   close: number;
   volume?: number;
+  // Allows a delayed finalized volume correction to replace a recent bar.
+  revision?: number;
 }
 
 export interface QNextCanonicalBar extends QNextBar {
@@ -828,6 +830,7 @@ function normalizeBar(bar: QNextBar): QNextBar {
     low: Number(bar.low),
     close: Number(bar.close),
     ...(bar.volume === undefined ? {} : { volume: Number(bar.volume) }),
+    ...(bar.revision === undefined ? {} : { revision: Number(bar.revision) }),
   };
 }
 
