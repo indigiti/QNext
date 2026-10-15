@@ -77,16 +77,15 @@ function icon(preference: ThemePreference): SVGSVGElement {
 }
 
 let popupCleanup: (() => void) | undefined;
+let popupAnchor: HTMLElement | null = null;
 
 export function closeThemePopup(restoreFocus = false): void {
   if (!popupCleanup) return;
   const cleanup = popupCleanup;
   popupCleanup = undefined;
   cleanup();
-  if (restoreFocus) {
-    const active = document.getElementById('qnext-theme-trigger');
-    active?.focus();
-  }
+  if (restoreFocus && popupAnchor?.isConnected) popupAnchor.focus();
+  popupAnchor = null;
 }
 
 function updateTrigger(trigger: HTMLButtonElement): void {
@@ -105,7 +104,7 @@ export function toggleThemePopup(anchor: HTMLElement | null, reloadOnChange = fa
   const menu = document.createElement('div');
   menu.id = 'qnext-theme-menu';
   menu.className = 'qnext-theme-menu';
-  menu.setAttribute('role', 'group');
+  menu.setAttribute('role', 'dialog');
   menu.setAttribute('aria-label', 'Appearance preference');
   const buttons: HTMLButtonElement[] = [];
 
@@ -173,6 +172,7 @@ export function toggleThemePopup(anchor: HTMLElement | null, reloadOnChange = fa
   };
   const onResize = () => closeThemePopup();
   popupCleanup = close;
+  popupAnchor = anchor;
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('resize', onResize);
@@ -188,7 +188,7 @@ export function mountThemeControl(options: { container: HTMLElement; reloadOnCha
     trigger.id = 'qnext-theme-trigger';
     trigger.type = 'button';
     trigger.className = 'qnext-theme-trigger';
-    trigger.setAttribute('aria-haspopup', 'true');
+    trigger.setAttribute('aria-haspopup', 'dialog');
     trigger.setAttribute('aria-expanded', 'false');
     trigger.addEventListener('click', () => toggleThemePopup(trigger, reloadOnChange));
   }
