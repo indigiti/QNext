@@ -11,7 +11,7 @@ import (
 func TestSynPlusMirrorsSourceVolumeWithoutPriceSnapshot(t *testing.T) {
 	t.Setenv("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:NIFTY-SYN+")
 	broker := NewBroker(64, 16)
-	handler := NewWebSocketHandler(broker)
+	handler := NewWebSocketHandler(broker).(*WebSocketHandler)
 	at := time.Date(2026, 10, 15, 3, 45, 0, 0, time.UTC)
 	source := domain.Bar{
 		InstrumentID:      "NSE:NIFTY50",
@@ -71,7 +71,7 @@ func TestSynPlusMirrorsSourceVolumeWithoutPriceSnapshot(t *testing.T) {
 func TestSynPlusCorrectsPreviousOneMinuteVolumeWithoutRewindingLatest(t *testing.T) {
 	t.Setenv("QNEXT_SYN_PLUS_INSTRUMENT_ID", "QNEXT:NIFTY-SYN+")
 	broker := NewBroker(64, 16)
-	handler := NewWebSocketHandler(broker)
+	handler := NewWebSocketHandler(broker).(*WebSocketHandler)
 	at := time.Date(2026, 10, 15, 3, 45, 0, 0, time.UTC)
 	previous := domain.Bar{
 		InstrumentID: "NSE:NIFTY50",
