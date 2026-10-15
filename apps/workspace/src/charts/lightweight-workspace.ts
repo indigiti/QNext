@@ -1,4 +1,5 @@
 import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
+import { mountThemeControl } from '../theme';
 import {
   QNextLightweightChart,
   type LightweightCrosshairPoint,
@@ -262,6 +263,7 @@ export class QNextLightweightWorkspace {
       syncLabel,
       engineBadge,
     );
+    mountThemeControl({ container: toolbar });
 
     const grid = document.createElement('div');
     grid.className = 'qnext-lightweight-grid';
