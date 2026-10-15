@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+      # Candidate builds can appear under the familiar QNext Release workflow
+      # without merging into main or triggering any remote deployment.
+      - fix/staging-audit-theme-reliability-20261015
   workflow_dispatch:
   # Allows staging-branch candidates to build the exact same immutable package
   # without merging the branch or deploying anything remotely.
