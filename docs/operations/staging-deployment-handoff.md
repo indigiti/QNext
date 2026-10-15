@@ -9,7 +9,7 @@ QNext's `QNext Staging Candidate` workflow builds a tested release but **does no
 - `digiops-release`: original public/private artifact for compatibility with the existing DigiOps direct deploy process. No behavior changes.
 - `digiops-stage-package`: a new ZIP containing `qnext-staging-release.tar.gz` and `qnext-staging-release.tar.gz.sha256`. The inner POSIX tar preserves executable modes and relative symlinks that a GitHub Actions ZIP download may not. Use the tar for the **versioned server-side releases/** installation.
 
-Both bundles contain the same commit's release payload, including public charts/admin, both Go binaries, ops-api, Strategy Lab, intelligence source, and the existing ML dependency lock (no bulky wheelhouse). The stable `qnext-market-core` symlink points to the uniquely versioned Go binary for compatibility with the legacy systemd unit and root-owned release helper.
+Both bundles contain the same commit's release payload, including public charts/admin, both Go binaries, ops-api, Strategy Lab, intelligence source, and the existing ML dependency lock (no bulky wheelhouse). **Only the staging tarball** adds small relative `qnext-market-core` and `qnext-data-collector` symlinks pointing to the uniquely versioned binaries, so systemd activation works without inflating the original DigiOps ZIP.
 
 ## Controlled stage-only installation (operator on staging server)
 
