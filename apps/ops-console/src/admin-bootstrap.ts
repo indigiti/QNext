@@ -1,4 +1,6 @@
 import './admin-auth-gate.css';
+import { applyTheme, mountThemeControl } from './theme';
+import './theme.css';
 
 declare global {
   interface Window {
@@ -265,4 +267,6 @@ async function bootstrap(): Promise<void> {
   }
 }
 
+applyTheme();
+mountThemeControl();
 void bootstrap();
