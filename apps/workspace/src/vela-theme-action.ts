@@ -24,7 +24,7 @@ export function registerVelaAppearanceAction(): void {
     icon: 'qnext-appearance-palette',
     iconOnly: true,
     align: 'right',
-    mobile: 'menu',
+    // Right-aligned actions use Vela's built-in mobile overflow.
     order: 1000,
     run: () => {
       const focused = document.activeElement;
