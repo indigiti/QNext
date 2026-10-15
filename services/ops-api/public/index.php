@@ -8,10 +8,12 @@ use QNext\Ops\IntelligenceLabControl;
 use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
 use QNext\Ops\PaperProxy;
+use QNext\Ops\LoginThrottle;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/src/IntelligenceControl.php';
 require_once dirname(__DIR__) . '/src/IntelligenceLabControl.php';
+require_once dirname(__DIR__) . '/src/LoginThrottle.php';
 
 const QNEXT_OPS_SESSION_COOKIE = 'qnext_ops_session';
 
@@ -107,11 +109,21 @@ function provided_admin_token(): ?string
     return null;
 }
 
+function require_admin_browser_request(): void
+{
+    // Browser cookie mutations need a non-simple header; token clients remain supported.
+    if (($_SERVER['HTTP_X_QNEXT_ADMIN_REQUEST'] ?? '') !== '1') {
+        respond(403, ['error' => 'forbidden']);
+    }
+}
+
 try {
     $config = OpsConfig::fromEnvironment();
     $auth = new Auth($config->authPath(), $config->adminToken);
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
     $path = request_path();
+    $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    $limiter = new LoginThrottle($config->privateRoot . '/run/ops-auth-limits');
 
     if ($method === 'GET' && $path === '/setup-status') {
         respond(200, [
@@ -144,12 +156,18 @@ try {
     }
 
     if ($method === 'POST' && $path === '/session') {
+        $retry = $limiter->consume('session', $remote);
+        if ($retry > 0) {
+            header('Retry-After: ' . $retry);
+            respond(429, ['error' => 'too many sign-in attempts']);
+        }
         $body = request_body();
         $token = $body['token'] ?? null;
         if (!is_string($token) || !$auth->authorized(trim($token))) {
             clear_admin_session_cookie();
             respond(403, ['error' => 'forbidden']);
         }
+        $limiter->reset('session', $remote);
         set_admin_session_cookie($auth->issueSession(), Auth::sessionTTLSeconds());
         respond(200, [
             'authenticated' => true,
@@ -158,6 +176,11 @@ try {
     }
 
     if ($method === 'POST' && $path === '/auth/recover') {
+        $retry = $limiter->consume('recover', $remote);
+        if ($retry > 0) {
+            header('Retry-After: ' . $retry);
+            respond(429, ['error' => 'too many recovery attempts']);
+        }
         $body = request_body();
         $recoveryCode = $body['recovery_code'] ?? null;
         $newToken = $body['new_token'] ?? null;
@@ -169,6 +192,7 @@ try {
             clear_admin_session_cookie();
             respond(403, ['error' => 'forbidden']);
         }
+        $limiter->reset('recover', $remote);
         set_admin_session_cookie($auth->issueSession(), Auth::sessionTTLSeconds());
         respond(200, [
             'authenticated' => true,
@@ -178,6 +202,10 @@ try {
     }
 
     if ($method === 'DELETE' && $path === '/session') {
+        $activeCookie = $_COOKIE[QNEXT_OPS_SESSION_COOKIE] ?? null;
+        if (is_string($activeCookie) && $auth->authorizedSession($activeCookie)) {
+            require_admin_browser_request();
+        }
         clear_admin_session_cookie();
         respond(200, ['authenticated' => false]);
     }
@@ -188,6 +216,9 @@ try {
     $sessionAuthorized = $auth->authorizedSession(is_string($session) ? $session : null);
     if (!$headerAuthorized && !$sessionAuthorized) {
         respond(403, ['error' => 'forbidden']);
+    }
+    if ($sessionAuthorized && !$headerAuthorized && !in_array($method, ['GET', 'HEAD'], true)) {
+        require_admin_browser_request();
     }
 
     if ($method === 'POST' && $path === '/auth/recovery-code') {

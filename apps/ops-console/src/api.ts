@@ -464,6 +464,7 @@ export class OpsAPI {
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
+            'X-QNext-Admin-Request': '1',
           },
           body: JSON.stringify({ token: this.token }),
           credentials: 'same-origin',
@@ -491,6 +492,7 @@ export class OpsAPI {
   ): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
+    headers.set('X-QNext-Admin-Request', '1');
     if (init.body) {
       headers.set('Content-Type', 'application/json');
     }

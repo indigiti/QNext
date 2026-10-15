@@ -76,6 +76,7 @@ jobs:
           php -l apps/workspace/public/api/v1/indicators/index.php
           php -l services/ops-api/public/index.php
           php -l services/ops-api/src/Auth.php
+          php -l services/ops-api/src/LoginThrottle.php
           php -l services/ops-api/src/OpsConfig.php
           php -l services/ops-api/src/ReleaseCatalog.php
           php -l services/ops-api/src/ServiceControl.php
@@ -83,6 +84,8 @@ jobs:
           php -l services/ops-api/src/OpsController.php
           php -l services/ops-api/src/PerformanceReport.php
           php services/ops-api/tests/performance_report.php
+          php services/ops-api/tests/login_throttle.php
+          php services/ops-api/tests/paper_markers_visibility.php
           bash -n deploy/qnext-ops-user
           bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php

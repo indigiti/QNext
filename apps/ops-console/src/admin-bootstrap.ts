@@ -32,6 +32,7 @@ function routeURL(route: string): string {
 async function request<T>(route: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
+  headers.set('X-QNext-Admin-Request', '1');
   if (init.body) headers.set('Content-Type', 'application/json');
 
   const response = await fetch(routeURL(route), {
