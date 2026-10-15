@@ -99,3 +99,19 @@
 :root[data-qnext-theme='light'] button.ops-nav-item { color: #3c506b; }
 :root[data-qnext-theme='light'] button.ops-nav-item:hover { background: #dce5f1; color: #17283d; }
 :root[data-qnext-theme='light'] .ops-nav-label { color: #4e627d; }
+
+
+/* Admin sign-in and authenticated navigation each own one in-flow control. */
+.admin-gate-brand .qnext-theme-trigger {
+  margin-left: auto;
+}
+body.ops-shell-ready .topbar > .qnext-theme-trigger {
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+@media (max-width: 680px) {
+  body.ops-shell-ready .topbar > .qnext-theme-trigger {
+    order: 2;
+    margin-left: auto;
+  }
+}
