@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Verify and stage an immutable release. NEVER activate or restart services.
+set -euo pipefail
+
+if [[ $# -ne 3 ]]; then
+  echo "Usage: qnext-stage-release <unpacked-release> <staging-private-root> <full-commit-sha>" >&2
+  exit 2
+fi
+payload="$1"
+private_root="$2"
+expected_sha="$3"
+[[ "$expected_sha" =~ ^[[:xdigit:]]{40}$ ]] || {
+  echo "invalid expected commit SHA" >&2
+  exit 2
+}
+[[ -d "$payload" && -d "$private_root" ]] || {
+  echo "release payload and private root must already exist" >&2
+  exit 2
+}
+payload="$(cd "$payload" && pwd -P)"
+private_root="$(cd "$private_root" && pwd -P)"
+[[ "$payload" != "$private_root" && "$private_root" != "/" ]] || exit 2
+[[ -f "$payload/release-manifest.json" ]] || {
+  echo "release manifest missing" >&2
+  exit 3
+}
+
+version="$(python3 - "$payload/release-manifest.json" "$expected_sha" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    manifest = json.load(handle)
+commit = manifest.get("commit")
+version = manifest.get("version")
+if manifest.get("schema") != "QNEXT.RELEASE/1" or manifest.get("artifact") != "digiops-release":
+    raise SystemExit("unexpected release schema/artifact")
+if commit != sys.argv[2]:
+    raise SystemExit("release commit differs from expected approved SHA")
+if not isinstance(version, str) or not re.fullmatch(r"[0-9a-f]{12}", version):
+    raise SystemExit("invalid release version")
+if version != commit[:12]:
+    raise SystemExit("release version is not the commit prefix")
+print(version)
+PY
+)" || exit 3
+
+for needed in \
+  public/index.html public/admin/index.html \
+  public/admin/api/index.php public/api/v1/bars/index.php \
+  public/qnext-release.json private/ops-api/public/index.php \
+  private/deploy/qnext-ops-user; do
+  [[ -f "$payload/$needed" ]] || {
+    echo "missing required release file: $needed" >&2
+    exit 3
+  }
+done
+
+for binary in qnext-market-core qnext-data-collector; do
+  [[ -f "$payload/private/bin/$binary.current" && -L "$payload/private/bin/$binary" ]] || {
+    echo "missing versioned binary pointer for $binary" >&2
+    exit 3
+  }
+  target="$(tr -d '\r\n' < "$payload/private/bin/$binary.current")"
+  [[ "$target" == "$binary-$version" ]] || {
+    echo "binary pointer does not match version: $binary" >&2
+    exit 3
+  }
+  [[ "$(readlink "$payload/private/bin/$binary")" == "$target" ]] || {
+    echo "binary compatibility symlink points elsewhere: $binary" >&2
+    exit 3
+  }
+  [[ -x "$payload/private/bin/$target" ]] || {
+    echo "missing executable binary: $target" >&2
+    exit 3
+  }
+done
+
+while IFS= read -r -d '' link; do
+  case "$link" in
+    "$payload/private/bin/qnext-market-core"|"$payload/private/bin/qnext-data-collector") ;;
+    *)
+      echo "unexpected release symlink: $link" >&2
+      exit 3
+      ;;
+  esac
+done < <(find "$payload" -type l -print0)
+
+mkdir -p "$private_root/releases"
+releases="$(cd "$private_root/releases" && pwd -P)"
+destination="$releases/$version"
+[[ ! -e "$destination" && ! -L "$destination" ]] || {
+  echo "immutable release already exists; never overwrite: $version" >&2
+  exit 4
+}
+
+temporary="$(mktemp -d "$releases/.qnext-stage-$version.XXXXXXXX")"
+cleanup() {
+  if [[ -n "$temporary" ]]; then
+    rm -rf -- "$temporary"
+  fi
+}
+trap cleanup EXIT
+cp -a "$payload/." "$temporary/"
+[[ "$(readlink "$temporary/private/bin/qnext-market-core")" == "qnext-market-core-$version" ]] || exit 3
+mv -T -- "$temporary" "$destination"
+temporary=""
+printf 'STAGED %s (%s)\n' "$version" "$expected_sha"
+echo "No activation, restart, mutable storage change, or public publication performed."
