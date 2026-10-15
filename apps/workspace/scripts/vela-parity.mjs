@@ -1,6 +1,7 @@
 import { Vela } from '@luxalgo/vela';
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
+import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
 
 const checks = [
   ['Vela constructor', typeof Vela === 'function'],
@@ -9,6 +10,7 @@ const checks = [
   ['workspace applyState', typeof VelaWorkspace.prototype.applyState === 'function'],
   ['workspace destroy', typeof VelaWorkspace.prototype.destroy === 'function'],
   ['PineWorkerEngine constructor', typeof PineWorkerEngine === 'function'],
+  ['Vela icon action API', typeof registerIcon === 'function' && typeof registerWidgetAction === 'function'],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
