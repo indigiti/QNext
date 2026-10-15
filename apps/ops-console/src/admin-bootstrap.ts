@@ -143,6 +143,8 @@ function renderGate(setup: SetupStatus, message = ''): void {
       </section>
     </main>
   `;
+  const gateHeader = appRoot.querySelector<HTMLElement>('.admin-gate-brand');
+  if (gateHeader) mountThemeControl({ container: gateHeader });
 
   const form = document.querySelector<HTMLFormElement>('#admin-gate-form')!;
   const tokenInput = document.querySelector<HTMLInputElement>('#admin-gate-token')!;
@@ -236,6 +238,8 @@ async function loadAdmin(): Promise<void> {
   await import('./intelligence-panel.mts');
   await import('./intelligence-lab-panel.mts');
   await import('./admin-ready');
+  const adminTopbar = document.querySelector<HTMLElement>('.ops-main .topbar, .topbar');
+  if (adminTopbar) mountThemeControl({ container: adminTopbar });
 
   document.querySelector<HTMLButtonElement>('#admin-logout')?.addEventListener('click', async () => {
     try {
@@ -269,5 +273,4 @@ async function bootstrap(): Promise<void> {
 }
 
 applyTheme();
-mountThemeControl();
 void bootstrap();
