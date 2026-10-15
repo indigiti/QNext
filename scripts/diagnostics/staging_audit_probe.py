@@ -76,7 +76,7 @@ def classify_nifty(ticker: str) -> str | None:
     return None
 
 
-def inspect(base: str, timeout: float, public_markers: bool) -> list[dict]:
+def inspect(base: str, timeout: float, public_markers: bool, expected_commit: str | None = None) -> list[dict]:
     results: list[dict] = []
 
     def check(name: str, path: str, expected: int, required: dict[str, type] | None = None) -> dict | None:
@@ -96,6 +96,21 @@ def inspect(base: str, timeout: float, public_markers: bool) -> list[dict]:
             results.append({"check": name, "result": "FAIL", "error": str(exc)})
             return None
 
+    release = check("release manifest", "/qnext-release.json", 200,
+                    {"version": str, "commit": str})
+    if release is not None:
+        deployed = release["commit"]
+        if expected_commit:
+            results.append({
+                "check": "deployed commit identity",
+                "result": "PASS" if deployed == expected_commit else "FAIL",
+                "observed": deployed,
+                **({} if deployed == expected_commit
+                   else {"error": f"deployed {deployed}, expected {expected_commit}"}),
+            })
+        else:
+            results.append({"check": "deployed commit identity", "result": "PASS",
+                            "observed": deployed})
     check("workspace page", "/", 200)
     check("admin entry page", "/admin/", 200)
     check("public timeframes", "/api/v1/timeframes/", 200, {"timeframes": list})
@@ -156,13 +171,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="https://stage.digiti.in/qnext/")
     parser.add_argument("--timeout", type=float, default=6.0)
+    parser.add_argument("--expected-commit", help="expected full GitHub commit ID of deployed release")
     parser.add_argument("--allow-public-markers", action="store_true",
                         help="accept explicitly enabled public paper execution events")
     args = parser.parse_args()
-    checks = inspect(args.url, args.timeout, args.allow_public_markers)
+    checks = inspect(args.url, args.timeout, args.allow_public_markers, args.expected_commit)
     for item in checks:
         print(f"{item['result']:4} {item['check']} "
-              f"{item.get('error', item.get('reason', ''))}")
+              f"{item.get('error', item.get('observed', item.get('reason', '')))}")
     failed = sum(c["result"] == "FAIL" for c in checks)
     print(f"Staging read-only smoke: {len(checks) - failed} non-fail, {failed} failed")
     return 1 if failed else 0
