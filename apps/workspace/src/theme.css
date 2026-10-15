@@ -84,3 +84,14 @@
 :root[data-qnext-theme='light'] .qnext-lightweight-grid { background: #cbd5e4; }
 :root[data-qnext-theme='light'] .qnext-lightweight-sync,
 :root[data-qnext-theme='light'] .qnext-lightweight-pane-status { color: #43536d; }
+
+
+/* Lightweight toolbar owns the control; it must never cover chart data. */
+.qnext-lightweight-toolbar .qnext-theme-trigger {
+  margin-left: 4px;
+}
+@media (max-width: 480px) {
+  .qnext-lightweight-toolbar .qnext-theme-trigger {
+    margin-left: auto;
+  }
+}
