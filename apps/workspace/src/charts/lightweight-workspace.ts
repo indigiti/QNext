@@ -144,6 +144,7 @@ export class QNextLightweightWorkspace {
     this.container.replaceChildren();
     this.shell = undefined;
     this.grid = undefined;
+    this.transportBadge = undefined;
   }
 
   private refreshTransportBadge(): void {

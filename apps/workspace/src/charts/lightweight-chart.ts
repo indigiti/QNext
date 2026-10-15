@@ -153,7 +153,8 @@ export class QNextLightweightChart {
       (bar: QNextBar) => {
         const last = this.bars[this.bars.length - 1];
         if (last && bar.time < last.time) return;
-        if (last && bar.time === last.time) this.bars[this.bars.length - 1] = bar;
+        const correctingCurrent = Boolean(last && bar.time === last.time);
+        if (correctingCurrent) this.bars[this.bars.length - 1] = bar;
         else this.bars.push(bar);
         const exceeded = this.bars.length > MAX_CHART_HISTORY;
         if (exceeded) {
@@ -163,8 +164,13 @@ export class QNextLightweightChart {
           volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
         } else {
           candleSeries.update(toCandlestickData(bar));
-          // A missing volume update must not retain a stale histogram value.
-          volumeSeries.update(toVolumeData(bar) ?? { time: Math.floor(bar.time / 1000) as import('lightweight-charts').UTCTimestamp, value: 0 });
+          if (volumeIsKnown(bar)) {
+            const volumePoint = toVolumeData(bar);
+            if (volumePoint) volumeSeries.update(volumePoint);
+          } else if (correctingCurrent && last?.volume !== undefined) {
+            // Missing is NOT zero. Remove a stale histogram point instead of fabricating volume.
+            volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
+          }
         }
       },
     );
@@ -323,4 +329,8 @@ function chartPalette(): { background: string; text: string; grid: string; borde
   return document.documentElement.dataset.qnextTheme === 'light'
     ? { background: '#ffffff', text: '#26364c', grid: '#e4e9f0', border: '#c3cedc' }
     : { background: '#0b0d12', text: '#d5d9e0', grid: '#1a1f2b', border: '#2a3140' };
+}
+
+function volumeIsKnown(bar: QNextBar): boolean {
+  return bar.volume !== undefined && Number.isFinite(bar.volume) && bar.volume >= 0;
 }

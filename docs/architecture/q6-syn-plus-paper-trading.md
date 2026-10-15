@@ -93,3 +93,9 @@ These defaults certify the pipeline; they are not a claim of trading efficacy.
 3. richer strategy selection from the Intelligence/optimization layer;
 4. forward-paper attribution reports and comparison against deterministic backtests;
 5. explicit promotion gates before any broker-shadow or live execution work.
+
+### Public paper markers visibility (2026-10-15 security follow-up)
+
+The workspace public `/api/v1/paper-markers/` endpoint is now **fail closed** by default: it returns a generic disabled snapshot without reading or exposing paper runtime execution data. To deliberately publish signals and fills to every visitor of a public chart, the operator must set `QNEXT_PUBLIC_PAPER_MARKERS=1` in the **PHP web runtime** environment. This is not an admin-authenticated display; enabling it knowingly publishes recent strategy execution details. The private admin `/syn-plus-paper` control and status endpoints continue to require admin authentication and are unaffected.
+
+For private visualization in a future release, introduce an authenticated workspace endpoint rather than setting the public opt-in.

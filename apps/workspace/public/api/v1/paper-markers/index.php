@@ -46,6 +46,20 @@ function paper_marker_string(array $value, string $key): string
     return is_string($raw) ? trim($raw) : '';
 }
 
+// Paper execution events are private trading intelligence. Never expose them via
+// the unauthenticated market-data surface unless expressly enabled by an operator.
+if (paper_marker_value('QNEXT_PUBLIC_PAPER_MARKERS') !== '1') {
+    echo json_encode([
+        'available' => false,
+        'enabled' => false,
+        'instrumentId' => 'QNEXT:NIFTY-SYN+',
+        'timeframe' => '1m',
+        'sessionId' => '',
+        'markers' => [],
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    exit;
+}
+
 $runtimeUrl = paper_marker_value('QNEXT_SYN_PLUS_PAPER_URL', 'http://127.0.0.1:18082');
 $status = paper_marker_status($runtimeUrl);
 if ($status === []) {
