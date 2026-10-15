@@ -9,6 +9,8 @@ from scripts.diagnostics import staging_audit_probe as probe
 
 class StagingProbeTests(unittest.TestCase):
     def fake_fetch(self, base, path, timeout):
+        if path == "/qnext-release.json":
+            return (200, b'{"version":"abcdef123456","commit":"abcdef1234567890abcdef1234567890abcdef12"}', "application/json")
         if path in ("/", "/admin/"):
             return (200, b"<html><body>QNext</body></html>", "text/html")
         if path.startswith("/admin/api/"):
@@ -47,6 +49,13 @@ class StagingProbeTests(unittest.TestCase):
             len([x for x in checks if x["check"].startswith("historical ") and x["result"] == "PASS"]),
             3,
         )
+
+    def test_mismatched_staging_commit_is_not_accepted(self):
+        with patch.object(probe, "fetch", side_effect=self.fake_fetch):
+            checks = probe.inspect("https://test.example/qnext", 1, public_markers=False,
+                                   expected_commit="0000000000000000000000000000000000000000")
+        self.assertTrue(any(x["check"] == "deployed commit identity" and x["result"] == "FAIL"
+                            for x in checks), checks)
 
     def test_empty_history_is_a_failure_not_a_pass(self):
         def empty_fetch(base, path, timeout):
