@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLightweightPaneConfigs,
   normalizeLightweightLayout,
+  transportModeLabel,
 } from '../src/charts/lightweight-workspace';
 
 describe('lightweight workspace layout', () => {
@@ -46,5 +47,15 @@ describe('lightweight workspace layout', () => {
     );
 
     expect(configs).toEqual([{ ticker: 'NSE:NIFTY', timeframe: '1m' }]);
+  });
+});
+
+
+describe('transport status labels', () => {
+  it('distinguishes connected WebSocket from fallback transport without asserting tick freshness', () => {
+    expect(transportModeLabel('wss')).toBe('WSS connected');
+    expect(transportModeLabel('rest_fallback')).toBe('REST fallback');
+    expect(transportModeLabel('connecting')).toBe('Connecting');
+    expect(transportModeLabel('idle')).toBe('Idle');
   });
 });
