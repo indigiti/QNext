@@ -91,6 +91,7 @@ jobs:
           php services/ops-api/tests/paper_markers_visibility.php
           python3 -m unittest scripts/diagnostics/test_staging_audit_probe.py
           bash -n deploy/qnext-ops-user
+          bash tests/certification/qnext-stage-release.sh
           bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php
 
@@ -220,6 +221,7 @@ jobs:
           install -m 0750 deploy/qnext-ops-helper release/private/deploy/qnext-ops-helper
           install -m 0750 deploy/qnext-ops-web release/private/deploy/qnext-ops-web
           install -m 0750 deploy/qnext-ops-user release/private/deploy/qnext-ops-user
+          install -m 0750 deploy/qnext-stage-release release/private/deploy/qnext-stage-release
           install -m 0750 deploy/qnext-intelligence-lab-python release/private/deploy/qnext-intelligence-lab-python
           install -m 0750 deploy/qnext-ml-dependencies release/private/deploy/qnext-ml-dependencies
           cp deploy/qnext-market-core.service release/private/deploy/
@@ -319,6 +321,7 @@ jobs:
           test -f release/private/ops-api/src/PaperProxy.php
           test -x release/private/deploy/qnext-ops-helper
           test -x release/private/deploy/qnext-ops-user
+          test -x release/private/deploy/qnext-stage-release
           test -x release/private/deploy/qnext-intelligence-lab-python
           test -x release/private/deploy/qnext-ml-dependencies
           test -s release/release-manifest.json
