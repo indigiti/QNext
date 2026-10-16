@@ -9,6 +9,7 @@ import {
   type Time,
 } from 'lightweight-charts';
 
+import { installChartResumeRecovery } from './chart-resume';
 import { QNextProvider, type QNextBar } from '../qnext-provider';
 import { toCandlestickData, toVolumeData } from './lightweight-adapter';
 import { loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY, trimLiveChartBars } from './history-pagination';
@@ -55,6 +56,8 @@ export class QNextLightweightChart {
   private unsubscribe?: () => void;
   private resizeObserver?: ResizeObserver;
   private themeListener?: () => void;
+  private unbindResume?: () => void;
+  private resumeInFlight = false;
 
   constructor(options: LightweightChartOptions) {
     this.container = options.container;
@@ -175,6 +178,8 @@ export class QNextLightweightChart {
       },
     );
 
+    this.unbindResume = installChartResumeRecovery(() => void this.reconcileOnResume());
+
     this.resizeObserver = new ResizeObserver(() => {
       chart.applyOptions({
         width: this.container.clientWidth,
@@ -182,6 +187,45 @@ export class QNextLightweightChart {
       });
     });
     this.resizeObserver.observe(this.container);
+  }
+
+  private async reconcileOnResume(): Promise<void> {
+    if (this.disposed || this.resumeInFlight || !this.bars.length) return;
+    this.resumeInFlight = true;
+    try {
+      const previousLast = this.bars[this.bars.length - 1].time;
+      const now = Date.now();
+      // Only recover recent chart history. Preserve the loaded historical viewport.
+      const from = this.bars[0].time;
+      const fresh = await this.provider.getBars(this.ticker, this.timeframe, {
+        from,
+        to: now,
+        limit: 5000,
+      });
+      if (this.disposed || !fresh.length) return;
+      // Take the snapshot after awaiting HTTP so concurrent live updates survive.
+      const liveByTime = new Map(this.bars.map((bar) => [bar.time, bar]));
+      // Closed canonical bars are authoritative; retain a potentially fresher
+      // forming live candle when both sources cover the current bucket.
+      for (const bar of fresh) {
+        if (bar.time < previousLast || !liveByTime.has(bar.time)) {
+          liveByTime.set(bar.time, bar);
+        }
+      }
+      const merged = trimLiveChartBars([...liveByTime.values()].sort((a, b) => a.time - b.time));
+      const scale = this.chart?.timeScale();
+      const visible = scale?.getVisibleRange();
+      this.bars = merged;
+      this.candleSeries?.setData(merged.map(toCandlestickData));
+      this.volumeSeries?.setData(merged.map(toVolumeData).filter((bar) => bar !== undefined));
+      if (visible && scale) {
+        try { scale.setVisibleRange(visible); } catch { /* viewport outside retained history */ }
+      }
+    } catch (error) {
+      if (!this.disposed) console.warn('QNext activation history reconciliation failed', error);
+    } finally {
+      this.resumeInFlight = false;
+    }
   }
 
   private async fetchEarlier(): Promise<void> {
@@ -305,6 +349,8 @@ export class QNextLightweightChart {
 
   destroy(): void {
     this.disposed = true;
+    this.unbindResume?.();
+    this.unbindResume = undefined;
     if (this.historyDebounce) clearTimeout(this.historyDebounce);
     this.historyDebounce = undefined;
     this.unbindHistory?.();

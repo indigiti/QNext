@@ -1,3 +1,4 @@
+import { installChartResumeRecovery } from './chart-resume';
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { nextVelaHistoryDepth, VELA_INITIAL_HISTORY } from './history-pagination';
 
@@ -19,6 +20,7 @@ export function shouldFetchOlderVela(
 export function installVelaPanHistory(workspace: VelaWorkspace): () => void {
   const attachments = new Map<object, Array<() => void>>();
   const timers = new Map<object, ReturnType<typeof setTimeout>>();
+  const recovering = new Set<object>();
 
   function synchronize(): void {
     const liveCharts = new Set(workspace.cells().map((cell) => cell.chart));
@@ -102,11 +104,26 @@ export function installVelaPanHistory(workspace: VelaWorkspace): () => void {
   }
 
   synchronize();
+  const unbindResume = installChartResumeRecovery(() => {
+    for (const cell of workspace.cells()) {
+      const chart = cell.chart;
+      if (recovering.has(chart)) continue;
+      recovering.add(chart);
+      const savedRange = chart.getVisibleRange();
+      void chart.setMarket({
+        bars: chart.market.bars ?? VELA_INITIAL_HISTORY,
+        ...(savedRange ? { visibleRange: savedRange } : {}),
+      }).catch((error) => {
+        console.warn('QNext Vela activation refresh failed', error);
+      }).finally(() => recovering.delete(chart));
+    }
+  });
   const created = workspace.on('cell:created', synchronize);
   const destroyed = workspace.on('cell:destroyed', synchronize);
   return () => {
     created();
     destroyed();
+    unbindResume();
     for (const unbind of attachments.values()) unbind.forEach((fn) => fn());
     for (const timer of timers.values()) clearTimeout(timer);
     attachments.clear();
