@@ -194,10 +194,9 @@ export class QNextLightweightChart {
     this.resumeInFlight = true;
     try {
       const previousLast = this.bars[this.bars.length - 1].time;
-      const duration = timeframeApproxMs(this.timeframe);
       const now = Date.now();
       // Only recover recent chart history. Preserve the loaded historical viewport.
-      const from = Math.max(this.bars[0].time, previousLast - duration * 2);
+      const from = this.bars[0].time;
       const fresh = await this.provider.getBars(this.ticker, this.timeframe, {
         from,
         to: now,
@@ -379,11 +378,4 @@ function chartPalette(): { background: string; text: string; grid: string; borde
 
 function volumeIsKnown(bar: QNextBar): boolean {
   return bar.volume !== undefined && Number.isFinite(bar.volume) && bar.volume >= 0;
-}
-
-function timeframeApproxMs(timeframe: string): number {
-  const match = /^(\d+)(s|m|h|D|W|M)$/.exec(timeframe);
-  if (!match) return 60_000;
-  const units: Record<string, number> = { s: 1_000, m: 60_000, h: 3_600_000, D: 86_400_000, W: 604_800_000, M: 2_592_000_000 };
-  return Number(match[1]) * units[match[2]];
 }
