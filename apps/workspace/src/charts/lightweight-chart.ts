@@ -203,6 +203,7 @@ export class QNextLightweightChart {
         limit: 5000,
       });
       if (this.disposed || !fresh.length) return;
+      // Take the snapshot after awaiting HTTP so concurrent live updates survive.
       const liveByTime = new Map(this.bars.map((bar) => [bar.time, bar]));
       // Closed canonical bars are authoritative; retain a potentially fresher
       // forming live candle when both sources cover the current bucket.
