@@ -95,8 +95,76 @@ jobs:
       - name: Build static workspace
         run: npm run build
 
-      - name: Validate paper marker endpoint syntax
-        run: php -l public/api/v1/paper-markers/index.php
+      - name: Validate chart-side PHP endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l public/api/v1/paper-markers/index.php
+          php -l public/api/v1/intelligence-advisory/index.php
+          test -f dist/api/v1/intelligence-advisory/index.php
+
+      - name: Validate sanitized certified-advisory endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          exp="$root/storage/intelligence-lab/experiments/lab-certified-smoke"
+          mkdir -p "$exp/advisory"
+          cat > "$exp/manifest.json" <<'JSON'
+          {
+            "schema":"QNEXT.INTELLIGENCE.LAB/1",
+            "experiment_id":"lab-certified-smoke",
+            "name":"Certified smoke",
+            "instrument_id":"NSE:NIFTY50",
+            "timeframe":"1m",
+            "indicator_ids":["ema-1"],
+            "indicator_configuration_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "feature_schema_version":"qnext-chart-indicators-v2",
+            "created_at_ms":1800000000000,
+            "lifecycle_state":"CERTIFIED",
+            "source":"MANUAL",
+            "notes":""
+          }
+          JSON
+          cat > "$exp/advisory/latest.json" <<'JSON'
+          {
+            "schema":"QNEXT.INTELLIGENCE.CERTIFIED_ADVISORY/1",
+            "advisory_id":"adv-certified-smoke",
+            "experiment_id":"lab-certified-smoke",
+            "instrument_id":"NSE:NIFTY50",
+            "timeframe":"1m",
+            "indicator_configuration_hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "feature_schema_version":"qnext-chart-indicators-v2",
+            "certified_at_ms":1800000000000,
+            "bar_time_ms":1800000060000,
+            "as_of_time_ms":1800000120000,
+            "created_at_ms":1800000121000,
+            "model_algorithm":"qnext-ridge-direction-v1",
+            "model_hash":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "decision":"BUY",
+            "probabilities":{"BUY":0.7,"SELL":0.2,"NO_TRADE":0.1},
+            "entry_price":100.0,
+            "target1_price":101.0,
+            "target2_price":102.0,
+            "invalidation_price":99.0,
+            "expected_return_pct":0.012,
+            "expected_horizon_bars":3.0,
+            "recommendation_policy_id":"rec-certified-smoke",
+            "features":{"must_not":"leak"},
+            "model_payload":{"must_not":"leak"}
+          }
+          JSON
+          output="$(QNEXT_PRIVATE_ROOT="$root" php public/api/v1/intelligence-advisory/index.php)"
+          php -r '
+            $data=json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
+            if (($data["available"] ?? false) !== true) exit(1);
+            if (count($data["advisories"] ?? []) !== 1) exit(2);
+            $item=$data["advisories"][0];
+            if (($item["decision"] ?? "") !== "BUY") exit(3);
+            if (isset($item["features"]) || isset($item["model_payload"])) exit(4);
+            if (($item["instrumentId"] ?? "") !== "NSE:NIFTY50") exit(5);
+          ' <<<"$output"
+          rm -rf "$root"
 
       - name: Validate indicator deployment-root and Pine manifest
         shell: bash

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/ops-console/**"
+      - "apps/workspace/public/api/v1/intelligence-advisory/**"
       - "services/ops-api/**"
       - "deploy/**"
       - ".github/workflows/qnext-release.yml"
@@ -67,6 +68,7 @@ jobs:
           set -euo pipefail
           find services/ops-api -name '*.php' -print0 | xargs -0 -n1 php -l
           php -l apps/ops-console/public/api/index.php
+          php -l apps/workspace/public/api/v1/intelligence-advisory/index.php
       - name: Helper syntax
         run: |
           bash -n deploy/qnext-ops-helper
