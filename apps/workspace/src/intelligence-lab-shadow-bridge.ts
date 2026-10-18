@@ -1,7 +1,4 @@
-import {
-  captureActiveChartLabSnapshot,
-  type LabChartSnapshot,
-} from './intelligence-lab-snapshot';
+import { captureActiveChartLabSnapshot } from './intelligence-lab-snapshot';
 import {
   augmentPineIntelligenceContracts,
   type LabHistoryFetcher,
@@ -59,8 +56,6 @@ export function mountIntelligenceLabShadowBridge(
   let shadowInFlight = false;
   const lastQueued = loadLastQueued();
 
-  const status = ensureShadowStatus();
-
   const refreshTargets = async () => {
     if (stopped || targetRefreshInFlight) return;
     targetRefreshInFlight = true;
@@ -75,7 +70,6 @@ export function mountIntelligenceLabShadowBridge(
       );
       if (response.status === 403) {
         targets = [];
-        setStatus(status, 'Shadow: Admin sign-in required');
         return;
       }
       if (!response.ok) {
@@ -85,17 +79,8 @@ export function mountIntelligenceLabShadowBridge(
       targets = Array.isArray(payload.targets)
         ? payload.targets.filter(isShadowTarget)
         : [];
-      setStatus(
-        status,
-        targets.length > 0
-          ? `Shadow: ${targets.length} active`
-          : 'Shadow: idle',
-      );
-    } catch (error) {
-      setStatus(
-        status,
-        `Shadow: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      // Best-effort observer: retry target discovery at the normal cadence.
     } finally {
       targetRefreshInFlight = false;
       if (!stopped) {
@@ -119,7 +104,6 @@ export function mountIntelligenceLabShadowBridge(
           target.timeframe === active.timeframe,
       );
       if (matching.length === 0) {
-        setStatus(status, 'Shadow: active chart has no matching experiment');
         return;
       }
 
@@ -142,7 +126,6 @@ export function mountIntelligenceLabShadowBridge(
         )
         .at(-1);
       if (!latest) {
-        setStatus(status, 'Shadow: waiting for finalized bar');
         return;
       }
 
@@ -152,7 +135,6 @@ export function mountIntelligenceLabShadowBridge(
           (lastQueued[target.experiment_id] ?? 0) < latest.time,
       );
       if (pendingTargets.length === 0) {
-        setStatus(status, `Shadow: captured ${formatTime(latest.time)}`);
         return;
       }
 
@@ -174,7 +156,6 @@ export function mountIntelligenceLabShadowBridge(
         .filter((row) => row.bar_time_ms <= latest.time)
         .slice(-SHADOW_HISTORY_ROWS);
       if (rows.at(-1)?.bar_time_ms !== latest.time) {
-        setStatus(status, 'Shadow: waiting for indicator finalization');
         return;
       }
 
@@ -184,7 +165,6 @@ export function mountIntelligenceLabShadowBridge(
             target.indicator_configuration_hash ||
           snapshot.feature_schema_version !== target.feature_schema_version
         ) {
-          setStatus(status, 'Shadow: chart indicator context changed');
           continue;
         }
 
@@ -211,7 +191,6 @@ export function mountIntelligenceLabShadowBridge(
         );
 
         if (response.status === 403) {
-          setStatus(status, 'Shadow: Admin sign-in required');
           return;
         }
         if (!response.ok) {
@@ -222,12 +201,8 @@ export function mountIntelligenceLabShadowBridge(
         lastQueued[target.experiment_id] = latest.time;
         saveLastQueued(lastQueued);
       }
-      setStatus(status, `Shadow: queued ${formatTime(latest.time)}`);
-    } catch (error) {
-      setStatus(
-        status,
-        `Shadow: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch {
+      // A failed observation will be retried idempotently on the next poll.
     } finally {
       shadowInFlight = false;
       if (!stopped) {
@@ -243,7 +218,6 @@ export function mountIntelligenceLabShadowBridge(
     stopped = true;
     if (targetRefreshTimer !== undefined) clearTimeout(targetRefreshTimer);
     if (shadowTimer !== undefined) clearTimeout(shadowTimer);
-    status?.remove();
   };
 }
 
@@ -264,28 +238,6 @@ function activeMarket(
   const timeframe =
     typeof chart.timeframe === 'string' ? chart.timeframe.trim() : '';
   return symbol && timeframe ? { symbol, timeframe } : null;
-}
-
-function ensureShadowStatus(): HTMLSpanElement | null {
-  const root = document.querySelector<HTMLDivElement>(
-    '#qnext-intelligence-lab-bridge',
-  );
-  if (!root) return null;
-  const existing = root.querySelector<HTMLSpanElement>(
-    '#qnext-intelligence-lab-shadow-status',
-  );
-  if (existing) return existing;
-  const status = document.createElement('span');
-  status.id = 'qnext-intelligence-lab-shadow-status';
-  status.textContent = 'Shadow: idle';
-  status.style.cssText =
-    'font:11px system-ui;color:#7f8b9d;max-width:220px;white-space:nowrap';
-  root.prepend(status);
-  return status;
-}
-
-function setStatus(status: HTMLSpanElement | null, message: string): void {
-  if (status) status.textContent = message;
 }
 
 function isShadowTarget(value: unknown): value is ShadowTarget {
@@ -341,14 +293,3 @@ function timeframeMs(value: string): number {
   return amount * 30 * 86_400_000;
 }
 
-function formatTime(value: number): string {
-  try {
-    return new Date(value).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  } catch {
-    return String(value);
-  }
-}
