@@ -15,6 +15,7 @@ type Poller struct {
 	AccessToken  string
 	ClientID     string
 	Keys         []InstrumentKey
+	KeysSnapshot func() []InstrumentKey
 	Interval     time.Duration
 	NextSequence func() uint64
 	Now          func() time.Time
@@ -43,7 +44,15 @@ func (p *Poller) Run(ctx context.Context, onTick func(domain.Tick) error) error 
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timer.C:
-			snapshots, err := p.Client.Fetch(ctx, p.AccessToken, p.ClientID, p.Keys)
+			keys := p.Keys
+			if p.KeysSnapshot != nil {
+				keys = p.KeysSnapshot()
+			}
+			if len(keys) == 0 {
+				timer.Reset(interval)
+				continue
+			}
+			snapshots, err := p.Client.Fetch(ctx, p.AccessToken, p.ClientID, keys)
 			if err != nil {
 				if p.OnError != nil {
 					p.OnError(err)

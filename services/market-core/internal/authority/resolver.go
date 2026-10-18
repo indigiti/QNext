@@ -86,6 +86,57 @@ func NewResolver(registry *symbol.Registry, policy map[string][]Preference) (*Re
 	}, nil
 }
 
+func (r *Resolver) SetPolicy(instrumentID string, preferences []Preference) error {
+	if strings.TrimSpace(instrumentID) == "" {
+		return errors.New("authority policy instrument is required")
+	}
+	if _, ok := r.registry.Instrument(instrumentID); !ok {
+		return errors.New("authority policy references unknown instrument: " + instrumentID)
+	}
+	normalized, err := normalizePreferences(r.registry, instrumentID, preferences)
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	r.policy[instrumentID] = normalized
+	r.mu.Unlock()
+	return nil
+}
+
+func normalizePreferences(registry *symbol.Registry, instrumentID string, preferences []Preference) ([]Preference, error) {
+	if len(preferences) == 0 {
+		return nil, errors.New("authority policy requires at least one provider for " + instrumentID)
+	}
+	seen := make(map[string]bool, len(preferences))
+	copyOfPreferences := make([]Preference, 0, len(preferences))
+	for _, preference := range preferences {
+		provider := strings.ToLower(strings.TrimSpace(preference.Provider))
+		if provider == "" {
+			return nil, errors.New("authority provider is required")
+		}
+		if preference.MaxStaleness <= 0 {
+			return nil, errors.New("authority max staleness must be positive")
+		}
+		if seen[provider] {
+			return nil, errors.New("duplicate authority provider for " + instrumentID)
+		}
+		if _, ok := registry.ProviderMapping(provider, instrumentID); !ok {
+			return nil, errors.New("authority provider is not registered for " + instrumentID + ": " + provider)
+		}
+		seen[provider] = true
+		preference.Provider = provider
+		copyOfPreferences = append(copyOfPreferences, preference)
+	}
+	sort.Slice(copyOfPreferences, func(i, j int) bool {
+		if copyOfPreferences[i].Priority == copyOfPreferences[j].Priority {
+			return copyOfPreferences[i].Provider < copyOfPreferences[j].Provider
+		}
+		return copyOfPreferences[i].Priority < copyOfPreferences[j].Priority
+	})
+	return copyOfPreferences, nil
+}
+
 func (r *Resolver) UpdateState(instrumentID, provider string, state ProviderState) error {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	if instrumentID == "" || provider == "" {
