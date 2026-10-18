@@ -163,7 +163,7 @@ Certification is fail-closed: every enabled indicator must contribute at least o
 
 Adaptive EMA exposes an explicit historical contract including EMA, price, ATR, standard deviation, trend, EMA distance, EMA slope, ATR percent and standard-deviation percent.
 
-For Pine scripts that render drawings but expose no historical plot series, **Send to Lab** may run a separate invisible Vela/PineWorker clone over canonical Market Core bars. QNext auto-discovers safe top-level scalar Pine state and appends hidden plots only to that Lab clone. The visible chart source and runtime instance are never modified.
+The retired manual **Send to Lab** capture path could execute an invisible Vela/PineWorker clone over canonical Market Core bars for Pine scripts that expose only drawings. Its historical contract utilities can still be used by authenticated Lab workflows; no such capture control is mounted on the public chart. The original clone did not alter the visible chart source or indicator runtime.
 
 Examples of auto-contract state include structure/trend integers, last swing levels and CHoCH booleans. Arrays, boxes, labels and local block variables are not rewritten into unsafe guesses. If no safe historical state can be extracted, the experiment can still be imported for diagnostics but cannot pass the backtest gate.
 
