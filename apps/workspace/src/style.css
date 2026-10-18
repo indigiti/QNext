@@ -30,6 +30,15 @@ input {
   height: 100dvh;
 }
 
+/* Vela 0.8's Zag dropdowns portal their positioners to the workspace root.
+   Without a stacking level on the POSITIONER (not just the child .vela-menu),
+   the later-positioned chart grid paints over timeframe and candle-style rows,
+   intercepting clicks even when the popup appears to open. Keep portal surfaces
+   above the chart, while allowing Zag to control fixed/absolute positioning. */
+#app .vela-workspace > .vela-ui-layer {
+  z-index: 100;
+}
+
 .qnext-lightweight-shell {
   display: grid;
   grid-template-rows: 44px minmax(0, 1fr);
