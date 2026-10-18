@@ -294,7 +294,7 @@ function render(status: LabStatus): void {
       </div>
       <button id="qil-import" type="button" ${busy ? 'disabled' : ''}>Import to Lab</button>
     </div>
-  ` : '<p class="muted">Use “Send to Lab” on the Vela chart to capture the currently enabled indicators.</p>';
+  ` : '<p class="muted">No pending chart snapshot. The floating “Send to Lab” control was retired; older saved snapshots can still be imported here.</p>';
 
   const ordered = [...(status.experiments ?? [])].sort((a, b) => b.created_at_ms - a.created_at_ms);
   experiments.innerHTML = ordered.length
