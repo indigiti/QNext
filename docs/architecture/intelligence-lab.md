@@ -108,32 +108,23 @@ The first slice adds:
 The next slice will add chart-clone experiment creation, feature contracts and the historical evaluation runner. ML libraries (scikit-learn / LightGBM) remain deferred until the lab boundary and leakage-safe dataset flow are certified.
 
 
-## Chart-to-Lab workflow
+## Chart-to-Lab snapshot imports (legacy)
 
-The active Vela chart now exposes a host-level **Send to Lab** action. Vela remains the indicator execution authority; the bridge only reads the active cell and its visible indicator handles.
+The former floating **Send to Lab** button on the public Vela chart was retired in QNeXT Release #104. The associated overlay bridge is no longer mounted; it must not be presented as an available chart control.
 
-The capture includes:
+Snapshots already saved in the browser under `qnext-intelligence-lab-pending-v1` can still be imported by an authenticated Admin operator. The private Admin import endpoint, historical feature contracts, existing experiments and Shadow-Live observer remain in service. No saved experiments or browser-local pending snapshots are deleted by the UI cleanup.
 
-- active symbol and timeframe
-- only visible/enabled indicator instances
-- script source hash and persisted input overrides
-- deterministic indicator configuration hash
-- time-indexed numeric plot features when exposed by the engine
-- current numeric variables for diagnostics
-
-The workspace first submits the immutable snapshot to the authenticated Admin Lab endpoint. If the Admin session is not available, it keeps a browser-local pending handoff and opens the Admin surface; the authenticated operator can then import it.
+The original snapshot schema records active symbol and timeframe, visible indicators, source/input hashes, indicator configuration, historical numeric features and current diagnostics. New manual snapshot capture requires a separate, authenticated Admin-facing workflow; do not reintroduce a floating chart overlay.
 
 ```text
-Active Vela chart
-      ↓ Send to Lab
-read-only indicator snapshot
-      ↓
-Admin-authenticated Lab import queue
-      ↓
+Previously captured immutable snapshot
+      ↓ authenticated Admin legacy import
 storage/intelligence-lab/experiments/<id>
+      ↓
+backtest / Shadow-Live validation
 ```
 
-No chart setting, indicator input, production model or live strategy is modified by this action.
+No chart setting, indicator input, production model or live strategy is modified by a legacy import.
 
 ## First Lab backtest runner
 
