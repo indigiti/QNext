@@ -11,7 +11,12 @@ import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
 
+const shellCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+
 const checks = [
+  ['chart dropdown positioner stacks above Vela chart grid',
+    /#app \.vela-workspace > \.vela-ui-layer\s*\{\s*z-index:\s*100\s*;/.test(shellCSS)],
+
   ...Object.entries(expected).map(([name, version]) => [
     `pinned ${name}@${version}`,
     manifest.dependencies?.[name] === version,

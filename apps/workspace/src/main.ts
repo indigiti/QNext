@@ -11,7 +11,6 @@ import {
 import { QNextProvider } from './qnext-provider';
 import { qnextBrowserLatencySnapshot } from './live-latency';
 import { QNextIndicatorEngine } from './qnext-indicator-engine';
-import { mountIntelligenceLabBridge } from './intelligence-lab-bridge';
 import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
 import './style.css';
 import { applyTheme, currentTheme } from './theme';
@@ -173,12 +172,8 @@ async function bootstrapVela(timeframes: string[]) {
   window.__QNEXT_WORKSPACE__ = workspace;
   installVelaPanHistory(workspace);
   const labResolverProvider = createProvider();
-  mountIntelligenceLabBridge(
-    workspace as unknown as Parameters<typeof mountIntelligenceLabBridge>[0],
-    (symbol) => labResolverProvider.resolveInstrumentID(symbol),
-    (instrumentID, timeframe, range) =>
-      labResolverProvider.getBars(instrumentID, timeframe, range),
-  );
+  // Keep Shadow-Live collection for Admin/Intelligence Lab, but do not mount
+  // the floating public chart status or the manual Send to Lab widget.
   mountIntelligenceLabShadowBridge(
     workspace as unknown as Parameters<typeof mountIntelligenceLabShadowBridge>[0],
     (symbol) => labResolverProvider.resolveInstrumentID(symbol),
