@@ -21,6 +21,14 @@ export function installVelaPanHistory(workspace: VelaWorkspace): () => void {
   const attachments = new Map<object, Array<() => void>>();
   const timers = new Map<object, ReturnType<typeof setTimeout>>();
   const recovering = new Set<object>();
+  // A market refresh can reset Vela's viewport even when visibleRange is passed.
+  // Restore the user's original range after the asynchronous refresh completes.
+  const restoreViewport = (chart: typeof workspace.chart, range: ReturnType<typeof chart.getVisibleRange>) => {
+    if (!range) return;
+    const current = chart.getVisibleRange();
+    if (current && Math.abs(current.from - range.from) < 1 && Math.abs(current.to - range.to) < 1) return;
+    chart.setVisibleRange(range);
+  };
 
   function synchronize(): void {
     const liveCharts = new Set(workspace.cells().map((cell) => cell.chart));
@@ -113,7 +121,7 @@ export function installVelaPanHistory(workspace: VelaWorkspace): () => void {
       void chart.setMarket({
         bars: chart.market.bars ?? VELA_INITIAL_HISTORY,
         ...(savedRange ? { visibleRange: savedRange } : {}),
-      }).catch((error) => {
+      }).then(() => restoreViewport(chart, savedRange)).catch((error) => {
         console.warn('QNext Vela activation refresh failed', error);
       }).finally(() => recovering.delete(chart));
     }
