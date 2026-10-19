@@ -1,10 +1,10 @@
-import { installChartResumeRecovery } from './chart-resume';
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { nextVelaHistoryDepth, VELA_INITIAL_HISTORY } from './history-pagination';
 
-// Vela expands historical bars in place with setMarket({ bars, visibleRange }).
-// It owns its indicator/drawing history; never inject bars or replace the
-// chart itself. Only load more after the user pans toward the oldest candle.
+// Vela 0.8.4 owns live updates, hidden-tab gap healing, and viewport policy.
+// Extend older history only after a leftward pan, using depth-only setMarket.
+// Never set visibleRange on a routine refresh: its data-bounded timestamps
+// cannot preserve empty right margins or exact zoom.
 export function shouldFetchOlderVela(
   range: { from: number; to: number },
   previousFrom: number | undefined,
@@ -20,16 +20,6 @@ export function shouldFetchOlderVela(
 export function installVelaPanHistory(workspace: VelaWorkspace): () => void {
   const attachments = new Map<object, Array<() => void>>();
   const timers = new Map<object, ReturnType<typeof setTimeout>>();
-  const recovering = new Set<object>();
-  // A market refresh can reset Vela's viewport even when visibleRange is passed.
-  // Restore the user's original range after the asynchronous refresh completes.
-  const restoreViewport = (chart: typeof workspace.chart, range: ReturnType<typeof chart.getVisibleRange>) => {
-    if (!range) return;
-    const current = chart.getVisibleRange();
-    if (current && Math.abs(current.from - range.from) < 1 && Math.abs(current.to - range.to) < 1) return;
-    chart.setVisibleRange(range);
-  };
-
   function synchronize(): void {
     const liveCharts = new Set(workspace.cells().map((cell) => cell.chart));
     for (const [chart, unbind] of attachments) {
@@ -92,14 +82,12 @@ export function installVelaPanHistory(workspace: VelaWorkspace): () => void {
               exhausted = true;
               return;
             }
-            const savedRange = chart.getVisibleRange();
             beforeLoad = lastLoaded;
             depth = target;
             inFlight = true;
-            void chart.setMarket({
-              bars: target,
-              ...(savedRange ? { visibleRange: savedRange } : {}),
-            }).catch((error) => {
+            // Vela 0.8.4 extends history in place and preserves the viewport.
+            // Passing a sampled visibleRange would recompute zoom and shift the view.
+            void chart.setMarket({ bars: target }).catch((error) => {
               inFlight = false;
               exhausted = true;
               console.warn('QNext Vela historical pan load failed', error);
@@ -112,26 +100,11 @@ export function installVelaPanHistory(workspace: VelaWorkspace): () => void {
   }
 
   synchronize();
-  const unbindResume = installChartResumeRecovery(() => {
-    for (const cell of workspace.cells()) {
-      const chart = cell.chart;
-      if (recovering.has(chart)) continue;
-      recovering.add(chart);
-      const savedRange = chart.getVisibleRange();
-      void chart.setMarket({
-        bars: chart.market.bars ?? VELA_INITIAL_HISTORY,
-        ...(savedRange ? { visibleRange: savedRange } : {}),
-      }).then(() => restoreViewport(chart, savedRange)).catch((error) => {
-        console.warn('QNext Vela activation refresh failed', error);
-      }).finally(() => recovering.delete(chart));
-    }
-  });
   const created = workspace.on('cell:created', synchronize);
   const destroyed = workspace.on('cell:destroyed', synchronize);
   return () => {
     created();
     destroyed();
-    unbindResume();
     for (const unbind of attachments.values()) unbind.forEach((fn) => fn());
     for (const timer of timers.values()) clearTimeout(timer);
     attachments.clear();
