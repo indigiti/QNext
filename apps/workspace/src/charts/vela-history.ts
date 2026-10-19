@@ -1,9 +1,10 @@
 import type { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { nextVelaHistoryDepth, VELA_INITIAL_HISTORY } from './history-pagination';
 
-// Vela expands historical bars in place with setMarket({ bars, visibleRange }).
-// It owns its indicator/drawing history; never inject bars or replace the
-// chart itself. Only load more after the user pans toward the oldest candle.
+// Vela 0.8.4 owns live updates, hidden-tab gap healing, and viewport policy.
+// Extend older history only after a leftward pan, using depth-only setMarket.
+// Never set visibleRange on a routine refresh: its data-bounded timestamps
+// cannot preserve empty right margins or exact zoom.
 export function shouldFetchOlderVela(
   range: { from: number; to: number },
   previousFrom: number | undefined,
