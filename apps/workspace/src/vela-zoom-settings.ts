@@ -1,14 +1,10 @@
-import { registerIcon, registerSidePanel } from '@luxalgo/vela/plugin';
+import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
+
+import { closeThemePopup } from './theme';
 
 export type VelaZoomSpeed = 'slow' | 'balanced' | 'fast';
 
 const STORAGE_KEY = 'qnext-vela-wheel-zoom-v1';
-const OPTIONS: ReadonlyArray<{ value: VelaZoomSpeed; label: string; description: string }> = [
-  { value: 'slow', label: 'Slow', description: 'Precision zoom (25% of Vela default)' },
-  { value: 'balanced', label: 'Balanced', description: 'Smooth zoom (50% of Vela default)' },
-  { value: 'fast', label: 'Fast', description: 'Original Vela wheel sensitivity' },
-];
-
 let registered = false;
 let selectedSpeed: VelaZoomSpeed = 'balanced';
 
@@ -56,9 +52,130 @@ function writeSpeed(value: VelaZoomSpeed): void {
   }
 }
 
+
+type PopupChoice = { value: VelaZoomSpeed; label: string; icon: string };
+
+const POPUP_CHOICES: readonly PopupChoice[] = [
+  { value: 'slow', label: 'Slow zoom', icon: '<path d="M5 12h14"/><path d="M7 8v8"/>' },
+  { value: 'balanced', label: 'Balanced zoom', icon: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-6"/><circle cx="12" cy="16" r="1"/>' },
+  { value: 'fast', label: 'Fast zoom (Vela default)', icon: '<path d="m13 2-9 12h7l-1 8 10-12h-7l0-8z"/>' },
+];
+
+let closeActivePopup: (() => void) | null = null;
+let currentPopupAnchor: HTMLElement | null = null;
+
+export function closeVelaZoomPopup(restoreFocus = false): void {
+  const cleanup = closeActivePopup;
+  closeActivePopup = null;
+  cleanup?.();
+  if (restoreFocus && currentPopupAnchor?.isConnected) currentPopupAnchor.focus();
+  currentPopupAnchor = null;
+}
+
+function icon(paths: string): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '22');
+  svg.setAttribute('height', '22');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = paths; // Built-in SVG paths only; no user-provided content.
+  return svg;
+}
+
+/** Compact transient control, using the same positioning approach as Appearance. */
+export function toggleVelaZoomPopup(anchor: HTMLElement | null): void {
+  if (!anchor) return;
+  const wasOpen = closeActivePopup !== null;
+  closeVelaZoomPopup();
+  if (wasOpen) return;
+  closeThemePopup();
+
+  const popup = document.createElement('div');
+  popup.id = 'qnext-zoom-popover';
+  popup.className = 'qnext-zoom-popover';
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-label', 'Chart zoom speed');
+
+  const buttons: HTMLButtonElement[] = [];
+  for (const choice of POPUP_CHOICES) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'qnext-zoom-choice';
+    button.title = choice.label;
+    button.setAttribute('aria-label', choice.label);
+    button.setAttribute('aria-pressed', String(selectedSpeed === choice.value));
+    if (selectedSpeed === choice.value) button.classList.add('is-selected');
+    button.append(icon(choice.icon));
+    button.addEventListener('click', () => {
+      writeSpeed(choice.value);
+      closeVelaZoomPopup(true);
+    });
+    popup.append(button);
+    buttons.push(button);
+  }
+
+  document.body.append(popup);
+  currentPopupAnchor = anchor;
+  anchor.setAttribute('aria-expanded', 'true');
+  anchor.setAttribute('aria-controls', popup.id);
+  anchor.setAttribute('aria-haspopup', 'dialog');
+
+  const position = () => {
+    const origin = anchor.getBoundingClientRect();
+    const bounds = popup.getBoundingClientRect();
+    const left = Math.max(8, Math.min(origin.right - bounds.width, window.innerWidth - bounds.width - 8));
+    const below = origin.bottom + 8;
+    const top = below + bounds.height <= window.innerHeight - 8
+      ? below
+      : Math.max(8, origin.top - bounds.height - 8);
+    popup.style.left = Math.round(left) + 'px';
+    popup.style.top = Math.round(top) + 'px';
+  };
+
+  const onPointerDown = (event: PointerEvent) => {
+    if (!(event.target instanceof Node)) return;
+    if (!popup.contains(event.target) && !anchor.contains(event.target)) closeVelaZoomPopup();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeVelaZoomPopup(true);
+    } else if (event.key === 'Tab') {
+      closeVelaZoomPopup();
+    } else if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0
+        : event.key === 'End' ? buttons.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length;
+      buttons[next]?.focus();
+    }
+  };
+  const onResize = () => closeVelaZoomPopup();
+
+  closeActivePopup = () => {
+    popup.remove();
+    anchor.setAttribute('aria-expanded', 'false');
+    anchor.removeAttribute('aria-controls');
+    document.removeEventListener('pointerdown', onPointerDown, true);
+    document.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('resize', onResize);
+  };
+  document.addEventListener('pointerdown', onPointerDown, true);
+  document.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('resize', onResize);
+  position();
+  buttons[POPUP_CHOICES.findIndex((choice) => choice.value === selectedSpeed)]?.focus();
+}
+
 /**
- * Register a native Vela panel icon between Data Window (order 10) and
- * Object Tree (order 20). The overlay panel does not resize/shift the viewport.
+ * Native icon-only Vela action immediately LEFT of the built-in Data Window
+ * panel button. It launches a small popup without resizing the chart.
  */
 export function registerVelaZoomSettings(): void {
   if (registered) return;
@@ -70,67 +187,23 @@ export function registerVelaZoomSettings(): void {
     '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="2.5" fill="currentColor" stroke="none"/><circle cx="16" cy="17" r="2.5" fill="currentColor" stroke="none"/></svg>',
   );
 
-  registerSidePanel({
-    id: 'qnext.zoom-settings',
-    title: 'Chart Zoom Settings',
+  registerWidgetAction({
+    id: 'qnext.zoom.open',
+    target: 'topbar',
+    label: 'Zoom speed',
     icon: 'qnext-zoom-settings',
-    order: 15,
-    width: 286,
-    overlay: true,
-    mount: (_ctx, body) => {
-      body.classList.add('qnext-zoom-panel');
-
-      const introduction = document.createElement('p');
-      introduction.className = 'qnext-zoom-intro';
-      introduction.textContent = 'Mouse-wheel and vertical trackpad zoom sensitivity';
-      body.appendChild(introduction);
-
-      const group = document.createElement('fieldset');
-      group.className = 'qnext-zoom-options';
-      const legend = document.createElement('legend');
-      legend.textContent = 'Zoom speed';
-      group.appendChild(legend);
-
-      const inputs: Array<{ input: HTMLInputElement; row: HTMLLabelElement }> = [];
-      for (const choice of OPTIONS) {
-        const row = document.createElement('label');
-        row.className = 'qnext-zoom-option';
-        const input = document.createElement('input');
-        input.type = 'radio';
-        input.name = 'qnext-wheel-zoom-speed';
-        input.value = choice.value;
-        const content = document.createElement('span');
-        const title = document.createElement('strong');
-        title.textContent = choice.label;
-        const description = document.createElement('small');
-        description.textContent = choice.description;
-        content.append(title, description);
-        row.append(input, content);
-        group.appendChild(row);
-        inputs.push({ input, row });
-        input.addEventListener('change', () => {
-          if (!input.checked) return;
-          writeSpeed(choice.value);
-          updateSelection();
-        });
-      }
-
-      function updateSelection(): void {
-        for (const { input, row } of inputs) {
-          input.checked = input.value === selectedSpeed;
-          row.classList.toggle('is-selected', input.checked);
-        }
-      }
-
-      updateSelection();
-      body.appendChild(group);
-
-      const note = document.createElement('p');
-      note.className = 'qnext-zoom-note';
-      note.textContent = 'Applies immediately and is saved in this browser. Horizontal panning, drawings and chart position remain unchanged.';
-      body.appendChild(note);
-
-      return { onOpen: updateSelection };
+    iconOnly: true,
+    align: 'right',
+    mobile: 'menu',
+    run: () => {
+      const focused = document.activeElement;
+      const app = document.getElementById('app');
+      const anchor = focused instanceof HTMLElement && app?.contains(focused)
+        ? focused
+        : app?.querySelector<HTMLElement>('[aria-label="Zoom speed"]')
+          ?? app?.querySelector<HTMLElement>('[title="Zoom speed"]')
+          ?? null;
+      toggleVelaZoomPopup(anchor);
     },
   });
 }
