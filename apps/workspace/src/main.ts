@@ -15,6 +15,7 @@ import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-brid
 import './style.css';
 import { applyTheme, currentTheme } from './theme';
 import { registerVelaAppearanceAction } from './vela-theme-action';
+import { installVelaWheelZoomControl, registerVelaZoomSettings } from './vela-zoom-settings';
 import './theme.css';
 
 declare global {
@@ -146,6 +147,9 @@ function resolveInitialTimeframe(timeframes: string[]): string {
 
 async function bootstrapVela(timeframes: string[]) {
   registerVelaAppearanceAction();
+  registerVelaZoomSettings();
+  const disposeWheelZoom = installVelaWheelZoomControl(document.getElementById('app')!);
+  window.addEventListener('pagehide', disposeWheelZoom, { once: true });
   const workspace = new VelaWorkspace('#app', {
     layout: false,
     symbol: runtime.symbol ?? 'NSE:NIFTY',
