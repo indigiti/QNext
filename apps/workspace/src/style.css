@@ -225,14 +225,67 @@ input {
   }
 }
 
-/* Zoom settings uses Vela's native panel slot alongside Data Window. */
-.qnext-zoom-panel { display: grid; align-content: start; gap: 14px; padding: 16px; color: var(--vela-fg, #d5d9e0); font-size: 13px; }
-.qnext-zoom-intro, .qnext-zoom-note { margin: 0; line-height: 1.5; opacity: .8; }
-.qnext-zoom-note { font-size: 11px; }
-.qnext-zoom-options { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
-.qnext-zoom-options legend { font-weight: 600; margin-bottom: 10px; }
-.qnext-zoom-option { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; border: 1px solid var(--vela-border-soft, #303949); border-radius: 8px; padding: 10px; }
-.qnext-zoom-option.is-selected { border-color: var(--vela-fg-bright, #99a8c4); }
-.qnext-zoom-option input { margin: 3px 0 0; accent-color: #7799d3; }
-.qnext-zoom-option span { display: grid; gap: 3px; }
-.qnext-zoom-option small { opacity: .72; line-height: 1.35; }
+
+/* Compact zoom-speed popover: anchored to a Vela native toolbar action,
+   rendered at document level so it never resizes or clips the chart. */
+.qnext-zoom-popover {
+  position: fixed;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #334762;
+  border-radius: 16px;
+  background: #111923;
+  color: #e6ebf5;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+}
+
+.qnext-zoom-choice {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.qnext-zoom-choice:hover {
+  background: rgba(107, 147, 216, 0.16);
+}
+
+.qnext-zoom-choice.is-selected {
+  border-color: #88adfa;
+  background: #1e3355;
+  box-shadow: inset 0 0 0 2px #638fea;
+}
+
+.qnext-zoom-choice:focus-visible {
+  outline: 2px solid #94b8ff;
+  outline-offset: 2px;
+}
+
+html[data-qnext-theme='light'] .qnext-zoom-popover {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #273449;
+  box-shadow: 0 12px 34px rgba(16, 24, 40, 0.16);
+}
+
+html[data-qnext-theme='light'] .qnext-zoom-choice.is-selected {
+  border-color: #3168d4;
+  background: #e2ecff;
+  box-shadow: inset 0 0 0 2px #689af1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qnext-zoom-choice { transition: none; }
+}

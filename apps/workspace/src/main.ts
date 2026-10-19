@@ -170,6 +170,8 @@ async function bootstrapVela(timeframes: string[]) {
     persist: 'qnext-workspace-v2',
     topbar: {
       left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
+      // Zoom action sits immediately before the Data Window / Object Tree buttons.
+      right: ['actions', 'alerts', 'qnext.zoom.open', 'panels', 'screenshot'],
     },
   });
 
