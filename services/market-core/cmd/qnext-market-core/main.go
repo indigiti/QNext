@@ -503,6 +503,7 @@ func runMarket(
 		log.Printf("index futures volume proxy unavailable: %v", proxyErr)
 	} else {
 		volumeRouter = proxyManager
+		feedTracker.SetVolumeStatus(proxyManager.Status)
 		go func() {
 			if refreshErr := proxyManager.Refresh(ctx, time.Now().UTC()); refreshErr != nil &&
 				ctx.Err() == nil {
