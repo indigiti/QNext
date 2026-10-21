@@ -38,8 +38,8 @@ type FullModeRepairer interface {
 }
 
 const (
-	silentFuturesAfter = 2 * time.Minute
-	silentVolumeAfter  = 5 * time.Minute
+	silentFuturesAfter  = 2 * time.Minute
+	silentVolumeAfter   = 5 * time.Minute
 	proxyRepairCooldown = 5 * time.Minute
 	maxUnderlyingAge    = 45 * time.Second
 )
