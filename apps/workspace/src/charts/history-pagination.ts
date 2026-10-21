@@ -34,6 +34,20 @@ export function mergeHistoricalBars(
   return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
 
+// Apply only explicit newer revisions to an already-visible historical bar.
+// Synthetic 1m proxy finalization can follow the first tick of the next
+// minute. Never insert an unknown timestamp or let a stale replay overwrite it.
+export function applyRevisedHistoricalBar(
+  bars: QNextBar[],
+  update: QNextBar,
+): boolean {
+  if (!Number.isFinite(update.time) || !Number.isFinite(update.revision)) return false;
+  const index = bars.findIndex((bar) => bar.time === update.time);
+  if (index < 0 || (update.revision ?? 0) <= (bars[index].revision ?? 0)) return false;
+  bars[index] = update;
+  return true;
+}
+
 export interface OlderHistoryPage {
   bars: QNextBar[];
   nextCursor: number;
