@@ -194,9 +194,8 @@ func TestManagerDoesNotRollWithoutOISupport(t *testing.T) {
 	}
 }
 
-
 type intermittentFutureSource struct {
-	fail bool
+	fail      bool
 	contracts []upstox.FutureContract
 }
 
@@ -210,65 +209,121 @@ func (s *intermittentFutureSource) Futures(_ context.Context, _, _, _ string) ([
 func newRecoveryManager(t *testing.T, source upstox.FutureContractSource, subscriber *subscriberStub) *Manager {
 	t.Helper()
 	manager, err := New(source, "token", symbol.NewRegistry(), subscriber, []Market{{
-		Symbol: "NIFTY", Exchange: "NSE", CalendarID: "NSE_EQ",
+		Symbol:             "NIFTY",
+		Exchange:           "NSE",
+		CalendarID:         "NSE_EQ",
 		TargetInstrumentID: "NSE:NIFTY50",
 	}})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	return manager
 }
 
 func TestRefreshRetriesSameDayAfterFailedStartup(t *testing.T) {
 	at := time.Date(2026, 10, 21, 9, 20, 0, 0, indiaLocation).UTC()
-	source := &intermittentFutureSource{fail:true, contracts:[]upstox.FutureContract{{
-		Exchange:"NSE", Expiry:"2026-10-29", InstrumentKey:"NSE_FO|100",
-		TradingSymbol:"NIFTY FUT", InstrumentType:"FUT", UnderlyingSymbol:"NIFTY",
-	}}}
+	source := &intermittentFutureSource{
+		fail: true,
+		contracts: []upstox.FutureContract{{
+			Exchange:         "NSE",
+			Expiry:           "2026-10-29",
+			InstrumentKey:    "NSE_FO|100",
+			TradingSymbol:    "NIFTY FUT",
+			InstrumentType:   "FUT",
+			UnderlyingSymbol: "NIFTY",
+		}},
+	}
 	sub := &subscriberStub{}
 	manager := newRecoveryManager(t, source, sub)
-	if err := manager.Refresh(context.Background(), at); err == nil { t.Fatal("expected discovery failure") }
-	if !manager.refreshDue(at.Add(time.Minute)) { t.Fatal("failed discovery must retry on same day") }
+	if err := manager.Refresh(context.Background(), at); err == nil {
+		t.Fatal("expected discovery failure")
+	}
+	if !manager.refreshDue(at.Add(time.Minute)) {
+		t.Fatal("failed discovery must retry on same day")
+	}
 	source.fail = false
-	if err := manager.Refresh(context.Background(), at.Add(time.Minute)); err != nil { t.Fatal(err) }
-	if manager.refreshDue(at.Add(2*time.Minute)) { t.Fatal("successful discovery should not repeat on same day") }
-	if len(sub.added) != 1 || sub.added[0] != "NSE_FO|100" { t.Fatalf("unexpected subscriptions: %+v", sub.added) }
+	if err := manager.Refresh(context.Background(), at.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if manager.refreshDue(at.Add(2 * time.Minute)) {
+		t.Fatal("successful discovery should not repeat on same day")
+	}
+	if len(sub.added) != 1 || sub.added[0] != "NSE_FO|100" {
+		t.Fatalf("unexpected subscriptions: %+v", sub.added)
+	}
 }
 
 func TestRefreshPreservesUnexpiredVolumeRouteDuringTemporaryFailure(t *testing.T) {
 	at := time.Date(2026, 10, 21, 9, 20, 0, 0, indiaLocation).UTC()
-	source := &intermittentFutureSource{contracts:[]upstox.FutureContract{{
-		Exchange:"NSE", Expiry:"2026-10-29", InstrumentKey:"NSE_FO|100",
-		TradingSymbol:"NIFTY FUT", InstrumentType:"FUT", UnderlyingSymbol:"NIFTY",
-	}}}
+	source := &intermittentFutureSource{
+		contracts: []upstox.FutureContract{{
+			Exchange:         "NSE",
+			Expiry:           "2026-10-29",
+			InstrumentKey:    "NSE_FO|100",
+			TradingSymbol:    "NIFTY FUT",
+			InstrumentType:   "FUT",
+			UnderlyingSymbol: "NIFTY",
+		}},
+	}
 	sub := &subscriberStub{}
 	manager := newRecoveryManager(t, source, sub)
-	if err := manager.Refresh(context.Background(), at); err != nil { t.Fatal(err) }
+	if err := manager.Refresh(context.Background(), at); err != nil {
+		t.Fatal(err)
+	}
 	source.fail = true
-	if err := manager.Refresh(context.Background(), at.Add(time.Minute)); err == nil { t.Fatal("expected temporary failure") }
-	if len(sub.removed) != 0 { t.Fatalf("temporary failure unsubscribed valid futures: %+v", sub.removed) }
-	if !manager.refreshDue(at.Add(2*time.Minute)) { t.Fatal("failure should remain retryable") }
+	if err := manager.Refresh(context.Background(), at.Add(time.Minute)); err == nil {
+		t.Fatal("expected temporary failure")
+	}
+	if len(sub.removed) != 0 {
+		t.Fatalf("temporary failure unsubscribed valid futures: %+v", sub.removed)
+	}
+	if !manager.refreshDue(at.Add(2 * time.Minute)) {
+		t.Fatal("failure should remain retryable")
+	}
 	if got, ok := manager.Route(domain.Tick{
-		InstrumentID:"NSE:FUT:NIFTY:2026-10-29", EventTime:at.Add(2*time.Minute),
-		Quantity:42,
+		InstrumentID: "NSE:FUT:NIFTY:2026-10-29",
+		EventTime:    at.Add(2 * time.Minute),
+		Quantity:     42,
 	}); !ok || got.Quantity != 42 || got.InstrumentID != "NSE:NIFTY50" {
 		t.Fatalf("valid proxy route lost: %+v, %v", got, ok)
 	}
-	if err := manager.Refresh(context.Background(), at.Add(3*time.Minute)); err == nil { t.Fatal("expected temporary failure") }
-	if len(sub.added) != 1 { t.Fatalf("duplicate subscription detected: %+v", sub.added) }
+	if err := manager.Refresh(context.Background(), at.Add(3*time.Minute)); err == nil {
+		t.Fatal("expected temporary failure")
+	}
+	if len(sub.added) != 1 {
+		t.Fatalf("duplicate subscription detected: %+v", sub.added)
+	}
 }
 
 func TestRefreshDoesNotRetainExpiredProxy(t *testing.T) {
 	at := time.Date(2026, 10, 21, 9, 20, 0, 0, indiaLocation).UTC()
-	source := &intermittentFutureSource{contracts:[]upstox.FutureContract{{
-		Exchange:"NSE", Expiry:"2026-10-21", InstrumentKey:"NSE_FO|100",
-		TradingSymbol:"NIFTY FUT", InstrumentType:"FUT", UnderlyingSymbol:"NIFTY",
-	}}}
+	source := &intermittentFutureSource{
+		contracts: []upstox.FutureContract{{
+			Exchange:         "NSE",
+			Expiry:           "2026-10-21",
+			InstrumentKey:    "NSE_FO|100",
+			TradingSymbol:    "NIFTY FUT",
+			InstrumentType:   "FUT",
+			UnderlyingSymbol: "NIFTY",
+		}},
+	}
 	sub := &subscriberStub{}
 	manager := newRecoveryManager(t, source, sub)
-	if err := manager.Refresh(context.Background(), at); err != nil { t.Fatal(err) }
+	if err := manager.Refresh(context.Background(), at); err != nil {
+		t.Fatal(err)
+	}
 	source.fail = true
-	if err := manager.Refresh(context.Background(), at.Add(24*time.Hour)); err == nil { t.Fatal("expected failure") }
-	if len(sub.removed)!=1 { t.Fatalf("expired future was not unsubscribed: %+v", sub.removed) }
-	if _, ok:=manager.Route(domain.Tick{InstrumentID:"NSE:FUT:NIFTY:2026-10-21",Quantity:20,EventTime:at.Add(24*time.Hour)});ok {
+	if err := manager.Refresh(context.Background(), at.Add(24*time.Hour)); err == nil {
+		t.Fatal("expected failure")
+	}
+	if len(sub.removed) != 1 {
+		t.Fatalf("expired future was not unsubscribed: %+v", sub.removed)
+	}
+	if _, ok := manager.Route(domain.Tick{
+		InstrumentID: "NSE:FUT:NIFTY:2026-10-21",
+		Quantity:     20,
+		EventTime:    at.Add(24 * time.Hour),
+	}); ok {
 		t.Fatal("expired volume route must not be used")
 	}
 }
