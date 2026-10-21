@@ -25,11 +25,16 @@ func watchdogManager(t *testing.T) (*Manager, *watchdogSubscriber, time.Time) {
 	at := time.Date(2026, 10, 21, 9, 15, 0, 0, indiaLocation).UTC()
 	subscriber := &watchdogSubscriber{}
 	manager, err := New(futureSourceStub{contracts: []upstox.FutureContract{{
-		Exchange: "NSE", Expiry: "2026-10-29",
-		InstrumentKey: "NSE_FO|100", TradingSymbol: "NIFTY FUT",
-		InstrumentType: "FUT", UnderlyingSymbol: "NIFTY",
+		Exchange:         "NSE",
+		Expiry:           "2026-10-29",
+		InstrumentKey:    "NSE_FO|100",
+		TradingSymbol:    "NIFTY FUT",
+		InstrumentType:   "FUT",
+		UnderlyingSymbol: "NIFTY",
 	}}}, "token", symbol.NewRegistry(), subscriber, []Market{{
-		Symbol: "NIFTY", Exchange: "NSE", CalendarID: "NSE_EQ",
+		Symbol:             "NIFTY",
+		Exchange:           "NSE",
+		CalendarID:         "NSE_EQ",
 		TargetInstrumentID: "NSE:NIFTY50",
 	}})
 	if err != nil {
@@ -44,16 +49,19 @@ func watchdogManager(t *testing.T) (*Manager, *watchdogSubscriber, time.Time) {
 func spot(at time.Time) domain.Tick {
 	return domain.Tick{
 		InstrumentID: "NSE:NIFTY50",
-		Provider: upstox.ProviderName,
-		Price: 25100, EventTime: at,
+		Provider:     upstox.ProviderName,
+		Price:        25100,
+		EventTime:    at,
 	}
 }
 
 func future(at time.Time, quantity float64) domain.Tick {
 	return domain.Tick{
 		InstrumentID: "NSE:FUT:NIFTY:2026-10-29",
-		Provider: upstox.ProviderName,
-		Price: 25200, Quantity: quantity, EventTime: at,
+		Provider:     upstox.ProviderName,
+		Price:        25200,
+		Quantity:     quantity,
+		EventTime:    at,
 	}
 }
 
