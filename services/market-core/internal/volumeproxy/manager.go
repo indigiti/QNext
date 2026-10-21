@@ -40,9 +40,9 @@ type Manager struct {
 	Subscriber  Subscriber
 	Markets     []Market
 
-	byInstrument   map[string]binding
-	targets        map[string]*targetState
-	providerKeys   map[string]bool
+	byInstrument      map[string]binding
+	targets           map[string]*targetState
+	providerKeys      map[string]bool
 	lastRefreshDay    string
 	lastRefreshFailed bool
 }
