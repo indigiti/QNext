@@ -12,7 +12,7 @@ import {
 import { installChartResumeRecovery } from './chart-resume';
 import { QNextProvider, type QNextBar } from '../qnext-provider';
 import { toCandlestickData, toVolumeData } from './lightweight-adapter';
-import { loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY, trimLiveChartBars } from './history-pagination';
+import { applyRevisedHistoricalBar, loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY, trimLiveChartBars } from './history-pagination';
 import {
   toLightweightPaperMarker,
   type QNextPaperMarker,
@@ -155,8 +155,16 @@ export class QNextLightweightChart {
       this.timeframe,
       (bar: QNextBar) => {
         const last = this.bars[this.bars.length - 1];
-        if (last && bar.time < last.time) return;
+        if (last && bar.time < last.time) {
+          // Late corrected proxy volume may belong to the just-closed minute.
+          // Lightweight Charts.update() cannot accept an older timestamp.
+          if (!applyRevisedHistoricalBar(this.bars, bar)) return;
+          candleSeries.setData(this.bars.map(toCandlestickData));
+          volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
+          return;
+        }
         const correctingCurrent = Boolean(last && bar.time === last.time);
+        if (correctingCurrent && (bar.revision ?? 0) < (last?.revision ?? 0)) return;
         if (correctingCurrent) this.bars[this.bars.length - 1] = bar;
         else this.bars.push(bar);
         const exceeded = this.bars.length > MAX_CHART_HISTORY;
