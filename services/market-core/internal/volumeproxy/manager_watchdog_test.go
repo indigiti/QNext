@@ -125,15 +125,15 @@ func TestVolumeWatchdogReassertsFullModeWhenFuturesTicksCarryNoVolume(t *testing
 		_, _ = m.Route(spot(instant))
 		_, _ = m.Route(future(instant, 0))
 	}
-	if err := m.RepairSilent(context.Background(), at.Add(5 * time.Minute+time.Second)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(5*time.Minute + time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 1 {
 		t.Fatalf("source present but quantity missing was not repaired: %+v", sub.repairs)
 	}
-	_, _ = m.Route(future(at.Add(5 * time.Minute+2 * time.Second), 50))
+	_, _ = m.Route(future(at.Add(5*time.Minute + 2*time.Second), 50))
 	_, _ = m.Route(spot(at.Add(6 * time.Minute)))
-	if err := m.RepairSilent(context.Background(), at.Add(6 * time.Minute+time.Second)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(6*time.Minute + time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 1 {
