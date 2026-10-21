@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -39,10 +40,11 @@ type Manager struct {
 	Subscriber  Subscriber
 	Markets     []Market
 
-	byInstrument   map[string]binding
-	targets        map[string]*targetState
-	providerKeys   map[string]bool
-	lastRefreshDay string
+	byInstrument      map[string]binding
+	targets           map[string]*targetState
+	providerKeys      map[string]bool
+	lastRefreshDay    string
+	lastRefreshFailed bool
 }
 
 type binding struct {
@@ -97,10 +99,62 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 	}
 	today := at.In(indiaLocation).Format("2006-01-02")
 
+	// Snapshot healthy routes before discovery. A temporary Upstox instrument
+	// search failure must not evict a still-valid futures-volume subscription.
+	m.mu.Lock()
+	previousBindings := make(map[string]binding, len(m.byInstrument))
+	for id, route := range m.byInstrument {
+		previousBindings[id] = route
+	}
+	previousTargets := make(map[string]targetState, len(m.targets))
+	for id, state := range m.targets {
+		previousTargets[id] = *state
+	}
+	oldProviderKeys := make(map[string]bool, len(m.providerKeys))
+	for key := range m.providerKeys {
+		oldProviderKeys[key] = true
+	}
+	m.mu.Unlock()
+
 	nextBindings := make(map[string]binding)
 	nextTargets := make(map[string]*targetState)
 	nextProviderKeys := make(map[string]bool)
 	var refreshErr error
+
+	// Keep only unexpired contracts if discovery is temporarily unavailable.
+	// A previously active expired contract is never used to create volume.
+	retainPrevious := func(targetID string) {
+		previous, exists := previousTargets[targetID]
+		if !exists {
+			return
+		}
+		for _, id := range []string{previous.currentID, previous.nextID} {
+			route, found := previousBindings[id]
+			if id != "" && found && route.expiry >= today {
+				nextBindings[id] = route
+				nextProviderKeys[route.providerKey] = true
+			}
+		}
+		retained := previous
+		_, currentValid := nextBindings[retained.currentID]
+		_, nextValid := nextBindings[retained.nextID]
+		if !currentValid {
+			if !nextValid {
+				return
+			}
+			retained.currentID = retained.nextID
+			retained.current = retained.next
+			retained.nextID = ""
+			retained.next = liquidity{}
+		} else if !nextValid {
+			retained.nextID = ""
+			retained.next = liquidity{}
+		}
+		if retained.activeID != retained.currentID && retained.activeID != retained.nextID {
+			retained.activeID = retained.currentID
+		}
+		nextTargets[targetID] = &retained
+	}
 
 	for _, market := range m.Markets {
 		contracts, err := m.Source.Futures(
@@ -111,11 +165,13 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 		)
 		if err != nil {
 			refreshErr = errors.Join(refreshErr, fmt.Errorf("%s futures: %w", market.Symbol, err))
+			retainPrevious(market.TargetInstrumentID)
 			continue
 		}
 		selected := selectLiveFutures(contracts, market.Symbol, today)
 		if len(selected) == 0 {
 			refreshErr = errors.Join(refreshErr, fmt.Errorf("%s futures: no live contracts", market.Symbol))
+			retainPrevious(market.TargetInstrumentID)
 			continue
 		}
 
@@ -158,6 +214,7 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 			nextProviderKeys[contract.InstrumentKey] = true
 		}
 		if len(ids) == 0 {
+			retainPrevious(market.TargetInstrumentID)
 			continue
 		}
 
@@ -166,22 +223,22 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 			state.nextID = ids[1]
 		}
 
-		m.mu.Lock()
-		previous := m.targets[market.TargetInstrumentID]
-		m.mu.Unlock()
-		if previous != nil &&
-			(previous.activeID == state.currentID || previous.activeID == state.nextID) {
-			state.activeID = previous.activeID
+		if previous, ok := previousTargets[market.TargetInstrumentID]; ok {
+			// A retry for another market must not reset this market's liquidity
+			// or undo a futures roll that has already occurred today.
+			state.session = previous.session
+			if previous.currentID == state.currentID {
+				state.current = previous.current
+			}
+			if previous.nextID == state.nextID {
+				state.next = previous.next
+			}
+			if previous.activeID == state.currentID || previous.activeID == state.nextID {
+				state.activeID = previous.activeID
+			}
 		}
 		nextTargets[market.TargetInstrumentID] = state
 	}
-
-	m.mu.Lock()
-	oldProviderKeys := make(map[string]bool, len(m.providerKeys))
-	for key := range m.providerKeys {
-		oldProviderKeys[key] = true
-	}
-	m.mu.Unlock()
 
 	var added []string
 	for key := range nextProviderKeys {
@@ -200,11 +257,13 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 
 	if len(added) > 0 {
 		if err := m.Subscriber.Subscribe(ctx, added); err != nil {
+			m.markRefreshFailed()
 			return errors.Join(refreshErr, err)
 		}
 	}
 	if len(removed) > 0 {
 		if err := m.Subscriber.Unsubscribe(ctx, removed); err != nil {
+			m.markRefreshFailed()
 			return errors.Join(refreshErr, err)
 		}
 	}
@@ -214,12 +273,28 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 	m.targets = nextTargets
 	m.providerKeys = nextProviderKeys
 	m.lastRefreshDay = today
+	m.lastRefreshFailed = refreshErr != nil
 	m.mu.Unlock()
 	return refreshErr
 }
 
+func (m *Manager) markRefreshFailed() {
+	m.mu.Lock()
+	m.lastRefreshFailed = true
+	m.mu.Unlock()
+}
+
+func (m *Manager) refreshDue(at time.Time) bool {
+	day := at.In(indiaLocation).Format("2006-01-02")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastRefreshDay != day || m.lastRefreshFailed
+}
+
 func (m *Manager) Run(ctx context.Context) {
-	ticker := time.NewTicker(15 * time.Minute)
+	// Retry incomplete startup/daily discovery while preserving successful
+	// market subscriptions. The prior 15m loop waited until the next day.
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {
@@ -227,12 +302,11 @@ func (m *Manager) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			day := now.In(indiaLocation).Format("2006-01-02")
-			m.mu.Lock()
-			last := m.lastRefreshDay
-			m.mu.Unlock()
-			if day != last {
-				_ = m.Refresh(ctx, now.UTC())
+			if !m.refreshDue(now) {
+				continue
+			}
+			if err := m.Refresh(ctx, now.UTC()); err != nil && ctx.Err() == nil {
+				log.Printf("index futures volume proxy refresh retry: %v", err)
 			}
 		}
 	}
