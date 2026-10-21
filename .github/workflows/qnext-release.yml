@@ -115,8 +115,19 @@ jobs:
           adopt_root="$(mktemp -d)"
           mkdir -p "$adopt_root/deploy" "$adopt_root/bin"
           install -m 0640 deploy/qnext-ops-user "$adopt_root/deploy/qnext-ops-user"
-          install -m 0750 /bin/sleep "$adopt_root/bin/qnext-market-core"
-          "$adopt_root/bin/qnext-market-core" 30 &
+          # Ubuntu's /bin/sleep can be a coreutils multicall binary: copying
+          # it under another filename fails argv[0] dispatch. Build a tiny
+          # independent executable so /proc/<pid>/exe matches the deployed
+          # market-core path that process adoption intentionally checks.
+          cat >"$adopt_root/market-core-stub.c" <<'C'
+          #include <unistd.h>
+          int main(void) {
+              sleep(30);
+              return 0;
+          }
+          C
+          cc -O2 -o "$adopt_root/bin/qnext-market-core" "$adopt_root/market-core-stub.c"
+          "$adopt_root/bin/qnext-market-core" &
           orphan_pid=$!
           /bin/bash "$adopt_root/deploy/qnext-ops-user" status | grep -qx active
           test "$(cat "$adopt_root/run/market-core.pid")" = "$orphan_pid"
