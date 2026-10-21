@@ -256,6 +256,16 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 			if previous.activeID == state.currentID || previous.activeID == state.nextID {
 				state.activeID = previous.activeID
 			}
+			// Keep source health and repair cooldown on same-day rediscovery.
+			// Clear the old futures health when the selected contract changes.
+			state.firstUnderlyingAt = previous.firstUnderlyingAt
+			state.lastUnderlyingAt = previous.lastUnderlyingAt
+			state.lastRepairAt = previous.lastRepairAt
+			state.repairAttempts = previous.repairAttempts
+			if state.activeID == previous.activeID {
+				state.lastActiveFeedAt = previous.lastActiveFeedAt
+				state.lastVolumeAt = previous.lastVolumeAt
+			}
 		}
 		nextTargets[market.TargetInstrumentID] = state
 	}
@@ -414,13 +424,13 @@ func (m *Manager) Status() any {
 			}
 		}
 		result[market.Symbol] = map[string]any{
-			"status": status,
-			"active_future": state.activeID,
-			"last_index_at_ms": timeMillis(state.lastUnderlyingAt),
+			"status":            status,
+			"active_future":     state.activeID,
+			"last_index_at_ms":  timeMillis(state.lastUnderlyingAt),
 			"last_future_at_ms": timeMillis(state.lastActiveFeedAt),
 			"last_volume_at_ms": timeMillis(state.lastVolumeAt),
 			"last_repair_at_ms": timeMillis(state.lastRepairAt),
-			"repair_attempts": state.repairAttempts,
+			"repair_attempts":   state.repairAttempts,
 		}
 	}
 	return result
