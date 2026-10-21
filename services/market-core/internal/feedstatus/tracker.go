@@ -29,12 +29,12 @@ type InstrumentSnapshot struct {
 }
 
 type Snapshot struct {
-	Providers   map[string]ProviderSnapshot   `json:"providers"`
-	Instruments map[string]InstrumentSnapshot `json:"instruments"`
+	Providers     map[string]ProviderSnapshot   `json:"providers"`
+	Instruments   map[string]InstrumentSnapshot `json:"instruments"`
 	Synthetic     any                           `json:"synthetic,omitempty"`
 	Synthetics    map[string]any                `json:"synthetics,omitempty"`
-	VolumeProxies any                          `json:"volume_proxies,omitempty"`
-	Runtime     observability.Snapshot        `json:"runtime"`
+	VolumeProxies any                           `json:"volume_proxies,omitempty"`
+	Runtime       observability.Snapshot        `json:"runtime"`
 }
 
 type Tracker struct {
