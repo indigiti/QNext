@@ -68,21 +68,21 @@ func future(at time.Time, quantity float64) domain.Tick {
 func TestVolumeWatchdogReassertsSilentFuturesWithFreshIndex(t *testing.T) {
 	m, sub, at := watchdogManager(t)
 	_, _ = m.Route(spot(at))
-	if err := m.RepairSilent(context.Background(), at.Add(90 * time.Second)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(90*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 0 {
 		t.Fatal("watchdog triggered before missing-stream threshold")
 	}
 	_, _ = m.Route(spot(at.Add(130 * time.Second)))
-	if err := m.RepairSilent(context.Background(), at.Add(131 * time.Second)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(131*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 1 || len(sub.repairs[0]) != 1 || sub.repairs[0][0] != "NSE_FO|100" {
 		t.Fatalf("watchdog failed to repair only existing futures key: %+v", sub.repairs)
 	}
 	_, _ = m.Route(spot(at.Add(160 * time.Second)))
-	if err := m.RepairSilent(context.Background(), at.Add(161 * time.Second)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(161*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 1 {
@@ -95,21 +95,21 @@ func TestVolumeWatchdogReassertsSilentFuturesWithFreshIndex(t *testing.T) {
 
 func TestVolumeWatchdogDoesNotTreatMissingIndexOrNormalVolumeAsFailure(t *testing.T) {
 	m, sub, at := watchdogManager(t)
-	if err := m.RepairSilent(context.Background(), at.Add(3 * time.Minute)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(3*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	_, _ = m.Route(spot(at))
 	_, _ = m.Route(future(at.Add(time.Second), 10))
 	_, _ = m.Route(spot(at.Add(90 * time.Second)))
-	_, _ = m.Route(future(at.Add(90 * time.Second), 0))
-	if err := m.RepairSilent(context.Background(), at.Add(91 * time.Second)); err != nil {
+	_, _ = m.Route(future(at.Add(90*time.Second), 0))
+	if err := m.RepairSilent(context.Background(), at.Add(91*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 0 {
 		t.Fatalf("healthy futures should not be repaired: %+v", sub.repairs)
 	}
 	// Stale index price should not cause a repair during feed-wide outages.
-	if err := m.RepairSilent(context.Background(), at.Add(7 * time.Minute)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(7*time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 0 {
@@ -125,15 +125,15 @@ func TestVolumeWatchdogReassertsFullModeWhenFuturesTicksCarryNoVolume(t *testing
 		_, _ = m.Route(spot(instant))
 		_, _ = m.Route(future(instant, 0))
 	}
-	if err := m.RepairSilent(context.Background(), at.Add(5*time.Minute + time.Second)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(5*time.Minute+time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 1 {
 		t.Fatalf("source present but quantity missing was not repaired: %+v", sub.repairs)
 	}
-	_, _ = m.Route(future(at.Add(5*time.Minute + 2*time.Second), 50))
+	_, _ = m.Route(future(at.Add(5*time.Minute+2*time.Second), 50))
 	_, _ = m.Route(spot(at.Add(6 * time.Minute)))
-	if err := m.RepairSilent(context.Background(), at.Add(6*time.Minute + time.Second)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(6*time.Minute+time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 1 {
@@ -149,7 +149,7 @@ func TestVolumeWatchdogSkipsMarketClosed(t *testing.T) {
 	m, sub, at := watchdogManager(t)
 	_, _ = m.Route(spot(at))
 	_, _ = m.Route(spot(at.Add(10 * time.Minute)))
-	if err := m.RepairSilent(context.Background(), at.Add(24 * time.Hour)); err != nil {
+	if err := m.RepairSilent(context.Background(), at.Add(24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if len(sub.repairs) != 0 {
