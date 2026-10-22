@@ -1,5 +1,6 @@
 import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
 import { mountThemeControl } from '../theme';
+import { mountScreenAwakeButton, type ScreenAwakeController } from '../screen-awake';
 import {
   QNextLightweightChart,
   type LightweightCrosshairPoint,
@@ -36,6 +37,7 @@ export interface LightweightPaneConfig {
 export interface LightweightWorkspaceOptions {
   container: HTMLElement;
   provider: QNextProvider;
+  screenAwake?: ScreenAwakeController;
   apiBase?: string;
   symbols: LightweightSymbol[];
   timeframes: string[];
@@ -88,6 +90,8 @@ export function paperSnapshotMatchesChart(
 export class QNextLightweightWorkspace {
   private readonly container: HTMLElement;
   private readonly provider: QNextProvider;
+  private readonly screenAwake?: ScreenAwakeController;
+  private disposeAwakeControl?: () => void;
   private readonly markerClient: QNextPaperMarkerClient;
   private readonly markerPollIntervalMs: number;
   private readonly symbols: LightweightSymbol[];
@@ -115,6 +119,7 @@ export class QNextLightweightWorkspace {
   constructor(options: LightweightWorkspaceOptions) {
     this.container = options.container;
     this.provider = options.provider;
+    this.screenAwake = options.screenAwake;
     this.markerClient = new QNextPaperMarkerClient({ apiBase: options.apiBase });
     this.markerPollIntervalMs = options.markerPollIntervalMs ?? 2_000;
     this.symbols = options.symbols.length > 0
@@ -144,6 +149,8 @@ export class QNextLightweightWorkspace {
   }
 
   destroy(): void {
+    this.disposeAwakeControl?.();
+    this.disposeAwakeControl = undefined;
     this.stopMarkerPolling();
     if (this.transportTimer) clearInterval(this.transportTimer);
     this.transportTimer = undefined;
@@ -263,6 +270,10 @@ export class QNextLightweightWorkspace {
       syncLabel,
       engineBadge,
     );
+    if (this.screenAwake) {
+      this.disposeAwakeControl?.();
+      this.disposeAwakeControl = mountScreenAwakeButton(toolbar, this.screenAwake);
+    }
     mountThemeControl({ container: toolbar });
 
     const grid = document.createElement('div');

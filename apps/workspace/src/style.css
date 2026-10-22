@@ -289,3 +289,30 @@ html[data-qnext-theme='light'] .qnext-zoom-choice.is-selected {
 @media (prefers-reduced-motion: reduce) {
   .qnext-zoom-choice { transition: none; }
 }
+
+/* Lightweight toolbar Screen Awake toggle; Vela uses its native icon action. */
+.qnext-screen-awake-trigger {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #303949;
+  border-radius: 6px;
+  background: #151a23;
+  color: #aeb7c7;
+  cursor: pointer;
+}
+.qnext-screen-awake-trigger[data-status='active'] {
+  color: #86d6ba;
+  border-color: #356c5c;
+}
+.qnext-screen-awake-trigger[data-status='blocked'],
+.qnext-screen-awake-trigger[data-status='unsupported'] {
+  color: #efbe76;
+}
+.qnext-screen-awake-trigger:focus-visible {
+  outline: 2px solid #94b8ff;
+  outline-offset: 2px;
+}
