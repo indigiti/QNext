@@ -15,6 +15,8 @@ import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-brid
 import './style.css';
 import { applyTheme, currentTheme } from './theme';
 import { registerVelaAppearanceAction } from './vela-theme-action';
+import { createScreenAwakeController } from './screen-awake';
+import { registerVelaScreenAwakeAction } from './vela-screen-awake-action';
 import { installVelaWheelZoomControl, registerVelaZoomSettings } from './vela-zoom-settings';
 import './theme.css';
 
@@ -39,6 +41,9 @@ interface WorkspaceSettings {
   lightweightLayout: 1 | 2 | 4;
   lightweightSync: boolean;
 }
+
+const screenAwake = createScreenAwakeController();
+screenAwake.start();
 
 const runtime = window.__QNEXT_CONFIG__ ?? {};
 const defaultApiBase = window.location.pathname.replace(/\/+$/, '');
@@ -148,6 +153,7 @@ function resolveInitialTimeframe(timeframes: string[]): string {
 async function bootstrapVela(timeframes: string[]) {
   registerVelaAppearanceAction();
   registerVelaZoomSettings();
+  registerVelaScreenAwakeAction(screenAwake);
   const disposeWheelZoom = installVelaWheelZoomControl(document.getElementById('app')!);
   window.addEventListener('pagehide', disposeWheelZoom, { once: true });
   const workspace = new VelaWorkspace('#app', {
@@ -171,7 +177,7 @@ async function bootstrapVela(timeframes: string[]) {
     topbar: {
       left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
       // Zoom action sits immediately before the Data Window / Object Tree buttons.
-      right: ['actions', 'alerts', 'qnext.zoom.open', 'panels', 'screenshot'],
+      right: ['actions', 'alerts', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot'],
     },
   });
 
@@ -226,6 +232,7 @@ async function bootstrapLightweight(
   const workspace = new QNextLightweightWorkspace({
     container: app,
     provider,
+    screenAwake,
     apiBase: runtime.apiBase ?? defaultApiBase,
     symbols,
     timeframes,
