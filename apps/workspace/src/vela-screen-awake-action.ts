@@ -1,6 +1,6 @@
 import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
 
-import { type ScreenAwakeController, screenAwakeText } from './screen-awake';
+import { type ScreenAwakeController } from './screen-awake';
 
 let registered = false;
 
@@ -25,16 +25,6 @@ export function registerVelaScreenAwakeAction(controller: ScreenAwakeController)
     iconOnly: true,
     align: 'right',
     mobile: 'menu',
-    run: (ctx) => {
-      controller.toggle();
-      const status = controller.status;
-      ctx.toast(
-        status === 'off'
-          ? 'Screen Awake off'
-          : status === 'unsupported'
-            ? 'This browser does not support Screen Awake'
-            : 'Screen Awake requested — ' + screenAwakeText(status).replace('Screen Awake: ', ''),
-      );
-    },
+    run: () => controller.toggle(),
   });
 }
