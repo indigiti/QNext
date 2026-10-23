@@ -29,11 +29,12 @@ type InstrumentSnapshot struct {
 }
 
 type Snapshot struct {
-	Providers   map[string]ProviderSnapshot   `json:"providers"`
-	Instruments map[string]InstrumentSnapshot `json:"instruments"`
-	Synthetic   any                           `json:"synthetic,omitempty"`
-	Synthetics  map[string]any                `json:"synthetics,omitempty"`
-	Runtime     observability.Snapshot        `json:"runtime"`
+	Providers     map[string]ProviderSnapshot   `json:"providers"`
+	Instruments   map[string]InstrumentSnapshot `json:"instruments"`
+	Synthetic     any                           `json:"synthetic,omitempty"`
+	Synthetics    map[string]any                `json:"synthetics,omitempty"`
+	VolumeProxies any                           `json:"volume_proxies,omitempty"`
+	Runtime       observability.Snapshot        `json:"runtime"`
 }
 
 type Tracker struct {
@@ -42,6 +43,7 @@ type Tracker struct {
 	instruments       map[string]InstrumentSnapshot
 	syntheticStatus   func() any
 	syntheticStatuses map[string]func() any
+	volumeStatus      func() any
 }
 
 var (
@@ -152,6 +154,15 @@ func (t *Tracker) SetSyntheticStatusFor(instrumentID string, status func() any) 
 	t.mu.Unlock()
 }
 
+func (t *Tracker) SetVolumeStatus(status func() any) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.volumeStatus = status
+	t.mu.Unlock()
+}
+
 func (t *Tracker) Snapshot() Snapshot {
 	if t == nil {
 		return Snapshot{
@@ -171,6 +182,7 @@ func (t *Tracker) Snapshot() Snapshot {
 		instruments[key] = value
 	}
 	status := t.syntheticStatus
+	volumeStatus := t.volumeStatus
 	statuses := make(map[string]func() any, len(t.syntheticStatuses))
 	for key, value := range t.syntheticStatuses {
 		statuses[key] = value
@@ -185,12 +197,17 @@ func (t *Tracker) Snapshot() Snapshot {
 	for key, statusFn := range statuses {
 		synthetics[key] = statusFn()
 	}
+	var volumeProxies any
+	if volumeStatus != nil {
+		volumeProxies = volumeStatus()
+	}
 	return Snapshot{
-		Providers:   providers,
-		Instruments: instruments,
-		Synthetic:   synthetic,
-		Synthetics:  synthetics,
-		Runtime:     observability.Current(),
+		Providers:     providers,
+		Instruments:   instruments,
+		Synthetic:     synthetic,
+		Synthetics:    synthetics,
+		VolumeProxies: volumeProxies,
+		Runtime:       observability.Current(),
 	}
 }
 

@@ -53,3 +53,13 @@ func TestTrackerReportsMultipleSyntheticStatuses(t *testing.T) {
 		t.Fatalf("expected two synthetic statuses, got %+v", snapshot.Synthetics)
 	}
 }
+
+func TestTrackerExposesVolumeProxyHealth(t *testing.T) {
+	tracker := New()
+	tracker.SetVolumeStatus(func() any { return map[string]any{"NIFTY": map[string]any{"status": "FUTURES_FEED_SILENT"}} })
+	snapshot := tracker.Snapshot()
+	volumes, ok := snapshot.VolumeProxies.(map[string]any)
+	if !ok || volumes["NIFTY"] == nil {
+		t.Fatalf("volume proxy health missing: %+v", snapshot.VolumeProxies)
+	}
+}

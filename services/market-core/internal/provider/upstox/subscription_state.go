@@ -110,6 +110,33 @@ func (s *SubscriptionState) Subscribe(ctx context.Context, keys []string) error 
 	return nil
 }
 
+// ReassertFull repairs an already-desired derivative stream that has gone
+// silent while other Upstox instruments keep the WebSocket alive. Upstox V3
+// supports change_mode for existing keys; do not subscribe them a second time,
+// expand feed demand or modify the desired reconnect snapshot.
+func (s *SubscriptionState) ReassertFull(ctx context.Context, keys []string) error {
+	s.mu.RLock()
+	known := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if s.keys[key] && s.keyMode[key] == ModeFull {
+			known[key] = true
+		}
+	}
+	s.mu.RUnlock()
+	if len(known) == 0 {
+		return errors.New("no active full-mode subscriptions to repair")
+	}
+	return s.emit(ctx, SubscriptionRequest{
+		GUID:   s.guid,
+		Method: MethodChangeMode,
+		Data: SubscriptionData{
+			Mode:           ModeFull,
+			InstrumentKeys: sortedSubscriptionKeys(known),
+		},
+	})
+}
+
 func (s *SubscriptionState) Unsubscribe(ctx context.Context, keys []string) error {
 	s.mu.Lock()
 	var removed []string

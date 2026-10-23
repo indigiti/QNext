@@ -31,6 +31,19 @@ type Subscriber interface {
 	Unsubscribe(context.Context, []string) error
 }
 
+// FullModeRepairer only reasserts existing futures subscriptions. Unlike
+// Subscribe, this must never add new provider keys or increase feed demand.
+type FullModeRepairer interface {
+	ReassertFull(context.Context, []string) error
+}
+
+const (
+	silentFuturesAfter  = 2 * time.Minute
+	silentVolumeAfter   = 5 * time.Minute
+	proxyRepairCooldown = 5 * time.Minute
+	maxUnderlyingAge    = 45 * time.Second
+)
+
 type Manager struct {
 	mu sync.Mutex
 
@@ -66,6 +79,13 @@ type targetState struct {
 	current   liquidity
 	next      liquidity
 	session   string
+
+	firstUnderlyingAt time.Time
+	lastUnderlyingAt  time.Time
+	lastActiveFeedAt  time.Time
+	lastVolumeAt      time.Time
+	lastRepairAt      time.Time
+	repairAttempts    uint64
 }
 
 func New(
@@ -236,6 +256,16 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 			if previous.activeID == state.currentID || previous.activeID == state.nextID {
 				state.activeID = previous.activeID
 			}
+			// Keep source health and repair cooldown on same-day rediscovery.
+			// Clear the old futures health when the selected contract changes.
+			state.firstUnderlyingAt = previous.firstUnderlyingAt
+			state.lastUnderlyingAt = previous.lastUnderlyingAt
+			state.lastRepairAt = previous.lastRepairAt
+			state.repairAttempts = previous.repairAttempts
+			if state.activeID == previous.activeID {
+				state.lastActiveFeedAt = previous.lastActiveFeedAt
+				state.lastVolumeAt = previous.lastVolumeAt
+			}
 		}
 		nextTargets[market.TargetInstrumentID] = state
 	}
@@ -291,6 +321,128 @@ func (m *Manager) refreshDue(at time.Time) bool {
 	return m.lastRefreshDay != day || m.lastRefreshFailed
 }
 
+// RepairSilent reasserts Full mode only when index prices remain fresh but the
+// already-subscribed futures data or its traded quantity is missing. Regular
+// no-trade/zero-volume ticks are not converted into fabricated activity.
+func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
+	if !inRegularSession(at) {
+		return nil
+	}
+	type repair struct {
+		symbol string
+		keys   []string
+	}
+	var repairs []repair
+	m.mu.Lock()
+	for _, market := range m.Markets {
+		state := m.targets[market.TargetInstrumentID]
+		if state == nil || state.firstUnderlyingAt.IsZero() ||
+			state.lastUnderlyingAt.IsZero() || at.Before(state.lastUnderlyingAt) ||
+			at.Sub(state.lastUnderlyingAt) > maxUnderlyingAge {
+			continue
+		}
+		sourceSince := state.firstUnderlyingAt
+		if !state.lastActiveFeedAt.IsZero() {
+			sourceSince = state.lastActiveFeedAt
+		}
+		volumeSince := state.firstUnderlyingAt
+		if !state.lastVolumeAt.IsZero() {
+			volumeSince = state.lastVolumeAt
+		}
+		if at.Sub(sourceSince) < silentFuturesAfter &&
+			at.Sub(volumeSince) < silentVolumeAfter {
+			continue
+		}
+		if !state.lastRepairAt.IsZero() && at.Sub(state.lastRepairAt) < proxyRepairCooldown {
+			continue
+		}
+		var keys []string
+		for _, id := range []string{state.currentID, state.nextID} {
+			if route, ok := m.byInstrument[id]; ok && route.expiry >= at.In(indiaLocation).Format("2006-01-02") {
+				keys = append(keys, route.providerKey)
+			}
+		}
+		if len(keys) == 0 {
+			continue
+		}
+		state.lastRepairAt = at
+		state.repairAttempts++
+		repairs = append(repairs, repair{symbol: market.Symbol, keys: keys})
+	}
+	m.mu.Unlock()
+
+	if len(repairs) == 0 {
+		return nil
+	}
+	repairer, ok := m.Subscriber.(FullModeRepairer)
+	if !ok {
+		return errors.New("futures subscription does not support full-mode recovery")
+	}
+	var result error
+	for _, repair := range repairs {
+		if err := repairer.ReassertFull(ctx, repair.keys); err != nil {
+			result = errors.Join(result, fmt.Errorf("%s full-mode reassertion: %w", repair.symbol, err))
+			continue
+		}
+		log.Printf("index futures volume watchdog: reasserted full mode for %s", repair.symbol)
+	}
+	return result
+}
+
+func inRegularSession(at time.Time) bool {
+	local := at.In(indiaLocation)
+	if local.Weekday() == time.Saturday || local.Weekday() == time.Sunday {
+		return false
+	}
+	minute := local.Hour()*60 + local.Minute()
+	return minute >= 9*60+15 && minute < 15*60+30
+}
+
+// Status reports the health of the *separate* futures-volume stream, not just
+// the index price stream, so operators can distinguish source failure from an
+// empty volume histogram without inspecting secrets or broker credentials.
+func (m *Manager) Status() any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make(map[string]any, len(m.Markets))
+	now := time.Now().UTC()
+	for _, market := range m.Markets {
+		state := m.targets[market.TargetInstrumentID]
+		if state == nil {
+			result[market.Symbol] = map[string]any{"status": "NO_FUTURES_CONTRACT"}
+			continue
+		}
+		status := "WAITING_FOR_PRICE"
+		if !inRegularSession(now) {
+			status = "OUTSIDE_SESSION"
+		} else if !state.lastUnderlyingAt.IsZero() && now.Sub(state.lastUnderlyingAt) <= maxUnderlyingAge {
+			status = "HEALTHY"
+			if state.lastActiveFeedAt.IsZero() || now.Sub(state.lastActiveFeedAt) >= silentFuturesAfter {
+				status = "FUTURES_FEED_SILENT"
+			} else if state.lastVolumeAt.IsZero() || now.Sub(state.lastVolumeAt) >= silentVolumeAfter {
+				status = "VOLUME_MISSING"
+			}
+		}
+		result[market.Symbol] = map[string]any{
+			"status":            status,
+			"active_future":     state.activeID,
+			"last_index_at_ms":  timeMillis(state.lastUnderlyingAt),
+			"last_future_at_ms": timeMillis(state.lastActiveFeedAt),
+			"last_volume_at_ms": timeMillis(state.lastVolumeAt),
+			"last_repair_at_ms": timeMillis(state.lastRepairAt),
+			"repair_attempts":   state.repairAttempts,
+		}
+	}
+	return result
+}
+
+func timeMillis(value time.Time) int64 {
+	if value.IsZero() {
+		return 0
+	}
+	return value.UnixMilli()
+}
+
 func (m *Manager) Run(ctx context.Context) {
 	// Retry incomplete startup/daily discovery while preserving successful
 	// market subscriptions. The prior 15m loop waited until the next day.
@@ -302,11 +454,13 @@ func (m *Manager) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			if !m.refreshDue(now) {
-				continue
+			if m.refreshDue(now) {
+				if err := m.Refresh(ctx, now.UTC()); err != nil && ctx.Err() == nil {
+					log.Printf("index futures volume proxy refresh retry: %v", err)
+				}
 			}
-			if err := m.Refresh(ctx, now.UTC()); err != nil && ctx.Err() == nil {
-				log.Printf("index futures volume proxy refresh retry: %v", err)
+			if err := m.RepairSilent(ctx, now.UTC()); err != nil && ctx.Err() == nil {
+				log.Printf("index futures volume watchdog: %v", err)
 			}
 		}
 	}
@@ -316,6 +470,19 @@ func (m *Manager) Route(tick domain.Tick) (domain.Tick, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if state := m.targets[tick.InstrumentID]; state != nil && tick.Price > 0 && !tick.EventTime.IsZero() {
+		session := tick.EventTime.In(indiaLocation).Format("2006-01-02")
+		if state.lastUnderlyingAt.IsZero() ||
+			state.lastUnderlyingAt.In(indiaLocation).Format("2006-01-02") != session {
+			state.firstUnderlyingAt = tick.EventTime
+			state.lastActiveFeedAt = time.Time{}
+			state.lastVolumeAt = time.Time{}
+			state.lastRepairAt = time.Time{}
+		}
+		if tick.EventTime.After(state.lastUnderlyingAt) {
+			state.lastUnderlyingAt = tick.EventTime
+		}
+	}
 	binding, ok := m.byInstrument[tick.InstrumentID]
 	if !ok {
 		return domain.Tick{}, false
@@ -350,8 +517,17 @@ func (m *Manager) Route(tick domain.Tick) (domain.Tick, bool) {
 	if state.activeID == state.currentID && shouldRoll(state.current, state.next) {
 		state.activeID = state.nextID
 	}
-	if tick.InstrumentID != state.activeID || tick.Quantity <= 0 {
+	if tick.InstrumentID != state.activeID {
 		return domain.Tick{}, false
+	}
+	if tick.EventTime.After(state.lastActiveFeedAt) {
+		state.lastActiveFeedAt = tick.EventTime
+	}
+	if tick.Quantity <= 0 {
+		return domain.Tick{}, false
+	}
+	if tick.EventTime.After(state.lastVolumeAt) {
+		state.lastVolumeAt = tick.EventTime
 	}
 
 	volumeTick := tick
