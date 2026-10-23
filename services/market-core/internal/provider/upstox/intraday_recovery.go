@@ -9,6 +9,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/marketcalendar"
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
+	"github.com/indigiti/QNext/services/market-core/internal/volumeledger"
 )
 
 type IntradayFetcher interface {
@@ -28,6 +29,7 @@ type IntradayRecovery struct {
 	AccessToken       string
 	Registry          *symbol.Registry
 	History           RecoveredHistoryWriter
+	Ledger            *volumeledger.Ledger
 	Calendars         *marketcalendar.Registry
 	Timeframes        []string
 	DerivedTimeframes []string
@@ -115,6 +117,14 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 			}
 		}
 
+		if r.Ledger != nil {
+			if store, ok := r.History.(HistoricalRepairStore); ok {
+				if _, repairErr := r.Ledger.Reconcile(store, r.Resync, instrument.ID,
+					[]string{"1m"}, from, request.To); repairErr != nil {
+					return fmt.Errorf("reconcile %s 1m futures volume: %w", instrument.ID, repairErr)
+				}
+			}
+		}
 		if canonicalChanged {
 			derivedCount, derivedErr := r.repairDerivedFromCanonical(
 				instrument,
@@ -125,6 +135,17 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 				return derivedErr
 			}
 			recoveredBars += derivedCount
+		}
+		if r.Ledger != nil {
+			if store, ok := r.History.(HistoricalRepairStore); ok {
+				// Restore only genuine observed futures deltas to existing
+				// canonical price buckets; never fabricate absent OHLC bars.
+				_, repairErr := r.Ledger.Reconcile(store, r.Resync, instrument.ID,
+					[]string{"5s", "15s", "30s", "2m", "3m", "5m"}, from, request.To)
+				if repairErr != nil {
+					return fmt.Errorf("reconcile %s derived futures volume: %w", instrument.ID, repairErr)
+				}
+			}
 		}
 	}
 	return nil
