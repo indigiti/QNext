@@ -29,6 +29,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
 	"github.com/indigiti/QNext/services/market-core/internal/synthetic"
 	"github.com/indigiti/QNext/services/market-core/internal/volumeproxy"
+	"github.com/indigiti/QNext/services/market-core/internal/volumeledger"
 )
 
 var (
@@ -101,6 +102,7 @@ func main() {
 	}
 
 	store := history.New(storageRoot)
+	volumeLedger := volumeledger.New(storageRoot)
 	broker := stream.NewBroker(1024, 128)
 	// Reclaim idle replay capacity outside the candle hot path. Every active
 	// or recently published stream keeps its full replay/resume window.
@@ -116,6 +118,7 @@ func main() {
 			},
 			AccessToken: accessToken,
 			History:     store,
+			Ledger:      volumeLedger,
 			Calendars:   calendars,
 			Markets:     config.EffectiveMarkets(),
 			Timeframes:  append([]string(nil), config.Timeframes...),
@@ -135,6 +138,7 @@ func main() {
 	}
 	niftyVolumeSource := "NSE:NIFTY50"
 	for _, market := range volumeMarkets {
+		volumeAliases[market.Synthetic.InstrumentID] = market.Underlying.InstrumentID
 		if strings.EqualFold(strings.TrimSpace(market.Symbol), "NIFTY") {
 			niftyVolumeSource = market.Underlying.InstrumentID
 			break
@@ -265,6 +269,7 @@ func main() {
 				accessToken,
 				registry,
 				store,
+				volumeLedger,
 				broker,
 				resilienceConfig,
 				dhanClientID,
@@ -377,6 +382,7 @@ func runMarket(
 	accessToken string,
 	registry *symbol.Registry,
 	store *history.Store,
+	volumeLedger *volumeledger.Ledger,
 	broker *stream.Broker,
 	resilienceConfig *resilience.Config,
 	dhanClientID string,
@@ -527,6 +533,7 @@ func runMarket(
 		Publisher:         broker,
 		DirectInstruments: directInstruments,
 		VolumeProxy:       volumeRouter,
+		VolumeRecorder:    volumeLedger,
 		Observer:          feedTracker.Observe,
 	}
 	dedupe := integrity.NewDedupeSink(8192, marketSink.Handle)
@@ -558,6 +565,7 @@ func runMarket(
 		AccessToken:   accessToken,
 		Registry:      registry,
 		History:       store,
+		Ledger:        volumeLedger,
 		Timeframes:    config.RecoverableTimeframes(),
 		InstrumentIDs: directInstruments,
 		Resync:        broker,
