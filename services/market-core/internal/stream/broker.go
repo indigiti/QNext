@@ -38,6 +38,10 @@ type Broker struct {
 	reclaimedReplaySlots  uint64
 	evictedEmptyStreams   uint64
 	barObservers          map[string]func(domain.Bar)
+	syntheticVolume       map[string]string
+	volumeTargets         map[string][]string
+	volumeSources         map[string][]domain.Bar
+	syntheticBars         map[string][]domain.Bar
 }
 
 type streamState struct {
@@ -170,6 +174,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	key := streamKey(bar.InstrumentID, bar.Timeframe)
 
 	b.mu.Lock()
+	bar, patches := b.alignVolumeLocked(bar)
 	state := b.streams[key]
 	if state == nil {
 		state = b.newStreamState(bar.InstrumentID, bar.Timeframe)
@@ -212,6 +217,9 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 
 	if observer != nil {
 		observer(bar)
+	}
+	for _, patch := range patches {
+		b.PublishBar(patch)
 	}
 	for i := 0; i < released; i++ {
 		demand.Default().Release(bar.InstrumentID)
