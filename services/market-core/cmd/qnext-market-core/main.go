@@ -145,6 +145,14 @@ func main() {
 		synPlusID = "QNEXT:NIFTY-SYN+"
 	}
 	volumeAliases[synPlusID] = niftyVolumeSource
+	// All enabled markets use their own futures proxy when a SYN+ shadow
+	// collector is activated. Never associate another index with NIFTY volume.
+	for _, market := range volumeMarkets {
+		if strings.EqualFold(strings.TrimSpace(market.Symbol), "NIFTY") {
+			continue
+		}
+		volumeAliases["QNEXT:"+strings.ToUpper(strings.TrimSpace(market.Symbol))+"-SYN+"] = market.Underlying.InstrumentID
+	}
 
 	handler := httpapi.New(store, httpapi.Options{
 		Version:         version,
