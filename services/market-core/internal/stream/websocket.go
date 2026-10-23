@@ -27,7 +27,8 @@ const researchBridgeTokenHeader = "X-QNext-Research-Token"
 type WebSocketHandler struct {
 	Broker        *Broker
 	AllowedOrigin func(*http.Request) bool
-	shadow        *synPlusShadowBridge
+	shadow        *synPlusShadowBridge // NIFTY backwards-compatible bridge
+	shadows       map[string]*synPlusShadowBridge
 }
 
 type synPlusShadowBridge struct {
@@ -92,25 +93,50 @@ type wireBar struct {
 
 func NewWebSocketHandler(broker *Broker) http.Handler {
 	handler := &WebSocketHandler{
-		Broker: broker,
-		shadow: newSynPlusShadowBridge(broker),
+		Broker:  broker,
+		shadows: make(map[string]*synPlusShadowBridge),
 	}
-	if handler.shadow != nil {
-		// Keep SYN+ proxy volume in sync with the actual source bars, not only
-		// with irregular SYN+ price snapshots. Callback runs outside broker lock.
-		broker.SetBarObserver(handler.shadow.volumeSourceID, handler.shadow.observeVolumeSource)
-		feedstatus.SetDefaultSyntheticStatusFor(handler.shadow.instrumentID, handler.shadow.status)
+	for _, bridge := range newSynPlusShadowBridges(broker) {
+		handler.shadows[strings.ToUpper(bridge.instrumentID)] = bridge
+		if strings.EqualFold(bridge.instrumentID, niftySynPlusID()) {
+			handler.shadow = bridge
+		}
+		// Each enabled index has a distinct canonical volume observer.
+		// Registration must not evict another index's observer.
+		broker.SetBarObserver(bridge.volumeSourceID, bridge.observeVolumeSource)
+		feedstatus.SetDefaultSyntheticStatusFor(bridge.instrumentID, bridge.status)
 	}
 	return handler
 }
 
-func newSynPlusShadowBridge(broker *Broker) *synPlusShadowBridge {
+func niftySynPlusID() string {
+	id := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID"))
+	if id == "" {
+		id = "QNEXT:NIFTY-SYN+"
+	}
+	return id
+}
+
+// SYN+ is enabled only for NIFTY by default. Additional configured indices
+// must be explicitly opted in and supplied by independent collector processes.
+// This avoids publishing empty shadow symbols for markets without rich feeds.
+func enabledSynPlusMarkets() map[string]bool {
+	configured := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_ENABLED_MARKETS"))
+	if configured == "" {
+		configured = "NIFTY"
+	}
+	enabled := make(map[string]bool)
+	for _, symbol := range strings.Split(configured, ",") {
+		if key := strings.ToUpper(strings.TrimSpace(symbol)); key != "" {
+			enabled[key] = true
+		}
+	}
+	return enabled
+}
+
+func newSynPlusShadowBridges(broker *Broker) []*synPlusShadowBridge {
 	if broker == nil {
 		return nil
-	}
-	instrumentID := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID"))
-	if instrumentID == "" {
-		instrumentID = "QNEXT:NIFTY-SYN+"
 	}
 	timeframes := marketconfig.DefaultChartTimeframes()
 	markets := marketconfig.DefaultMarkets()
@@ -120,22 +146,38 @@ func newSynPlusShadowBridge(broker *Broker) *synPlusShadowBridge {
 			markets = config.EffectiveMarkets()
 		}
 	}
-	volumeSourceID := "NSE:NIFTY50"
+	enabled := enabledSynPlusMarkets()
+	bridges := make([]*synPlusShadowBridge, 0, len(markets))
 	for _, market := range markets {
-		if strings.EqualFold(strings.TrimSpace(market.Symbol), "NIFTY") {
-			volumeSourceID = market.Underlying.InstrumentID
-			break
+		name := strings.ToUpper(strings.TrimSpace(market.Symbol))
+		if !enabled[name] {
+			continue
+		}
+		id := "QNEXT:" + name + "-SYN+"
+		if name == "NIFTY" {
+			id = niftySynPlusID()
+		}
+		bridges = append(bridges, &synPlusShadowBridge{
+			broker:         broker,
+			engine:         candle.New("candle-v2-session-aligned-shadow"),
+			instrumentID:   id,
+			volumeSourceID: market.Underlying.InstrumentID,
+			timeframes:     append([]string(nil), timeframes...),
+			volumeMirror:   make(map[string][]synPlusVolumeMirror),
+			recentBars:     make(map[string][]domain.Bar),
+		})
+	}
+	return bridges
+}
+
+// Retained for existing single-market tests and internal callers.
+func newSynPlusShadowBridge(broker *Broker) *synPlusShadowBridge {
+	for _, bridge := range newSynPlusShadowBridges(broker) {
+		if strings.EqualFold(bridge.instrumentID, niftySynPlusID()) {
+			return bridge
 		}
 	}
-	return &synPlusShadowBridge{
-		broker:         broker,
-		engine:         candle.New("candle-v2-session-aligned-shadow"),
-		instrumentID:   instrumentID,
-		volumeSourceID: volumeSourceID,
-		timeframes:     append([]string(nil), timeframes...),
-		volumeMirror:   make(map[string][]synPlusVolumeMirror),
-		recentBars:     make(map[string][]domain.Bar),
-	}
+	return nil
 }
 
 func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +322,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WebSocketHandler) serveSynPlusSnapshot(w http.ResponseWriter, r *http.Request) {
-	if h.shadow == nil {
+	if len(h.shadows) == 0 {
 		http.Error(w, "SYN+ shadow bridge unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -298,13 +340,18 @@ func (h *WebSocketHandler) serveSynPlusSnapshot(w http.ResponseWriter, r *http.R
 		return
 	}
 	if snapshot.Schema != research.SynPlusSnapshotSchema ||
-		!strings.EqualFold(strings.TrimSpace(snapshot.InstrumentID), h.shadow.instrumentID) ||
+		strings.TrimSpace(snapshot.InstrumentID) == "" ||
 		snapshot.SnapshotAtMS <= 0 {
 		http.Error(w, "invalid SYN+ snapshot", http.StatusUnprocessableEntity)
 		return
 	}
 
-	if err := h.shadow.observe(snapshot); err != nil {
+	bridge := h.shadows[strings.ToUpper(strings.TrimSpace(snapshot.InstrumentID))]
+	if bridge == nil {
+		http.Error(w, "SYN+ market is not enabled", http.StatusUnprocessableEntity)
+		return
+	}
+	if err := bridge.observe(snapshot); err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
