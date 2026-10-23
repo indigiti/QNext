@@ -104,6 +104,7 @@ func aggregateSubminute(state *subminuteState, timeframe string) domain.Bar {
 	var quality domain.Quality
 	var recovered bool
 	var carryForward bool
+	var futuresProxy bool
 	initialized := false
 
 	for key, bar := range state.children {
@@ -129,10 +130,15 @@ func aggregateSubminute(state *subminuteState, timeframe string) domain.Bar {
 			quality = worseQuality(quality, bar.Quality)
 		}
 		volume += bar.Volume
+		futuresProxy = futuresProxy || bar.VolumeSource == "FUTURES_PROXY"
 		recovered = recovered || bar.Recovered
 		carryForward = carryForward || bar.CarryForward
 	}
 
+	volumeSource, volumeStatus := "", "UNKNOWN"
+	if futuresProxy {
+		volumeSource, volumeStatus = "FUTURES_PROXY", "OBSERVED"
+	}
 	return domain.Bar{
 		InstrumentID:        first.InstrumentID,
 		Timeframe:           timeframe,
@@ -143,6 +149,8 @@ func aggregateSubminute(state *subminuteState, timeframe string) domain.Bar {
 		Low:                 low,
 		Close:               last.Close,
 		Volume:              volume,
+		VolumeSource:        volumeSource,
+		VolumeStatus:        volumeStatus,
 		Revision:            0,
 		AuthorityProvider:   last.AuthorityProvider,
 		Quality:             quality,
