@@ -30,6 +30,12 @@ type VolumeProxyRouter interface {
 	Route(domain.Tick) (domain.Tick, bool)
 }
 
+// FuturesVolumeRecorder persists source provenance before a proxy delta
+// reaches live candles. It is never called for cash-index or SYN ticks.
+type FuturesVolumeRecorder interface {
+	Record(source, routed domain.Tick) error
+}
+
 type SubminuteTelemetrySource interface {
 	SubminuteTelemetry() any
 }
@@ -43,6 +49,7 @@ type MarketSink struct {
 	Publisher         BarPublisher
 	DirectInstruments map[string]bool
 	VolumeProxy       VolumeProxyRouter
+	VolumeRecorder    FuturesVolumeRecorder
 	Observer          func(domain.Tick)
 
 	// CarryHealthy is the authoritative gate for zero-volume 5s carry bars.
@@ -86,6 +93,11 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 
 	if s.VolumeProxy != nil {
 		if volumeTick, ok := s.VolumeProxy.Route(tick); ok {
+			if s.VolumeRecorder != nil {
+				if err := s.VolumeRecorder.Record(tick, volumeTick); err != nil {
+					return err
+				}
+			}
 			volumePipeline, supported := s.Pipeline.(VolumeOverlayPipeline)
 			if !supported {
 				return errors.New("canonical tick pipeline does not support volume overlays")
