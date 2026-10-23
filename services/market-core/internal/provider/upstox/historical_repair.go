@@ -518,6 +518,8 @@ func (r *HistoricalRepairer) repairBarsWithVolumePolicy(
 			candidate.Volume = 0
 			if ok {
 				candidate.Volume = previous.Volume
+				candidate.VolumeSource = previous.VolumeSource
+				candidate.VolumeStatus = previous.VolumeStatus
 			}
 		}
 		if !ok {
