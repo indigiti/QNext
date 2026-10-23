@@ -108,9 +108,9 @@ func TestIntradayIndexRecoveryPreservesProxyButCorrectsPrice(t *testing.T) {
 		AccessToken: "token", Registry: registry, History: store, Timeframes: []string{"1m"},
 	}
 	if err := recovery.Recover(context.Background(), RecoveryRequest{
-		Provider: ProviderName,
+		Provider:       ProviderName,
 		InstrumentKeys: []string{"NSE_INDEX|Nifty 50"},
-		From: at.Add(-time.Second), To: at.Add(2*time.Minute),
+		From:           at.Add(-time.Second), To: at.Add(2 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)
 	}
