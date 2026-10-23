@@ -95,20 +95,27 @@ func (l *Ledger) Record(source, routed domain.Tick) error {
 	return errors.Join(syncErr, closeErr)
 }
 
-// Sum returns the independently recorded futures quantities in [from,to).
-// present=false means there is no authoritative traded volume record; callers
-// must not interpret it as a verified exchange-traded zero.
+// Sum distinguishes a real source observation from an unknown zero.
 func (l *Ledger) Sum(targetID string, from, to time.Time) (float64, bool, error) {
+	entries, err := l.Read(targetID, from, to)
+	if err != nil { return 0, false, err }
+	var sum float64
+	for _, entry := range entries { sum += entry.Quantity }
+	return sum, len(entries) > 0, nil
+}
+
+// Read returns only verified recorded deltas, scanning each day's file once.
+// Deduplication keys survive process restarts and source replay.
+func (l *Ledger) Read(targetID string, from, to time.Time) ([]Entry, error) {
 	if l == nil || l.root == "" || targetID == "" || from.IsZero() ||
 		!from.Before(to) || to.Sub(from) > 32*24*time.Hour {
-		return 0, false, errors.New("invalid futures volume query")
+		return nil, errors.New("invalid futures volume query")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	from, to = from.UTC(), to.UTC()
 	day := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
-	var total float64
-	var found bool
+	var result []Entry
 	seen := make(map[string]bool)
 	for day.Before(to) {
 		file, err := os.Open(l.path(targetID, day))
@@ -116,45 +123,36 @@ func (l *Ledger) Sum(targetID string, from, to time.Time) (float64, bool, error)
 			day = day.AddDate(0, 0, 1)
 			continue
 		}
-		if err != nil {
-			return 0, false, err
-		}
+		if err != nil { return nil, err }
 		scanner := bufio.NewScanner(file)
 		scanner.Buffer(make([]byte, 4096), 1024*1024)
 		for scanner.Scan() {
 			var entry Entry
 			if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 				_ = file.Close()
-				return 0, false, fmt.Errorf("corrupted volume ledger: %w", err)
+				return nil, fmt.Errorf("corrupted volume ledger: %w", err)
 			}
 			if entry.Schema != schema || entry.TargetID != targetID {
 				_ = file.Close()
-				return 0, false, errors.New("invalid volume ledger provenance")
+				return nil, errors.New("invalid volume ledger provenance")
 			}
 			at := time.UnixMilli(entry.EventTimeMS)
-			if at.Before(from) || !at.Before(to) {
-				continue
-			}
+			if at.Before(from) || !at.Before(to) { continue }
 			if entry.Quantity <= 0 || math.IsNaN(entry.Quantity) || math.IsInf(entry.Quantity, 0) {
 				_ = file.Close()
-				return 0, false, errors.New("invalid stored futures quantity")
+				return nil, errors.New("invalid stored futures quantity")
 			}
 			key := fmt.Sprintf("%s|%d|%.9f|%.9f", entry.SourceID, entry.EventTimeMS, entry.CumulativeVolume, entry.Quantity)
-			if seen[key] {
-				continue
-			}
+			if seen[key] { continue }
 			seen[key] = true
-			total += entry.Quantity
-			found = true
+			result = append(result, entry)
 		}
 		scanErr := scanner.Err()
 		closeErr := file.Close()
-		if scanErr != nil || closeErr != nil {
-			return 0, false, errors.Join(scanErr, closeErr)
-		}
+		if scanErr != nil || closeErr != nil { return nil, errors.Join(scanErr, closeErr) }
 		day = day.AddDate(0, 0, 1)
 	}
-	return total, found, nil
+	return result, nil
 }
 
 func (l *Ledger) path(targetID string, at time.Time) string {
