@@ -14,7 +14,7 @@
     "skipLibCheck": true,
     "types": [
       "vitest/globals",
-      "vite/client"
+      "node"
     ],
     "allowImportingTsExtensions": true
   },
