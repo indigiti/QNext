@@ -1,4 +1,7 @@
 import { PineEngine, PineWorkerEngine } from '@luxalgo/vela-pinets';
+import type { ScriptingEngine } from '@luxalgo/vela/plugin';
+import type { VelaSignalTrace } from './charts/vela-signal-trace';
+import { wrapPineModelTrace } from './charts/vela-pine-model-observer';
 
 export type QNextPineMode = 'worker' | 'main';
 
@@ -8,6 +11,7 @@ export function resolveQNextPineMode(value: unknown): QNextPineMode {
   return value === 'main' ? 'main' : 'worker';
 }
 
-export function createQNextPineEngine(mode: QNextPineMode = 'worker'): PineEngine | PineWorkerEngine {
-  return mode === 'main' ? new PineEngine() : new PineWorkerEngine();
+export function createQNextPineEngine(mode: QNextPineMode = 'worker', trace?: VelaSignalTrace): ScriptingEngine {
+  const engine = mode === 'main' ? new PineEngine() : new PineWorkerEngine();
+  return trace ? wrapPineModelTrace(engine, trace) : engine;
 }
