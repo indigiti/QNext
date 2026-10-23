@@ -137,7 +137,7 @@ body.ops-shell-ready .ops-sidebar-close { flex-shrink: 0; }
     inset: 0;
     z-index: 25;
     background: rgba(0, 0, 0, .42);
-    pointer-events: none;
+    pointer-events: auto;
   }
 }
 @media (max-width: 700px) {
