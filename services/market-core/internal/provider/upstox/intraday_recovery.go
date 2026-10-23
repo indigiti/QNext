@@ -102,7 +102,7 @@ func (r *IntradayRecovery) Recover(ctx context.Context, request RecoveryRequest)
 				candidates = append(candidates, bar)
 			}
 
-			changedCount, changed, repairErr := r.repairCandidates(from, request.To, candidates)
+			changedCount, changed, repairErr := r.repairCandidates(from, request.To, candidates, instrument.AssetClass == "INDEX")
 			if repairErr != nil {
 				return fmt.Errorf("persist recovered %s bars: %w", timeframe, repairErr)
 			}
@@ -138,17 +138,30 @@ func (r *IntradayRecovery) repairCandidates(
 	from time.Time,
 	to time.Time,
 	candidates []domain.Bar,
+	cashIndexPriceOnly bool,
 ) (uint64, bool, error) {
 	if len(candidates) == 0 {
 		return 0, false, nil
 	}
 	if store, ok := r.History.(HistoricalRepairStore); ok {
 		repairer := HistoricalRepairer{History: store}
-		counts, changed, err := repairer.repairBars(from, to, candidates)
+		var counts HistoricalRepairCounts
+		var changed bool
+		var err error
+		if cashIndexPriceOnly {
+			counts, changed, err = repairer.repairIndexSourceBars(from, to, candidates)
+		} else {
+			counts, changed, err = repairer.repairBars(from, to, candidates)
+		}
 		return counts.Missing + counts.Corrected, changed, err
 	}
 
 	for _, bar := range candidates {
+		if cashIndexPriceOnly {
+			// Append-only compatibility writers cannot inspect an existing
+			// futures proxy. Do not copy a cash-index provider's volume.
+			bar.Volume = 0
+		}
 		if err := r.History.AppendBar(bar); err != nil {
 			return 0, false, err
 		}
