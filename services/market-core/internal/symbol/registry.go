@@ -100,9 +100,10 @@ func (r *Registry) Instrument(id string) (Instrument, bool) {
 	if instrument, ok := r.instruments[id]; ok {
 		return instrument, true
 	}
-	shadow, ok := niftySynPlusInstrument(r.instruments)
-	if ok && strings.EqualFold(shadow.ID, id) {
-		return shadow, true
+	for _, shadow := range syntheticPlusInstruments(r.instruments) {
+		if strings.EqualFold(shadow.ID, id) {
+			return shadow, true
+		}
 	}
 	return Instrument{}, false
 }
@@ -136,7 +137,7 @@ func (r *Registry) ListVisible() []Instrument {
 			result = append(result, instrument)
 		}
 	}
-	if shadow, ok := niftySynPlusInstrument(r.instruments); ok {
+	for _, shadow := range syntheticPlusInstruments(r.instruments) {
 		if _, explicitlyRegistered := r.instruments[shadow.ID]; !explicitlyRegistered {
 			result = append(result, shadow)
 		}
@@ -168,9 +169,11 @@ func (r *Registry) Search(query string) []Instrument {
 			result = append(result, instrument)
 		}
 	}
-	if shadow, ok := niftySynPlusInstrument(r.instruments); ok && matches(shadow, q) {
-		if _, explicitlyRegistered := r.instruments[shadow.ID]; !explicitlyRegistered {
-			result = append(result, shadow)
+	for _, shadow := range syntheticPlusInstruments(r.instruments) {
+		if matches(shadow, q) {
+			if _, explicitlyRegistered := r.instruments[shadow.ID]; !explicitlyRegistered {
+				result = append(result, shadow)
+			}
 		}
 	}
 	sort.Slice(result, func(a, b int) bool {
@@ -182,39 +185,55 @@ func (r *Registry) Search(query string) []Instrument {
 	return result
 }
 
-func niftySynPlusInstrument(instruments map[string]Instrument) (Instrument, bool) {
-	var base Instrument
-	for _, instrument := range instruments {
-		if instrument.Synthetic && strings.EqualFold(strings.TrimSpace(instrument.Symbol), "NIFTY-SYN") {
-			base = instrument
-			break
+// Synthetic+ is opt-in per market. Keep only NIFTY visible by default;
+// additional shadow symbols appear when a matching collector is enabled.
+func syntheticPlusInstruments(instruments map[string]Instrument) []Instrument {
+	configured := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_ENABLED_MARKETS"))
+	if configured == "" {
+		configured = "NIFTY"
+	}
+	enabled := make(map[string]bool)
+	for _, name := range strings.Split(configured, ",") {
+		name = strings.ToUpper(strings.TrimSpace(name))
+		if name != "" {
+			enabled[name] = true
 		}
 	}
-	if base.ID == "" {
-		return Instrument{}, false
-	}
 
-	instrumentID := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID"))
-	if instrumentID == "" {
-		instrumentID = base.ID + "+"
+	var shadows []Instrument
+	for _, base := range instruments {
+		if !base.Synthetic || !strings.HasSuffix(strings.ToUpper(base.Symbol), "-SYN") {
+			continue
+		}
+		market := strings.TrimSuffix(strings.ToUpper(base.Symbol), "-SYN")
+		if !enabled[market] {
+			continue
+		}
+		instrumentID := base.ID + "+"
+		if market == "NIFTY" {
+			if override := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID")); override != "" {
+				instrumentID = override
+			}
+		}
+		shadows = append(shadows, Instrument{
+			ID:         instrumentID,
+			Symbol:     market + "-SYN+",
+			Name:       base.Name + "+ (Shadow)",
+			AssetClass: base.AssetClass,
+			Exchange:   base.Exchange,
+			Currency:   base.Currency,
+			Timezone:   base.Timezone,
+			CalendarID: base.CalendarID,
+			Aliases: []string{
+				market + " SYN+",
+				market + " SYN PLUS",
+				"SYNTHETIC+ " + market,
+			},
+			Synthetic: true,
+			Visible:   true,
+		})
 	}
-	return Instrument{
-		ID:         instrumentID,
-		Symbol:     "NIFTY-SYN+",
-		Name:       base.Name + "+ (Shadow)",
-		AssetClass: base.AssetClass,
-		Exchange:   base.Exchange,
-		Currency:   base.Currency,
-		Timezone:   base.Timezone,
-		CalendarID: base.CalendarID,
-		Aliases: []string{
-			"NIFTY SYN+",
-			"NIFTY SYN PLUS",
-			"SYNTHETIC+ NIFTY",
-		},
-		Synthetic: true,
-		Visible:   true,
-	}, true
+	return shadows
 }
 
 func matches(instrument Instrument, query string) bool {

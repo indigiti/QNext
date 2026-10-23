@@ -37,8 +37,7 @@ type Broker struct {
 	compactedStreams      uint64
 	reclaimedReplaySlots  uint64
 	evictedEmptyStreams   uint64
-	volumeObserverID      string
-	volumeObserver        func(domain.Bar)
+	barObservers          map[string]func(domain.Bar)
 }
 
 type streamState struct {
@@ -143,19 +142,26 @@ func NewBroker(retention, subscriberBuffer int) *Broker {
 		retention:        retention,
 		subscriberBuffer: subscriberBuffer,
 		streams:          make(map[string]*streamState),
+		barObservers:     make(map[string]func(domain.Bar)),
 	}
 	observability.SetBrokerSource(func() any { return broker.Stats() })
 	return broker
 }
 
-// SetBarObserver registers an in-process observer for one source instrument.
-// The callback runs after the broker mutex is released, so it may safely
-// publish an aligned derived (SYN+) bar without locking the broker recursively.
-// No additional upstream market subscription is created.
+// SetBarObserver registers an independent observer for a canonical source
+// instrument. Registering another index does not evict existing subscribers;
+// callbacks run outside the broker lock and may publish derived bars safely.
+// No additional upstream provider subscription is created.
 func (b *Broker) SetBarObserver(instrumentID string, observe func(domain.Bar)) {
+	if b == nil || strings.TrimSpace(instrumentID) == "" {
+		return
+	}
 	b.mu.Lock()
-	b.volumeObserverID = instrumentID
-	b.volumeObserver = observe
+	if observe == nil {
+		delete(b.barObservers, instrumentID)
+	} else {
+		b.barObservers[instrumentID] = observe
+	}
 	b.mu.Unlock()
 }
 
@@ -201,10 +207,7 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 	if len(state.subs) == 0 && state.idleSinceMS == 0 {
 		state.idleSinceMS = time.Now().UnixMilli()
 	}
-	observer := b.volumeObserver
-	if bar.InstrumentID != b.volumeObserverID {
-		observer = nil
-	}
+	observer := b.barObservers[bar.InstrumentID]
 	b.mu.Unlock()
 
 	if observer != nil {

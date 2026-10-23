@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-func TestConfiguredMarketKeepsSynPlusNiftyOnly(t *testing.T) {
+func TestConfiguredMarketSelectsAnyConfiguredSynPlusIndex(t *testing.T) {
 	t.Setenv("QNEXT_MARKET_CONFIG", "")
 	t.Setenv("QNEXT_DATA_COLLECTOR_MARKET", "NIFTY")
 	market, timeframes, err := configuredMarket()
@@ -17,7 +17,15 @@ func TestConfiguredMarketKeepsSynPlusNiftyOnly(t *testing.T) {
 	}
 
 	t.Setenv("QNEXT_DATA_COLLECTOR_MARKET", "BANKNIFTY")
+	bank, bankTimeframes, err := configuredMarket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bank.Symbol != "BANKNIFTY" || bank.Underlying.InstrumentID != "NSE:BANKNIFTY" || len(bankTimeframes) == 0 {
+		t.Fatalf("unexpected BANKNIFTY SYN+ market: %+v timeframes=%+v", bank, bankTimeframes)
+	}
+	t.Setenv("QNEXT_DATA_COLLECTOR_MARKET", "UNKNOWN")
 	if _, _, err := configuredMarket(); err == nil {
-		t.Fatal("expected non-NIFTY SYN+ market selection to be rejected")
+		t.Fatal("expected an unconfigured SYN+ market to be rejected")
 	}
 }
