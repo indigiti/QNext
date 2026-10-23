@@ -314,18 +314,25 @@ func (s *Server) overlayVolume(
 	fromMS int64,
 	toMS int64,
 ) {
-	if len(bars) == 0 || s.history == nil {
+	if len(bars) == 0 {
 		return
 	}
-
-	sourceBars, err := s.history.LoadRange(
-		sourceID,
-		timeframe,
-		time.UnixMilli(fromMS).UTC(),
-		time.UnixMilli(toMS).UTC(),
-	)
-	if err != nil {
-		return
+	// Never leak unrelated option-basket volume into the common INDEX/SYN
+	// proxy metric, even when historical storage is temporarily unavailable.
+	for i := range bars {
+		bars[i].Volume = 0
+		bars[i].VolumeSource = ""
+		bars[i].VolumeStatus = "UNKNOWN"
+	}
+	var sourceBars []domain.Bar
+	if s.history != nil {
+		historical, err := s.history.LoadRange(
+			sourceID, timeframe,
+			time.UnixMilli(fromMS).UTC(), time.UnixMilli(toMS).UTC(),
+		)
+		if err == nil {
+			sourceBars = historical
+		}
 	}
 	if s.options.LiveBars != nil {
 		if live, ok := s.options.LiveBars.LatestBar(sourceID, timeframe); ok &&
@@ -334,7 +341,10 @@ func (s *Server) overlayVolume(
 			replaced := false
 			for i := range sourceBars {
 				if sourceBars[i].OpenTime.Equal(live.OpenTime) {
-					sourceBars[i] = live
+					if live.Revision > sourceBars[i].Revision ||
+						(live.Revision == sourceBars[i].Revision && !sourceBars[i].Final) {
+						sourceBars[i] = live
+					}
 					replaced = true
 					break
 				}
@@ -353,9 +363,6 @@ func (s *Server) overlayVolume(
 		// SYN and SYN+ prices are synthetic; the historical leg basket LTQ
 		// is not comparable to futures traded volume. Missing source data
 		// must be unknown, never silently substituted with basket activity.
-		bars[i].Volume = 0
-		bars[i].VolumeSource = ""
-		bars[i].VolumeStatus = "UNKNOWN"
 		if source, ok := volumeByOpen[bars[i].OpenTime.UnixMilli()]; ok {
 			bars[i].Volume = source.Volume
 			bars[i].VolumeSource = source.VolumeSource
