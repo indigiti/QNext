@@ -359,6 +359,7 @@ function dashboardMarkup(): string {
 }
 
 let dashboardRenderQueued = false;
+let cachedHealthRows = '';
 
 function renderDashboard(): void {
   const dashboard = document.querySelector<HTMLElement>('#ops-dashboard-card');
@@ -382,7 +383,10 @@ function renderDashboard(): void {
   // Do not remove a keyboard-focused row while it is being activated.
   if (list && !list.contains(document.activeElement)) {
     const next = miniFiveSecondRows();
-    if (list.innerHTML !== next) list.innerHTML = next;
+    if (cachedHealthRows !== next) {
+      cachedHealthRows = next;
+      list.innerHTML = next;
+    }
   }
   wireDashboardButtons();
 }
