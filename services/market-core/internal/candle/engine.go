@@ -279,6 +279,8 @@ func (e *Engine) ApplyVolume(tick domain.Tick, timeframe string) ([]domain.Bar, 
 		}
 		if openTime.Equal(current.OpenTime) {
 			current.Volume += tick.Quantity
+			current.VolumeSource = "FUTURES_PROXY"
+			current.VolumeStatus = "OBSERVED"
 			if tick.Sequence > current.SourceSequence {
 				current.SourceSequence = tick.Sequence
 			}
@@ -298,6 +300,8 @@ func (e *Engine) consumePendingVolume(bar *domain.Bar) {
 	key := volumeBucketKey(bar.InstrumentID, bar.Timeframe, bar.OpenTime)
 	if pending := e.pendingVolume[key]; pending > 0 {
 		bar.Volume += pending
+		bar.VolumeSource = "FUTURES_PROXY"
+		bar.VolumeStatus = "OBSERVED"
 		delete(e.pendingVolume, key)
 	}
 }

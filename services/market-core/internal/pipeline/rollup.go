@@ -245,6 +245,13 @@ func aggregateRollup(state *rollupState, timeframe, version string) domain.Bar {
 	if state == nil || state.count == 0 {
 		return domain.Bar{}
 	}
+	volumeSource, volumeStatus := "", "UNKNOWN"
+	for _, child := range state.minutes {
+		if child.VolumeSource == "FUTURES_PROXY" {
+			volumeSource, volumeStatus = "FUTURES_PROXY", "OBSERVED"
+			break
+		}
+	}
 	return domain.Bar{
 		InstrumentID:        state.first.InstrumentID,
 		Timeframe:           timeframe,
@@ -255,6 +262,8 @@ func aggregateRollup(state *rollupState, timeframe, version string) domain.Bar {
 		Low:                 state.low,
 		Close:               state.last.Close,
 		Volume:              state.volume,
+		VolumeSource:        volumeSource,
+		VolumeStatus:        volumeStatus,
 		Revision:            0,
 		AuthorityProvider:   state.last.AuthorityProvider,
 		Quality:             state.quality,

@@ -81,14 +81,16 @@ type serverMessage struct {
 }
 
 type wireBar struct {
-	Time     int64   `json:"time"`
-	Open     float64 `json:"open"`
-	High     float64 `json:"high"`
-	Low      float64 `json:"low"`
-	Close    float64 `json:"close"`
-	Volume   float64 `json:"volume"`
-	Final    bool    `json:"final"`
-	Revision uint32  `json:"revision"`
+	Time         int64   `json:"time"`
+	Open         float64 `json:"open"`
+	High         float64 `json:"high"`
+	Low          float64 `json:"low"`
+	Close        float64 `json:"close"`
+	Volume       float64 `json:"volume"`
+	VolumeSource string  `json:"volume_source"`
+	VolumeStatus string  `json:"volume_status"`
+	Final        bool    `json:"final"`
+	Revision     uint32  `json:"revision"`
 }
 
 func NewWebSocketHandler(broker *Broker) http.Handler {
@@ -407,6 +409,11 @@ func (b *synPlusShadowBridge) observe(snapshot research.SynPlusSnapshot) error {
 		for _, bar := range bars {
 			if volume, ok := b.sourceVolume(bar.Timeframe, bar.OpenTime); ok {
 				bar.Volume = volume
+				if volume > 0 {
+					bar.VolumeSource, bar.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
+				} else {
+					bar.VolumeSource, bar.VolumeStatus = "", "UNKNOWN"
+				}
 			}
 			if previous, ok := b.recentBar(bar.Timeframe, bar.OpenTime); ok && previous.Revision > bar.Revision {
 				bar.Revision = previous.Revision
@@ -438,6 +445,11 @@ func (b *synPlusShadowBridge) observeVolumeSource(source domain.Bar) {
 	// Only the volume field is sourced from the NIFTY futures proxy.
 	// Price OHLC, finality and synthetic lineage remain SYN+ owned.
 	bar.Volume = source.Volume
+	if source.Volume > 0 {
+		bar.VolumeSource, bar.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
+	} else {
+		bar.VolumeSource, bar.VolumeStatus = "", "UNKNOWN"
+	}
 	bar.Revision++
 	if bar.Final {
 		bar.Corrected = true
@@ -623,15 +635,24 @@ func updateMessage(event BarEvent) serverMessage {
 
 func toWireBar(bar domain.Bar) *wireBar {
 	return &wireBar{
-		Time:     bar.OpenTime.UTC().UnixMilli(),
-		Open:     bar.Open,
-		High:     bar.High,
-		Low:      bar.Low,
-		Close:    bar.Close,
-		Volume:   bar.Volume,
-		Final:    bar.Final,
-		Revision: bar.Revision,
+		Time:         bar.OpenTime.UTC().UnixMilli(),
+		Open:         bar.Open,
+		High:         bar.High,
+		Low:          bar.Low,
+		Close:        bar.Close,
+		Volume:       bar.Volume,
+		VolumeSource: bar.VolumeSource,
+		VolumeStatus: barVolumeStatus(bar),
+		Final:        bar.Final,
+		Revision:     bar.Revision,
 	}
+}
+
+func barVolumeStatus(bar domain.Bar) string {
+	if bar.VolumeStatus != "" {
+		return bar.VolumeStatus
+	}
+	return "UNKNOWN"
 }
 
 func protocolError(code, message string) serverMessage {

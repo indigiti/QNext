@@ -48,6 +48,8 @@ type Bar struct {
 	Low                 float64
 	Close               float64
 	Volume              float64
+	VolumeSource        string
+	VolumeStatus        string
 	Final               bool
 	Revision            uint32
 	AuthorityProvider   string

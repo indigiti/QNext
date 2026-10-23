@@ -14,6 +14,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/marketcalendar"
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
+	"github.com/indigiti/QNext/services/market-core/internal/volumeledger"
 )
 
 var ErrHistoricalRepairRunning = errors.New("historical repair is already running")
@@ -93,6 +94,7 @@ type HistoricalRepairer struct {
 	Client      HistoricalRangeFetcher
 	AccessToken string
 	History     HistoricalRepairStore
+	Ledger      *volumeledger.Ledger
 	Calendars   *marketcalendar.Registry
 	Markets     []marketconfig.MarketConfig
 	Timeframes  []string
@@ -198,6 +200,15 @@ func (r *HistoricalRepairer) Repair(
 		marketResult.Timeframes["1m"] = counts
 		if changed && r.Resync != nil {
 			r.Resync.PublishResync(market.Underlying.InstrumentID, "1m", "historical_repair")
+		}
+		// Reconstruct minute futures volume from the independent journal
+		// before any higher timeframe rollups consume canonical 1m bars.
+		if r.Ledger != nil {
+			if _, reconcileErr := r.Ledger.Reconcile(r.History, r.Resync,
+				market.Underlying.InstrumentID, []string{"1m"}, from, to); reconcileErr != nil {
+				r.finish(result, reconcileErr)
+				return result, reconcileErr
+			}
 		}
 
 		canonical1m, err := r.History.LoadRange(
@@ -363,6 +374,15 @@ func (r *HistoricalRepairer) Repair(
 			}
 		}
 
+		// Reconcile existing canonical subminute price buckets only.
+		// 1m provider history cannot be split into invented 15s volume.
+		if r.Ledger != nil {
+			if _, reconcileErr := r.Ledger.Reconcile(r.History, r.Resync,
+				market.Underlying.InstrumentID, []string{"5s", "15s", "30s"}, from, to); reconcileErr != nil {
+				r.finish(result, reconcileErr)
+				return result, reconcileErr
+			}
+		}
 		result.Markets = append(result.Markets, marketResult)
 	}
 
@@ -498,6 +518,8 @@ func (r *HistoricalRepairer) repairBarsWithVolumePolicy(
 			candidate.Volume = 0
 			if ok {
 				candidate.Volume = previous.Volume
+				candidate.VolumeSource = previous.VolumeSource
+				candidate.VolumeStatus = previous.VolumeStatus
 			}
 		}
 		if !ok {

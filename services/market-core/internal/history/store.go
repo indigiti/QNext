@@ -38,6 +38,8 @@ type barRecord struct {
 	Low                 float64        `json:"low"`
 	Close               float64        `json:"close"`
 	Volume              float64        `json:"volume"`
+	VolumeSource        string         `json:"volume_source,omitempty"`
+	VolumeStatus        string         `json:"volume_status,omitempty"`
 	Final               bool           `json:"final"`
 	Revision            uint32         `json:"revision"`
 	AuthorityProvider   string         `json:"authority_provider"`
@@ -214,6 +216,8 @@ func fromBar(bar domain.Bar) barRecord {
 		Low:                 bar.Low,
 		Close:               bar.Close,
 		Volume:              bar.Volume,
+		VolumeSource:        bar.VolumeSource,
+		VolumeStatus:        bar.VolumeStatus,
 		Final:               bar.Final,
 		Revision:            bar.Revision,
 		AuthorityProvider:   bar.AuthorityProvider,
@@ -240,6 +244,8 @@ func (r barRecord) toBar() domain.Bar {
 		Low:                 r.Low,
 		Close:               r.Close,
 		Volume:              r.Volume,
+		VolumeSource:        r.VolumeSource,
+		VolumeStatus:        r.VolumeStatus,
 		Final:               r.Final,
 		Revision:            r.Revision,
 		AuthorityProvider:   r.AuthorityProvider,
