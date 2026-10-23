@@ -116,8 +116,10 @@ func TestIntradayRecoveryRebuildsDerivedBarsFromRepairedCanonicalMinute(t *testi
 	if len(threeMinute) != 1 {
 		t.Fatalf("expected one rebuilt 3m candle, got %+v", threeMinute)
 	}
+	// Index-price history has no authority to invent the original futures
+	// volume; derived rollups retain zero until a verified proxy is available.
 	bar := threeMinute[0]
-	if bar.Open != 25100 || bar.High != 25105 || bar.Low != 25099 || bar.Close != 25104 || bar.Volume != 600 {
+	if bar.Open != 25100 || bar.High != 25105 || bar.Low != 25099 || bar.Close != 25104 || bar.Volume != 0 {
 		t.Fatalf("unexpected rebuilt 3m candle: %+v", bar)
 	}
 	if !bar.Recovered || !bar.Final || bar.Quality != domain.QualityRecovered {
