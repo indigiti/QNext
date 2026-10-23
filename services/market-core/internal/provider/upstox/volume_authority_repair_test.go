@@ -14,10 +14,8 @@ func TestIndexHistoryRepairProtectsAuthoritativeFuturesProxyVolume(t *testing.T)
 	store := history.New(t.TempDir())
 	at := time.Date(2026, 10, 22, 3, 45, 0, 0, time.UTC)
 	original := domain.Bar{
-		InstrumentID: "NSE:NIFTY50", Timeframe: "1m",
-		OpenTime: at, CloseTime: at.Add(time.Minute),
-		Open: 25200, High: 25210, Low: 25190, Close: 25203,
-		Volume: 430, Final: true, Quality: domain.QualityGood,
+		InstrumentID: "NSE:NIFTY50", Timeframe: "1m", OpenTime: at, CloseTime: at.Add(time.Minute),
+		Open: 25200, High: 25210, Low: 25190, Close: 25203, Volume: 430, Final: true, Quality: domain.QualityGood,
 	}
 	if err := store.AppendBar(original); err != nil {
 		t.Fatal(err)
@@ -57,10 +55,8 @@ func TestIndexHistoryRepairDoesNotTreatProviderVolumeAsTradedIndexVolume(t *test
 	store := history.New(t.TempDir())
 	at := time.Date(2026, 10, 22, 3, 45, 0, 0, time.UTC)
 	source := domain.Bar{
-		InstrumentID: "NSE:NIFTY50", Timeframe: "1m",
-		OpenTime: at, CloseTime: at.Add(time.Minute),
-		Open: 25200, High: 25210, Low: 25190, Close: 25203,
-		Volume: 999, Final: true,
+		InstrumentID: "NSE:NIFTY50", Timeframe: "1m", OpenTime: at, CloseTime: at.Add(time.Minute),
+		Open: 25200, High: 25210, Low: 25190, Close: 25203, Volume: 999, Final: true,
 	}
 	repairer := &HistoricalRepairer{History: store}
 	_, _, err := repairer.repairIndexSourceBars(at.Add(-time.Minute), at.Add(2*time.Minute), []domain.Bar{source})
@@ -88,8 +84,8 @@ func TestIntradayIndexRecoveryPreservesProxyButCorrectsPrice(t *testing.T) {
 	at := time.Date(2026, 10, 22, 3, 45, 0, 0, time.UTC)
 	registry := symbol.NewRegistry()
 	if err := registry.Register(symbol.Instrument{
-		ID: "NSE:NIFTY50", Symbol: "NIFTY", Name: "Nifty 50",
-		AssetClass: "INDEX", Exchange: "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
+		ID: "NSE:NIFTY50", Symbol: "NIFTY", Name: "Nifty 50", AssetClass: "INDEX",
+		Exchange: "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -100,10 +96,8 @@ func TestIntradayIndexRecoveryPreservesProxyButCorrectsPrice(t *testing.T) {
 	}
 	store := history.New(t.TempDir())
 	if err := store.AppendBar(domain.Bar{
-		InstrumentID: "NSE:NIFTY50", Timeframe: "1m",
-		OpenTime: at, CloseTime: at.Add(time.Minute),
-		Open: 25100, High: 25103, Low: 25099, Close: 25101,
-		Volume: 125, Final: true,
+		InstrumentID: "NSE:NIFTY50", Timeframe: "1m", OpenTime: at, CloseTime: at.Add(time.Minute),
+		Open: 25100, High: 25103, Low: 25099, Close: 25101, Volume: 125, Final: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
