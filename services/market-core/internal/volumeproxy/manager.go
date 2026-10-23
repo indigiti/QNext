@@ -367,6 +367,10 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 	if !inRegularSession(at) {
 		return nil
 	}
+	repairer, ok := m.Subscriber.(FullModeRepairer)
+	if !ok {
+		return errors.New("futures subscription does not support full-mode recovery")
+	}
 	type repair struct {
 		symbol string
 		keys   []string
@@ -419,13 +423,13 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 	if len(repairs) == 0 {
 		return nil
 	}
-	repairer, ok := m.Subscriber.(FullModeRepairer)
-	if !ok {
-		return errors.New("futures subscription does not support full-mode recovery")
-	}
 	var result error
 	for _, repair := range repairs {
-		err := repairer.ReassertFull(ctx, repair.keys)
+		// Do not block the watchdog indefinitely when the Upstox writer is
+		// disconnected and its bounded update queue is full.
+		repairCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := repairer.ReassertFull(repairCtx, repair.keys)
+		cancel()
 		m.mu.Lock()
 		for _, market := range m.Markets {
 			if market.Symbol != repair.symbol {
