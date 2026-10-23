@@ -37,7 +37,7 @@ func TestLedgerPersistsIndependentIndexSourcesAndReplaysExactSubminute(t *testin
 	for _, tt := range []struct {
 		open time.Duration
 		want float64
-		ok bool
+		ok   bool
 	}{
 		{0, 10, true}, {15 * time.Second, 20, true},
 		{30 * time.Second, 30, true}, {45 * time.Second, 0, false},

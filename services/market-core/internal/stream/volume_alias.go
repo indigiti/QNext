@@ -11,7 +11,9 @@ import (
 // configured cash-index futures proxy. SYN+ has its own shadow price bridge.
 // All aliases must be configured before the broker begins publishing.
 func (b *Broker) ConfigureSyntheticVolume(aliases map[string]string) {
-	if b == nil { return }
+	if b == nil {
+		return
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.syntheticVolume = make(map[string]string, len(aliases))
@@ -19,7 +21,9 @@ func (b *Broker) ConfigureSyntheticVolume(aliases map[string]string) {
 	b.volumeSources = make(map[string][]domain.Bar)
 	b.syntheticBars = make(map[string][]domain.Bar)
 	for target, source := range aliases {
-		if target == "" || source == "" || target == source { continue }
+		if target == "" || source == "" || target == source {
+			continue
+		}
 		b.syntheticVolume[target] = source
 		b.volumeTargets[source] = append(b.volumeTargets[source], target)
 	}
@@ -29,8 +33,12 @@ func (b *Broker) ConfigureSyntheticVolume(aliases map[string]string) {
 }
 
 func volumeState(source domain.Bar) (string, string) {
-	if source.Volume <= 0 { return "", "UNKNOWN" }
-	if source.VolumeSource == "FUTURES_PROXY" { return "FUTURES_PROXY", "OBSERVED" }
+	if source.Volume <= 0 {
+		return "", "UNKNOWN"
+	}
+	if source.VolumeSource == "FUTURES_PROXY" {
+		return "FUTURES_PROXY", "OBSERVED"
+	}
 	return "", "LEGACY_UNVERIFIED"
 }
 
@@ -59,10 +67,14 @@ func (b *Broker) alignVolumeLocked(bar domain.Bar) (domain.Bar, []domain.Bar) {
 		return bar, nil
 	}
 	targets := b.volumeTargets[bar.InstrumentID]
-	if len(targets) == 0 { return bar, nil }
+	if len(targets) == 0 {
+		return bar, nil
+	}
 	sourceKey := streamKey(bar.InstrumentID, bar.Timeframe)
 	for _, old := range b.volumeSources[sourceKey] {
-		if !old.OpenTime.Equal(bar.OpenTime) { continue }
+		if !old.OpenTime.Equal(bar.OpenTime) {
+			continue
+		}
 		if old.Revision > bar.Revision ||
 			(old.Revision == bar.Revision && old.Volume > bar.Volume) {
 			// Stale replay must not erase already verified traded volume.
@@ -77,10 +89,14 @@ func (b *Broker) alignVolumeLocked(bar domain.Bar) (domain.Bar, []domain.Bar) {
 	for _, target := range targets {
 		key := streamKey(target, bar.Timeframe)
 		for _, syn := range b.syntheticBars[key] {
-			if !syn.OpenTime.Equal(bar.OpenTime) { continue }
+			if !syn.OpenTime.Equal(bar.OpenTime) {
+				continue
+			}
 			sourceName, status := volumeState(bar)
 			if syn.Volume == bar.Volume && syn.VolumeSource == sourceName &&
-				syn.VolumeStatus == status { break }
+				syn.VolumeStatus == status {
+				break
+			}
 			patch := syn
 			patch.Volume = bar.Volume
 			patch.VolumeSource, patch.VolumeStatus = sourceName, status
@@ -103,10 +119,14 @@ func rememberRecentBar(bars []domain.Bar, next domain.Bar) []domain.Bar {
 			return bars
 		}
 	}
-	if len(bars) < 3 { return append(bars, next) }
+	if len(bars) < 3 {
+		return append(bars, next)
+	}
 	oldest := 0
 	for i := 1; i < len(bars); i++ {
-		if bars[i].OpenTime.Before(bars[oldest].OpenTime) { oldest = i }
+		if bars[i].OpenTime.Before(bars[oldest].OpenTime) {
+			oldest = i
+		}
 	}
 	if next.OpenTime.After(bars[oldest].OpenTime) {
 		bars[oldest] = next

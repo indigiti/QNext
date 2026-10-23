@@ -10,7 +10,7 @@ import (
 func TestUnifiedSYNVolumeMatchesIndexAcrossLiveCorrections(t *testing.T) {
 	broker := NewBroker(64, 16)
 	broker.ConfigureSyntheticVolume(map[string]string{
-		"QNEXT:NIFTY-SYN": "NSE:NIFTY50",
+		"QNEXT:NIFTY-SYN":     "NSE:NIFTY50",
 		"QNEXT:BANKNIFTY-SYN": "NSE:BANKNIFTY",
 	})
 	at := time.Date(2026, 10, 23, 3, 45, 0, 0, time.UTC)

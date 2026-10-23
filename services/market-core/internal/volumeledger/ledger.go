@@ -62,7 +62,7 @@ func (l *Ledger) Record(source, routed domain.Tick) error {
 		Schema: schema, TargetID: routed.InstrumentID,
 		SourceID: source.InstrumentID, Provider: source.Provider,
 		EventTimeMS: source.EventTime.UTC().UnixMilli(),
-		Quantity: routed.Quantity, CumulativeVolume: source.CumulativeVolume,
+		Quantity:    routed.Quantity, CumulativeVolume: source.CumulativeVolume,
 		Sequence: source.Sequence,
 	}
 	data, err := json.Marshal(entry)
@@ -98,9 +98,13 @@ func (l *Ledger) Record(source, routed domain.Tick) error {
 // Sum distinguishes a real source observation from an unknown zero.
 func (l *Ledger) Sum(targetID string, from, to time.Time) (float64, bool, error) {
 	entries, err := l.Read(targetID, from, to)
-	if err != nil { return 0, false, err }
+	if err != nil {
+		return 0, false, err
+	}
 	var sum float64
-	for _, entry := range entries { sum += entry.Quantity }
+	for _, entry := range entries {
+		sum += entry.Quantity
+	}
 	return sum, len(entries) > 0, nil
 }
 
@@ -123,7 +127,9 @@ func (l *Ledger) Read(targetID string, from, to time.Time) ([]Entry, error) {
 			day = day.AddDate(0, 0, 1)
 			continue
 		}
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		scanner := bufio.NewScanner(file)
 		scanner.Buffer(make([]byte, 4096), 1024*1024)
 		for scanner.Scan() {
@@ -137,19 +143,25 @@ func (l *Ledger) Read(targetID string, from, to time.Time) ([]Entry, error) {
 				return nil, errors.New("invalid volume ledger provenance")
 			}
 			at := time.UnixMilli(entry.EventTimeMS)
-			if at.Before(from) || !at.Before(to) { continue }
+			if at.Before(from) || !at.Before(to) {
+				continue
+			}
 			if entry.Quantity <= 0 || math.IsNaN(entry.Quantity) || math.IsInf(entry.Quantity, 0) {
 				_ = file.Close()
 				return nil, errors.New("invalid stored futures quantity")
 			}
 			key := fmt.Sprintf("%s|%d|%.9f|%.9f", entry.SourceID, entry.EventTimeMS, entry.CumulativeVolume, entry.Quantity)
-			if seen[key] { continue }
+			if seen[key] {
+				continue
+			}
 			seen[key] = true
 			result = append(result, entry)
 		}
 		scanErr := scanner.Err()
 		closeErr := file.Close()
-		if scanErr != nil || closeErr != nil { return nil, errors.Join(scanErr, closeErr) }
+		if scanErr != nil || closeErr != nil {
+			return nil, errors.Join(scanErr, closeErr)
+		}
 		day = day.AddDate(0, 0, 1)
 	}
 	return result, nil
