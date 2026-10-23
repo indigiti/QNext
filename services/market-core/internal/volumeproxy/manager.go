@@ -485,13 +485,13 @@ func (m *Manager) Status() any {
 			}
 		}
 		result[market.Symbol] = map[string]any{
-			"status":            status,
-			"active_future":     state.activeID,
-			"last_index_at_ms":  timeMillis(state.lastUnderlyingAt),
-			"last_future_at_ms": timeMillis(state.lastActiveFeedAt),
-			"last_volume_at_ms": timeMillis(state.lastVolumeAt),
-			"last_repair_at_ms": timeMillis(state.lastRepairAt),
-			"repair_attempts":   state.repairAttempts,
+			"status":             status,
+			"active_future":      state.activeID,
+			"last_index_at_ms":   timeMillis(state.lastUnderlyingAt),
+			"last_future_at_ms":  timeMillis(state.lastActiveFeedAt),
+			"last_volume_at_ms":  timeMillis(state.lastVolumeAt),
+			"last_repair_at_ms":  timeMillis(state.lastRepairAt),
+			"repair_attempts":    state.repairAttempts,
 			"last_repair_failed": state.lastRepairFailed,
 		}
 	}
@@ -540,6 +540,7 @@ func (m *Manager) Route(tick domain.Tick) (domain.Tick, bool) {
 			state.lastActiveFeedAt = time.Time{}
 			state.lastVolumeAt = time.Time{}
 			state.lastRepairAt = time.Time{}
+			state.lastRepairFailed = false
 		}
 		if tick.EventTime.After(state.lastUnderlyingAt) {
 			state.lastUnderlyingAt = tick.EventTime
