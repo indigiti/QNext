@@ -28,7 +28,10 @@ const checks = [
   ['workspace getState', typeof VelaWorkspace.prototype.getState === 'function'],
   ['workspace applyState', typeof VelaWorkspace.prototype.applyState === 'function'],
   ['workspace destroy', typeof VelaWorkspace.prototype.destroy === 'function'],
+  ['PineEngine constructor', typeof PineEngine === 'function'],
   ['PineWorkerEngine constructor', typeof PineWorkerEngine === 'function'],
+  ['PineEngine streaming capability', new PineEngine().capabilities.streaming === true],
+  ['PineWorkerEngine streaming capability', new PineWorkerEngine().capabilities.streaming === true],
   ['Vela icon action API', typeof registerIcon === 'function' && typeof registerWidgetAction === 'function'],
 ];
 
