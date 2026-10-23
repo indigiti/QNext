@@ -85,7 +85,42 @@ type targetState struct {
 	lastActiveFeedAt  time.Time
 	lastVolumeAt      time.Time
 	lastRepairAt      time.Time
+	lastRepairFailed  bool
 	repairAttempts    uint64
+}
+
+func (s *targetState) preserveLiveDuringRefresh(live *targetState) {
+	if live == nil {
+		return
+	}
+	// Futures discovery and provider subscription calls run without the manager
+	// lock. A tick may update the live state during that work. Never commit the
+	// earlier snapshot over those newer observations.
+	if s.currentID == live.currentID && s.nextID == live.nextID {
+		*s = *live
+		return
+	}
+	// A genuine contract change must not inherit the old contract's volume
+	// or feed health, but matching contracts keep the newest liquidity state.
+	if s.currentID == live.currentID {
+		s.current = live.current
+	}
+	if s.nextID == live.nextID {
+		s.next = live.next
+	}
+	if live.lastUnderlyingAt.After(s.lastUnderlyingAt) {
+		s.firstUnderlyingAt = live.firstUnderlyingAt
+		s.lastUnderlyingAt = live.lastUnderlyingAt
+	}
+	if live.activeID == s.currentID || live.activeID == s.nextID {
+		s.activeID = live.activeID
+		s.session = live.session
+		s.lastActiveFeedAt = live.lastActiveFeedAt
+		s.lastVolumeAt = live.lastVolumeAt
+		s.lastRepairAt = live.lastRepairAt
+		s.lastRepairFailed = live.lastRepairFailed
+		s.repairAttempts = live.repairAttempts
+	}
 }
 
 func New(
@@ -261,6 +296,7 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 			state.firstUnderlyingAt = previous.firstUnderlyingAt
 			state.lastUnderlyingAt = previous.lastUnderlyingAt
 			state.lastRepairAt = previous.lastRepairAt
+			state.lastRepairFailed = previous.lastRepairFailed
 			state.repairAttempts = previous.repairAttempts
 			if state.activeID == previous.activeID {
 				state.lastActiveFeedAt = previous.lastActiveFeedAt
@@ -299,6 +335,9 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 	}
 
 	m.mu.Lock()
+	for targetID, proposed := range nextTargets {
+		proposed.preserveLiveDuringRefresh(m.targets[targetID])
+	}
 	m.byInstrument = nextBindings
 	m.targets = nextTargets
 	m.providerKeys = nextProviderKeys
@@ -353,7 +392,13 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 			at.Sub(volumeSince) < silentVolumeAfter {
 			continue
 		}
-		if !state.lastRepairAt.IsZero() && at.Sub(state.lastRepairAt) < proxyRepairCooldown {
+		cooldown := proxyRepairCooldown
+		if state.lastRepairFailed {
+			// Failed sends (e.g. a full/disconnected update queue) must not
+			// leave live volume missing for another five minutes.
+			cooldown = time.Minute
+		}
+		if !state.lastRepairAt.IsZero() && at.Sub(state.lastRepairAt) < cooldown {
 			continue
 		}
 		var keys []string
@@ -380,7 +425,19 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 	}
 	var result error
 	for _, repair := range repairs {
-		if err := repairer.ReassertFull(ctx, repair.keys); err != nil {
+		err := repairer.ReassertFull(ctx, repair.keys)
+		m.mu.Lock()
+		for _, market := range m.Markets {
+			if market.Symbol != repair.symbol {
+				continue
+			}
+			if state := m.targets[market.TargetInstrumentID]; state != nil && state.lastRepairAt.Equal(at) {
+				state.lastRepairFailed = err != nil
+			}
+			break
+		}
+		m.mu.Unlock()
+		if err != nil {
 			result = errors.Join(result, fmt.Errorf("%s full-mode reassertion: %w", repair.symbol, err))
 			continue
 		}
@@ -431,6 +488,7 @@ func (m *Manager) Status() any {
 			"last_volume_at_ms": timeMillis(state.lastVolumeAt),
 			"last_repair_at_ms": timeMillis(state.lastRepairAt),
 			"repair_attempts":   state.repairAttempts,
+			"last_repair_failed": state.lastRepairFailed,
 		}
 	}
 	return result
@@ -516,6 +574,12 @@ func (m *Manager) Route(tick domain.Tick) (domain.Tick, bool) {
 
 	if state.activeID == state.currentID && shouldRoll(state.current, state.next) {
 		state.activeID = state.nextID
+		// Health timestamps refer to the old active contract. On rollover
+		// require fresh evidence from the new contract before reporting healthy.
+		state.lastActiveFeedAt = time.Time{}
+		state.lastVolumeAt = time.Time{}
+		state.lastRepairAt = time.Time{}
+		state.lastRepairFailed = false
 	}
 	if tick.InstrumentID != state.activeID {
 		return domain.Tick{}, false
