@@ -4,6 +4,7 @@ import { createQNextPineEngine, resolveQNextPineMode } from './pine-engine';
 import { resolveChartEngine, type QNextChartEngine } from './charts/chart-engine';
 import { VELA_INITIAL_HISTORY } from './charts/history-pagination';
 import { installVelaPanHistory } from './charts/vela-history';
+import { VelaSignalTrace, installVelaSignalTrace } from './charts/vela-signal-trace';
 import {
   QNextLightweightWorkspace,
   normalizeLightweightLayout,
@@ -32,9 +33,12 @@ declare global {
       lightweightSync?: boolean;
       /** Diagnostic only; worker is the production default. */
       pineEngine?: 'worker' | 'main';
+      /** Enables local-only Pine signal tracing; off by default. */
+      pineTrace?: boolean;
     };
     __QNEXT_WORKSPACE__?: VelaWorkspace;
     __QNEXT_LIGHTWEIGHT_WORKSPACE__?: QNextLightweightWorkspace;
+    __QNEXT_PINE_TRACE__?: VelaSignalTrace;
   }
 }
 
@@ -137,10 +141,11 @@ async function loadCustomIndicators() {
   }
 }
 
-function createProvider(): QNextProvider {
+function createProvider(trace?: VelaSignalTrace): QNextProvider {
   return new QNextProvider({
     apiBase: runtime.apiBase ?? defaultApiBase,
     streamUrl: runtime.streamUrl,
+    ...(trace ? { onDeliveredBar: (ticker: string, timeframe: string, bar: Parameters<VelaSignalTrace['providerBar']>[2]) => trace.providerBar(ticker, timeframe, bar) } : {}),
   });
 }
 
@@ -153,6 +158,10 @@ function resolveInitialTimeframe(timeframes: string[]): string {
 }
 
 async function bootstrapVela(timeframes: string[]) {
+  const pineTrace = runtime.pineTrace === true || new URLSearchParams(window.location.search).get('pine_trace') === '1'
+    ? new VelaSignalTrace()
+    : undefined;
+  if (pineTrace) window.__QNEXT_PINE_TRACE__ = pineTrace;
   registerVelaAppearanceAction();
   registerVelaZoomSettings();
   registerVelaScreenAwakeAction(screenAwake);
@@ -168,7 +177,7 @@ async function bootstrapVela(timeframes: string[]) {
     theme: currentTheme(),
     timezone: 'exchange',
     providers: {
-      qnext: () => createProvider(),
+      qnext: () => createProvider(pineTrace),
     },
     engines: {
       qnext: () => new QNextIndicatorEngine(),
@@ -185,6 +194,7 @@ async function bootstrapVela(timeframes: string[]) {
 
   window.__QNEXT_WORKSPACE__ = workspace;
   installVelaPanHistory(workspace);
+  if (pineTrace) installVelaSignalTrace(workspace, pineTrace);
   const labResolverProvider = createProvider();
   // Keep Shadow-Live collection for Admin/Intelligence Lab, but do not mount
   // the floating public chart status or the manual Send to Lab widget.

@@ -7,6 +7,8 @@ export interface QNextProviderOptions {
   webSocketFactory?: (url: string) => WebSocketLike;
   reconnectDelayMs?: number;
   pollIntervalMs?: number;
+  /** Optional passive observer; does not affect delivery or stream timing. */
+  onDeliveredBar?: (ticker: string, timeframe: string, bar: QNextBar) => void;
 }
 
 export interface QNextRange {
@@ -122,6 +124,7 @@ export class QNextProvider {
   private readonly webSocketFactory: (url: string) => WebSocketLike;
   private readonly reconnectDelayMs: number;
   private readonly pollIntervalMs: number;
+  private readonly onDeliveredBar?: QNextProviderOptions['onDeliveredBar'];
   private symbolsPromise?: Promise<QNextSymbol[]>;
 
   private socket?: WebSocketLike;
@@ -140,6 +143,7 @@ export class QNextProvider {
       ((url: string) => new WebSocket(url) as unknown as WebSocketLike);
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
     this.pollIntervalMs = options.pollIntervalMs ?? 250;
+    this.onDeliveredBar = options.onDeliveredBar;
   }
 
   async resolveInstrumentID(ticker: string): Promise<string> {
@@ -603,6 +607,12 @@ export class QNextProvider {
   }
 
   private deliver(subscription: SharedBarSubscription, bar: QNextBar): void {
+    try {
+      this.onDeliveredBar?.(subscription.ticker, subscription.timeframe, bar);
+    } catch (error) {
+      // Diagnostics cannot interrupt live price delivery.
+      console.warn('QNext passive bar observer failed', error);
+    }
     for (const callback of subscription.callbacks) {
       callback(bar);
     }
