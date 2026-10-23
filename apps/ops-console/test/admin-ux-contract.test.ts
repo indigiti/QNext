@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 const shell = readFileSync(new URL('../src/admin-shell.ts', import.meta.url), 'utf8');
 const routeStyles = readFileSync(new URL('../src/admin-route-fixes.css', import.meta.url), 'utf8');
 const bootstrap = readFileSync(new URL('../src/admin-bootstrap.ts', import.meta.url), 'utf8');
+const indicatorPage = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const indicatorStyles = readFileSync(new URL('../src/indicator-workspace.css', import.meta.url), 'utf8');
 
 describe('QNeXT admin UX contract', () => {
   it('keeps authentication before mounting the administrative console', () => {
@@ -16,10 +18,31 @@ describe('QNeXT admin UX contract', () => {
     expect(render).not.toContain('replaceWith(');
     expect(render).toContain('data-ops-stat');
     const apply = shell.split('function applyView(view: View, updateHash: boolean): void {')[1]?.split('function viewFromHash(): View {')[0] ?? '';
-    expect(apply).toContain('if (changed || updateHash)');
+    expect(apply).toContain('if (changed)');
+    expect(apply).not.toContain('if (changed || updateHash)');
     expect(apply).toContain('window.scrollTo');
     const observer = shell.split('function installMutationSync(grid: HTMLElement): void {')[1] ?? '';
     expect(observer).not.toContain('applyView(');
+    expect(observer).toContain('cardObserver.observe(grid, { childList: true })');
+    expect(observer).toContain('document.body.dataset.opsView === \'dashboard\'');
+    expect(observer).not.toContain('characterData: true });\n  // Reclassify every card');
+  });
+
+  it('uses an independent searchable indicator library and editor with accessible icon-only actions', () => {
+    expect(indicatorPage).toContain('id="custom-indicator-search"');
+    expect(indicatorPage).toContain('class="indicator-library-pane"');
+    expect(indicatorPage).toContain('class="indicator-editor-pane"');
+    expect(indicatorPage).toContain('function indicatorActionIcon(');
+    expect(indicatorPage).toContain('aria-label="${editLabel}:');
+    expect(indicatorPage).toContain('aria-label="${toggleLabel}:');
+    expect(indicatorPage).toContain('aria-label="Delete indicator:');
+    expect(indicatorPage).toContain('data-indicator-action="toggle"');
+    expect(indicatorPage).toContain('data-indicator-action="delete"');
+    expect(indicatorPage).not.toContain('>Delete</button>');
+    expect(indicatorPage).not.toContain('>Enable</button>');
+    expect(indicatorPage).toContain('revealIndicatorEditor();');
+    expect(indicatorStyles).toContain('.indicator-icon-action');
+    expect(indicatorStyles).toContain('@media (max-width: 960px)');
   });
 
   it('maintains every administrative view and clear grouped navigation', () => {
