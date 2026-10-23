@@ -1,5 +1,5 @@
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
-import { PineWorkerEngine } from '@luxalgo/vela-pinets';
+import { createQNextPineEngine, resolveQNextPineMode } from './pine-engine';
 
 import { resolveChartEngine, type QNextChartEngine } from './charts/chart-engine';
 import { VELA_INITIAL_HISTORY } from './charts/history-pagination';
@@ -30,6 +30,8 @@ declare global {
       timeframe?: string;
       lightweightLayout?: 1 | 2 | 4;
       lightweightSync?: boolean;
+      /** Diagnostic only; worker is the production default. */
+      pineEngine?: 'worker' | 'main';
     };
     __QNEXT_WORKSPACE__?: VelaWorkspace;
     __QNEXT_LIGHTWEIGHT_WORKSPACE__?: QNextLightweightWorkspace;
@@ -170,7 +172,7 @@ async function bootstrapVela(timeframes: string[]) {
     },
     engines: {
       qnext: () => new QNextIndicatorEngine(),
-      pine: () => new PineWorkerEngine(),
+      pine: () => createQNextPineEngine(resolveQNextPineMode(runtime.pineEngine)),
     },
     indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',
