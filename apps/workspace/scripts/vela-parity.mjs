@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const expected = {
-  '@luxalgo/vela': '0.8.4',
-  '@luxalgo/vela-pinets': '0.2.16',
-  pinets: '0.11.0',
+  '@luxalgo/vela': '0.9.0',
+  '@luxalgo/vela-pinets': '0.2.18',
+  pinets: '0.12.1',
 };
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
-import { PineWorkerEngine } from '@luxalgo/vela-pinets';
+import { PineEngine, PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
 
 const shellCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
