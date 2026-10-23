@@ -28,8 +28,8 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/stream"
 	"github.com/indigiti/QNext/services/market-core/internal/symbol"
 	"github.com/indigiti/QNext/services/market-core/internal/synthetic"
-	"github.com/indigiti/QNext/services/market-core/internal/volumeproxy"
 	"github.com/indigiti/QNext/services/market-core/internal/volumeledger"
+	"github.com/indigiti/QNext/services/market-core/internal/volumeproxy"
 )
 
 var (
