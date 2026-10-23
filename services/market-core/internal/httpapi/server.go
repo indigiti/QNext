@@ -54,6 +54,8 @@ type barResponse struct {
 	Low               float64        `json:"low"`
 	Close             float64        `json:"close"`
 	Volume            float64        `json:"volume"`
+	VolumeSource      string         `json:"volume_source"`
+	VolumeStatus      string         `json:"volume_status"`
 	Final             bool           `json:"final"`
 	Revision          uint32         `json:"revision"`
 	Quality           domain.Quality `json:"quality"`
@@ -294,6 +296,8 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 			Low:               bar.Low,
 			Close:             bar.Close,
 			Volume:            bar.Volume,
+			VolumeSource:      bar.VolumeSource,
+			VolumeStatus:      volumeStatus(bar),
 			Final:             bar.Final,
 			Revision:          bar.Revision,
 			Quality:           bar.Quality,
@@ -341,15 +345,33 @@ func (s *Server) overlayVolume(
 		}
 	}
 
-	volumeByOpen := make(map[int64]float64, len(sourceBars))
+	volumeByOpen := make(map[int64]domain.Bar, len(sourceBars))
 	for _, source := range sourceBars {
-		volumeByOpen[source.OpenTime.UnixMilli()] = source.Volume
+		volumeByOpen[source.OpenTime.UnixMilli()] = source
 	}
 	for i := range bars {
-		if volume, ok := volumeByOpen[bars[i].OpenTime.UnixMilli()]; ok {
-			bars[i].Volume = volume
+		// SYN and SYN+ prices are synthetic; the historical leg basket LTQ
+		// is not comparable to futures traded volume. Missing source data
+		// must be unknown, never silently substituted with basket activity.
+		bars[i].Volume = 0
+		bars[i].VolumeSource = ""
+		bars[i].VolumeStatus = "UNKNOWN"
+		if source, ok := volumeByOpen[bars[i].OpenTime.UnixMilli()]; ok {
+			bars[i].Volume = source.Volume
+			bars[i].VolumeSource = source.VolumeSource
+			bars[i].VolumeStatus = volumeStatus(source)
 		}
 	}
+}
+
+func volumeStatus(bar domain.Bar) string {
+	if bar.VolumeStatus != "" {
+		return bar.VolumeStatus
+	}
+	if bar.VolumeSource == "FUTURES_PROXY" {
+		return "OBSERVED"
+	}
+	return "UNKNOWN"
 }
 
 func (s *Server) symbols(w http.ResponseWriter, r *http.Request) {
