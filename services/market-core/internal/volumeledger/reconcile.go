@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
 
@@ -34,7 +35,19 @@ func (l *Ledger) Reconcile(history BarHistory, resync ResyncPublisher,
 	if l == nil || history == nil || targetID == "" {
 		return stats, errors.New("volume reconciliation requires ledger, history and market")
 	}
+	entries, err := l.Read(targetID, from, to)
+	if err != nil {
+		return stats, err
+	}
 	for _, timeframe := range timeframes {
+		volumeByOpen := make(map[int64]float64)
+		for _, entry := range entries {
+			open, _, err := candle.Bucket(time.UnixMilli(entry.EventTimeMS), timeframe)
+			if err != nil {
+				continue
+			}
+			volumeByOpen[open.UnixMilli()] += entry.Quantity
+		}
 		bars, err := history.LoadRange(targetID, timeframe, from, to)
 		if err != nil {
 			return stats, fmt.Errorf("load %s: %w", timeframe, err)
@@ -45,10 +58,7 @@ func (l *Ledger) Reconcile(history BarHistory, resync ResyncPublisher,
 				continue
 			}
 			stats.Scanned++
-			quantity, observed, err := l.Sum(targetID, bar.OpenTime, bar.CloseTime)
-			if err != nil {
-				return stats, err
-			}
+			quantity, observed := volumeByOpen[bar.OpenTime.UnixMilli()]
 			if !observed {
 				stats.Unknown++
 				continue
