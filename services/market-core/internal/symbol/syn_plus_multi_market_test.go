@@ -15,7 +15,7 @@ func TestSynPlusVirtualSymbolsRespectEnabledMarkets(t *testing.T) {
 		{"SENSEX", "QNEXT:SENSEX-SYN"},
 	} {
 		if err := registry.Register(Instrument{
-			ID: market.id, Symbol: market.symbol+"-SYN", Name: market.symbol+" Synthetic",
+			ID: market.id, Symbol: market.symbol + "-SYN", Name: market.symbol + " Synthetic",
 			AssetClass: "INDEX", Exchange: "QNEXT", Currency: "INR",
 			Timezone: "Asia/Kolkata", CalendarID: "NSE_EQ", Synthetic: true, Visible: true,
 		}); err != nil {
