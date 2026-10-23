@@ -198,8 +198,30 @@ root.innerHTML = `
             <button id="reload-custom-indicators" type="button" class="secondary">Reload</button>
           </div>
         </div>
-        <div id="custom-indicator-list" class="custom-indicator-list"></div>
-        <form id="custom-indicator-form" class="indicator-form">
+        <div class="indicator-workspace">
+          <section class="indicator-library-pane" aria-labelledby="indicator-library-title">
+            <div class="indicator-pane-heading">
+              <div>
+                <p class="eyebrow">Your library</p>
+                <h3 id="indicator-library-title">Saved indicators</h3>
+              </div>
+              <span class="indicator-library-count" id="custom-indicator-count" aria-live="polite">Loading</span>
+            </div>
+            <label class="indicator-library-search" for="custom-indicator-search">
+              <span class="sr-only">Search saved indicators</span>
+              <input id="custom-indicator-search" type="search" placeholder="Search indicators…" autocomplete="off" />
+            </label>
+            <div id="custom-indicator-list" class="custom-indicator-list"></div>
+          </section>
+          <section class="indicator-editor-pane" aria-labelledby="indicator-editor-title">
+            <div class="indicator-pane-heading">
+              <div>
+                <p class="eyebrow">Script editor</p>
+                <h3 id="indicator-editor-title">New Pine indicator</h3>
+              </div>
+              <span class="indicator-editor-kind">Pine v6 / QNext native</span>
+            </div>
+            <form id="custom-indicator-form" class="indicator-form">
           <input type="hidden" name="editingId" />
           <div class="indicator-form-grid">
             <label><span>Name</span><input name="name" placeholder="My Pine Indicator" required /></label>
@@ -246,11 +268,13 @@ root.innerHTML = `
             <label><span>License URL</span><input name="licenseUrl" placeholder="https://..." /></label>
           </div>
           <label><span>Description</span><input name="description" placeholder="What this indicator does" /></label>
-          <div class="actions">
+          <div class="actions indicator-editor-actions">
             <button type="submit" id="save-custom-indicator">Add Pine indicator</button>
             <button type="button" id="cancel-custom-indicator" class="secondary">Reset</button>
           </div>
-        </form>
+            </form>
+          </section>
+        </div>
       </section>
 
       <section class="card">
@@ -886,6 +910,8 @@ function fillCustomIndicatorForm(indicator?: CustomIndicator, preferredKind: Cus
   idField.disabled = Boolean(indicator);
   kindField.disabled = false;
   setCustomIndicatorKind(kind);
+  const editorTitle = document.querySelector<HTMLElement>('#indicator-editor-title');
+  if (editorTitle) editorTitle.textContent = indicator ? `Edit: ${indicator.name}` : 'New Pine indicator';
 }
 
 function escapeIndicatorText(value: string): string {
@@ -897,13 +923,25 @@ function escapeIndicatorText(value: string): string {
     .replace(/'/g, '&#039;');
 }
 
+let cachedIndicatorCatalog: { indicators: CustomIndicator[]; revision: number } = { indicators: [], revision: 0 };
+
 function renderCustomIndicators(indicators: CustomIndicator[], revision: number) {
   const list = document.querySelector<HTMLDivElement>('#custom-indicator-list')!;
-  if (indicators.length === 0) {
-    list.innerHTML = '<div class="muted">No custom indicators configured.</div>';
+  const query = document.querySelector<HTMLInputElement>('#custom-indicator-search')?.value.trim().toLowerCase() ?? '';
+  const matches = indicators.filter((indicator) =>
+    [indicator.name, indicator.id, indicator.description ?? '', indicator.kind].some((field) =>
+      field.toLowerCase().includes(query)
+    )
+  );
+  const count = document.querySelector<HTMLElement>('#custom-indicator-count');
+  if (count) count.textContent = query ? `${matches.length} of ${indicators.length}` : `${indicators.length} saved`;
+  if (matches.length === 0) {
+    list.innerHTML = query
+      ? '<div class="ops-empty-state">No indicators match your search.</div>'
+      : '<div class="ops-empty-state">No saved indicators yet. Add a Pine script to get started.</div>';
     return;
   }
-  list.innerHTML = indicators.map((indicator) => {
+  list.innerHTML = matches.map((indicator) => {
     const runtime = indicator.kind === 'pine-v6' ? 'Pine v6 · worker' : 'QNext native';
     const editLabel = indicator.kind === 'pine-v6' ? 'Edit code' : 'Edit';
     return `
@@ -960,6 +998,7 @@ function renderCustomIndicators(indicators: CustomIndicator[], revision: number)
 async function loadCustomIndicators() {
   try {
     const catalog = await api.customIndicators();
+    cachedIndicatorCatalog = { indicators: catalog.indicators, revision: catalog.revision };
     renderCustomIndicators(catalog.indicators, catalog.revision);
   } catch (error) {
     toast((error as Error).message, true);
@@ -977,6 +1016,9 @@ async function loadConfig() {
 }
 
 
+document.querySelector<HTMLInputElement>('#custom-indicator-search')?.addEventListener('input', () => {
+  renderCustomIndicators(cachedIndicatorCatalog.indicators, cachedIndicatorCatalog.revision);
+});
 document.querySelector('#reload-custom-indicators')!.addEventListener('click', () => void loadCustomIndicators());
 document.querySelector('#add-pine-indicator')!.addEventListener('click', () => {
   fillCustomIndicatorForm(undefined, 'pine-v6');
