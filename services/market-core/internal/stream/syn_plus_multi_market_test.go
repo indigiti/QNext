@@ -30,7 +30,7 @@ func TestMultiIndexSynPlusVolumeObserversAreIsolated(t *testing.T) {
 	for _, market := range testMarkets {
 		broker.PublishBar(domain.Bar{
 			InstrumentID: market.source, Timeframe: "15s",
-			OpenTime: at, CloseTime: at.Add(15*time.Second), Volume: market.volume,
+			OpenTime: at, CloseTime: at.Add(15 * time.Second), Volume: market.volume,
 		})
 		if err := handler.shadows[market.id].observe(research.SynPlusSnapshot{
 			Schema: research.SynPlusSnapshotSchema, InstrumentID: market.id,
@@ -46,7 +46,7 @@ func TestMultiIndexSynPlusVolumeObserversAreIsolated(t *testing.T) {
 	// A BANKNIFTY source update must not overwrite NIFTY volume or prices.
 	broker.PublishBar(domain.Bar{
 		InstrumentID: "NSE:BANKNIFTY", Timeframe: "15s",
-		OpenTime: at, CloseTime: at.Add(15*time.Second), Volume: 1100,
+		OpenTime: at, CloseTime: at.Add(15 * time.Second), Volume: 1100,
 	})
 	bank, _ := broker.LatestBar("QNEXT:BANKNIFTY-SYN+", "15s")
 	nifty, _ := broker.LatestBar("QNEXT:NIFTY-SYN+", "15s")
@@ -57,7 +57,7 @@ func TestMultiIndexSynPlusVolumeObserversAreIsolated(t *testing.T) {
 	// NIFTY changes remain independent of the newly enabled BANKNIFTY bridge.
 	broker.PublishBar(domain.Bar{
 		InstrumentID: "NSE:NIFTY50", Timeframe: "15s",
-		OpenTime: at, CloseTime: at.Add(15*time.Second), Volume: 250,
+		OpenTime: at, CloseTime: at.Add(15 * time.Second), Volume: 250,
 	})
 	nifty, _ = broker.LatestBar("QNEXT:NIFTY-SYN+", "15s")
 	bank, _ = broker.LatestBar("QNEXT:BANKNIFTY-SYN+", "15s")
