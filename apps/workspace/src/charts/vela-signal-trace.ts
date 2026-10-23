@@ -93,8 +93,8 @@ export function installVelaSignalTrace(workspace: VelaWorkspace, trace: VelaSign
       const chart = cell.chart;
       if (charts.has(chart)) continue;
       charts.set(chart, [
-        chart.on('bar', (bar) => trace.velaBar(chart.market.symbol, chart.market.timeframe, bar)),
-        chart.on('indicator:error', ({ id, error }) => trace.indicatorError(chart.market.symbol, chart.market.timeframe, id, error)),
+        chart.on('bar', (bar) => trace.velaBar(chart.market.symbol ?? 'UNKNOWN', chart.market.timeframe ?? 'UNKNOWN', bar)),
+        chart.on('indicator:error', ({ id, error }) => trace.indicatorError(chart.market.symbol ?? 'UNKNOWN', chart.market.timeframe ?? 'UNKNOWN', id, error)),
       ]);
     }
   };
