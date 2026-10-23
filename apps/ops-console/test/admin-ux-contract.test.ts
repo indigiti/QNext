@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import shell from '../src/admin-shell.ts?raw';
-import routeStyles from '../src/admin-route-fixes.css?raw';
-import bootstrap from '../src/admin-bootstrap.ts?raw';
+import { readFileSync } from 'node:fs';
+
+const shell = readFileSync(new URL('../src/admin-shell.ts', import.meta.url), 'utf8');
+const routeStyles = readFileSync(new URL('../src/admin-route-fixes.css', import.meta.url), 'utf8');
+const bootstrap = readFileSync(new URL('../src/admin-bootstrap.ts', import.meta.url), 'utf8');
 
 describe('QNeXT admin UX contract', () => {
   it('keeps authentication before mounting the administrative console', () => {
