@@ -457,9 +457,13 @@ function applyView(view: View, updateHash: boolean): void {
 
   // Only an actual route change or user navigation resets page scroll.
   // Background polling/mutation reconciliation must never scroll the operator.
-  if (changed || updateHash) {
+  if (changed) {
+    // A route transition should start at the top. Clicking the current route
+    // again, refreshing an existing view or changing the URL must not scroll.
     window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      if (document.body.dataset.opsView === view) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
     });
   }
 }
@@ -528,37 +532,64 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
   });
 }
 
-function mutationShouldRefresh(mutation: MutationRecord, grid: HTMLElement): boolean {
+// A live Market Core panel updates many times per minute. Observing the
+// entire grid for those inner mutations and reapplying card visibility is
+// unnecessary and can disturb scroll anchoring on long admin forms.
+const DASHBOARD_SOURCE_SELECTOR = [
+  '#runtime-status',
+  '#release-status',
+  '#feed-summary',
+  '#observability-health',
+  '#browser-transport-status',
+  '#five-second-day-health-state',
+  '.five-second-symbol-row',
+].join(', ');
+
+function isDashboardSourceMutation(mutation: MutationRecord): boolean {
   const target = mutation.target instanceof Element
     ? mutation.target
     : mutation.target.parentElement;
-  if (target?.closest('#ops-dashboard-card')) return false;
-
-  if (mutation.target === grid) {
-    const added = Array.from(mutation.addedNodes).filter((node): node is HTMLElement => node instanceof HTMLElement);
-    if (added.length > 0 && added.every((node) => node.id === 'ops-dashboard-card')) return false;
-  }
-  return true;
+  if (!target || target.closest('#ops-dashboard-card')) return false;
+  if (target.closest(DASHBOARD_SOURCE_SELECTOR)) return true;
+  return Array.from(mutation.addedNodes).some((node) => (
+    node instanceof Element && (
+      node.matches(DASHBOARD_SOURCE_SELECTOR) ||
+      Boolean(node.querySelector(DASHBOARD_SOURCE_SELECTOR))
+    )
+  ));
 }
 
 function installMutationSync(grid: HTMLElement): void {
-  let applying = false;
-  const observer = new MutationObserver((mutations) => {
-    if (applying || !mutations.some((mutation) => mutationShouldRefresh(mutation, grid))) return;
-    applying = true;
-    classifyCards();
-    grid.querySelectorAll<HTMLElement>('.card').forEach((card) => card.classList.add('ops-managed-card'));
-    const active = (document.body.dataset.opsView as View) || viewFromHash();
-    // Cards are mounted asynchronously by independent admin modules. Reconcile
-    // visibility without invoking navigation (and without resetting scroll).
-    grid.querySelectorAll<HTMLElement>(':scope > [data-ops-view]').forEach((card) => {
-      card.hidden = card.dataset.opsView !== active;
-    });
-    queueDashboardRender();
-    applying = false;
-  });
+  // Only changes to the list of top-level cards require route classification.
+  // Inner text updates (telemetry, indicator catalog, editor state) do not.
+  const cardObserver = new MutationObserver((mutations) => {
+    const addedCard = mutations.some((mutation) =>
+      Array.from(mutation.addedNodes).some((node) =>
+        node instanceof HTMLElement && node.matches('.card')
+      )
+    );
+    if (!addedCard) return;
 
-  observer.observe(grid, { childList: true, subtree: true, characterData: true });
+    classifyCards();
+    const active = (document.body.dataset.opsView as View) || viewFromHash();
+    grid.querySelectorAll<HTMLElement>(':scope > .card').forEach((card) => {
+      card.classList.add('ops-managed-card');
+      const shouldHide = card.dataset.opsView !== active;
+      if (card.hidden !== shouldHide) card.hidden = shouldHide;
+    });
+    if (active === 'dashboard') queueDashboardRender();
+  });
+  cardObserver.observe(grid, { childList: true });
+
+  // Refresh only dashboard summaries from the specific source panels.
+  // Crucially, this observer NEVER changes route visibility or scroll position.
+  const summaryObserver = new MutationObserver((mutations) => {
+    if (document.body.dataset.opsView === 'dashboard'
+      && mutations.some(isDashboardSourceMutation)) {
+      queueDashboardRender();
+    }
+  });
+  summaryObserver.observe(grid, { childList: true, subtree: true, characterData: true });
 }
 
 installShell();
