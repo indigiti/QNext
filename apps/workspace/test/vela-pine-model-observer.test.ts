@@ -33,7 +33,7 @@ describe('Pine model observer', () => {
     const input = bareModel();
     input.labels = [{
       id: 'sell-1', paneId: 'price', xloc: 'bar_index', x: 1, y: 1, yloc: 'abovebar',
-      style: 'circle', text: 'SELL', color: '#ff0000',
+      style: 'circle', text: 'SELL', color: '#ff0000', size: 'normal', textAlign: 'center', fontFamily: 'default',
     }];
     const handler = vi.fn();
     const engine = wrapPineModelTrace(fake((handlers) => handlers.onModel(input)), trace);
@@ -54,7 +54,7 @@ describe('Pine model observer', () => {
     expect(trace.summary().pineModelChanges).toBe(1);
     model.labels = [{
       id: 'buy-1', paneId: 'price', xloc: 'bar_index', x: 0, y: 1, yloc: 'belowbar',
-      style: 'triangleup', color: '#00ff00',
+      style: 'triangleup', color: '#00ff00', size: 'normal', textAlign: 'center', fontFamily: 'default',
     }];
     trace.pineModel('NIFTY', '1m', model.title, model.id, markerSnapshot(model, bars));
     const update = trace.snapshot().at(-1);
@@ -71,7 +71,7 @@ describe('Pine model observer', () => {
     model.anchorTime = 2000;
     model.labels = [{
       id: 'anchor', paneId: 'price', xloc: 'bar_index', x: 0, y: 1, yloc: 'belowbar',
-      style: 'circle',
+      style: 'circle', size: 'normal', textAlign: 'center', fontFamily: 'default',
     }];
     model.series = [{
       id: 's', title: 'Sell', kind: 'markers', paneId: 'price', visible: false,
