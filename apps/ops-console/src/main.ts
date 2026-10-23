@@ -9,6 +9,7 @@ import {
   type CustomIndicator,
 } from './api';
 import './style.css';
+import './indicator-workspace.css';
 
 declare global {
   interface Window {
@@ -925,6 +926,25 @@ function escapeIndicatorText(value: string): string {
 
 let cachedIndicatorCatalog: { indicators: CustomIndicator[]; revision: number } = { indicators: [], revision: 0 };
 
+// Render small self-contained SVGs, not glyph fonts, so actions stay aligned
+// and retain explicit labels for keyboard and screen-reader users.
+function indicatorActionIcon(action: 'edit' | 'toggle' | 'delete'): string {
+  const paths = {
+    edit: '<path d="m16.9 3.9 3.2 3.2M4 20l4.2-.8L20 7.4a2.2 2.2 0 0 0-3.1-3.1L5.1 16.1 4 20Z"/>',
+    toggle: '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>',
+    delete: '<path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v7m4-7v7"/>',
+  };
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths[action]}</svg>`;
+}
+
+function revealIndicatorEditor(): void {
+  // Desktop editor is beside the library; only mobile needs intentional
+  // scrolling after an explicit Edit/Add action. No deferred auto-scroll.
+  if (window.matchMedia('(max-width: 960px)').matches) {
+    document.querySelector('#indicator-editor-title')?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  }
+}
+
 function renderCustomIndicators(indicators: CustomIndicator[], revision: number) {
   const list = document.querySelector<HTMLDivElement>('#custom-indicator-list')!;
   const query = document.querySelector<HTMLInputElement>('#custom-indicator-search')?.value.trim().toLowerCase() ?? '';
@@ -943,7 +963,8 @@ function renderCustomIndicators(indicators: CustomIndicator[], revision: number)
   }
   list.innerHTML = matches.map((indicator) => {
     const runtime = indicator.kind === 'pine-v6' ? 'Pine v6 · worker' : 'QNext native';
-    const editLabel = indicator.kind === 'pine-v6' ? 'Edit code' : 'Edit';
+    const editLabel = indicator.kind === 'pine-v6' ? 'Edit code' : 'Edit indicator';
+    const toggleLabel = indicator.enabled ? 'Disable indicator' : 'Enable indicator';
     return `
       <div class="custom-indicator-row" data-indicator-id="${escapeIndicatorText(indicator.id)}">
         <div>
@@ -953,12 +974,16 @@ function renderCustomIndicators(indicators: CustomIndicator[], revision: number)
           </div>
           <div class="muted">${escapeIndicatorText(indicator.id)} · ${runtime} · rev ${revision}</div>
         </div>
-        <div class="actions">
-          <button type="button" class="secondary" data-indicator-action="edit" data-indicator-id="${escapeIndicatorText(indicator.id)}">${editLabel}</button>
-          <button type="button" class="secondary" data-indicator-action="toggle" data-indicator-id="${escapeIndicatorText(indicator.id)}">
-            ${indicator.enabled ? 'Disable' : 'Enable'}
-          </button>
-          <button type="button" class="danger" data-indicator-action="delete" data-indicator-id="${escapeIndicatorText(indicator.id)}">Delete</button>
+        <div class="actions indicator-row-actions" role="group" aria-label="Actions for ${escapeIndicatorText(indicator.name)}">
+          <button type="button" class="indicator-icon-action" data-indicator-action="edit" data-indicator-id="${escapeIndicatorText(indicator.id)}"
+            aria-label="${editLabel}: ${escapeIndicatorText(indicator.name)}" title="${editLabel}">${indicatorActionIcon('edit')}</button>
+          <button type="button" class="indicator-icon-action ${indicator.enabled ? 'indicator-icon-pause' : 'indicator-icon-enable'}"
+            data-indicator-action="toggle" data-indicator-id="${escapeIndicatorText(indicator.id)}"
+            aria-label="${toggleLabel}: ${escapeIndicatorText(indicator.name)}" title="${toggleLabel}"
+            aria-pressed="${indicator.enabled}">${indicatorActionIcon('toggle')}</button>
+          <button type="button" class="indicator-icon-action indicator-icon-delete"
+            data-indicator-action="delete" data-indicator-id="${escapeIndicatorText(indicator.id)}"
+            aria-label="Delete indicator: ${escapeIndicatorText(indicator.name)}" title="Delete indicator">${indicatorActionIcon('delete')}</button>
         </div>
       </div>
     `;
@@ -973,7 +998,7 @@ function renderCustomIndicators(indicators: CustomIndicator[], revision: number)
 
       if (action === 'edit') {
         fillCustomIndicatorForm(indicator);
-        document.querySelector('#custom-indicator-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        revealIndicatorEditor();
         return;
       }
 
@@ -1022,7 +1047,7 @@ document.querySelector<HTMLInputElement>('#custom-indicator-search')?.addEventLi
 document.querySelector('#reload-custom-indicators')!.addEventListener('click', () => void loadCustomIndicators());
 document.querySelector('#add-pine-indicator')!.addEventListener('click', () => {
   fillCustomIndicatorForm(undefined, 'pine-v6');
-  document.querySelector('#custom-indicator-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  revealIndicatorEditor();
 });
 document.querySelector('#cancel-custom-indicator')!.addEventListener('click', () => fillCustomIndicatorForm());
 document.querySelector<HTMLSelectElement>('#custom-indicator-kind')!.addEventListener('change', (event) => {
