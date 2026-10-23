@@ -85,7 +85,7 @@ func TestIntradayIndexRecoveryPreservesProxyButCorrectsPrice(t *testing.T) {
 	registry := symbol.NewRegistry()
 	if err := registry.Register(symbol.Instrument{
 		ID: "NSE:NIFTY50", Symbol: "NIFTY", Name: "Nifty 50", AssetClass: "INDEX",
-		Exchange: "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
+		Exchange: "NSE", Currency: "INR", Timezone: "Asia/Kolkata", CalendarID: "NSE_EQ",
 	}); err != nil {
 		t.Fatal(err)
 	}
