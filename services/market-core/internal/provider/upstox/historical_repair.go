@@ -189,7 +189,7 @@ func (r *HistoricalRepairer) Repair(
 			Timeframes:   make(map[string]HistoricalRepairCounts, 3),
 		}
 
-		counts, changed, err := r.repairBars(from, to, oneMinute)
+		counts, changed, err := r.repairIndexSourceBars(from, to, oneMinute)
 		if err != nil {
 			wrapped := fmt.Errorf("repair %s 1m: %w", market.Symbol, err)
 			r.finish(result, wrapped)
@@ -291,7 +291,7 @@ func (r *HistoricalRepairer) Repair(
 				weeklySource,
 				to,
 			)
-			counts, changed, err = r.repairBars(from, to, weekly)
+			counts, changed, err = r.repairIndexSourceBars(from, to, weekly)
 			if err != nil {
 				wrapped := fmt.Errorf("repair %s 1W: %w", market.Symbol, err)
 				r.finish(result, wrapped)
@@ -317,7 +317,7 @@ func (r *HistoricalRepairer) Repair(
 				return result, wrapped
 			}
 			monthly := providerMonthlyBars(market.Underlying.InstrumentID, monthlySource, to)
-			counts, changed, err = r.repairBars(from, to, monthly)
+			counts, changed, err = r.repairIndexSourceBars(from, to, monthly)
 			if err != nil {
 				wrapped := fmt.Errorf("repair %s 1M: %w", market.Symbol, err)
 				r.finish(result, wrapped)
@@ -435,10 +435,30 @@ func (r *HistoricalRepairer) selectMarkets(requested []string) ([]marketconfig.M
 	return result, nil
 }
 
+// repairIndexSourceBars treats provider index candles as PRICE authority only.
+// Cash indices do not trade: their provider-candle volume must never overwrite
+// the separately sourced futures-volume proxy in canonical QNext history.
+func (r *HistoricalRepairer) repairIndexSourceBars(
+	from time.Time,
+	to time.Time,
+	candidates []domain.Bar,
+) (HistoricalRepairCounts, bool, error) {
+	return r.repairBarsWithVolumePolicy(from, to, candidates, true)
+}
+
 func (r *HistoricalRepairer) repairBars(
 	from time.Time,
 	to time.Time,
 	candidates []domain.Bar,
+) (HistoricalRepairCounts, bool, error) {
+	return r.repairBarsWithVolumePolicy(from, to, candidates, false)
+}
+
+func (r *HistoricalRepairer) repairBarsWithVolumePolicy(
+	from time.Time,
+	to time.Time,
+	candidates []domain.Bar,
+	cashIndexPriceOnly bool,
 ) (HistoricalRepairCounts, bool, error) {
 	filtered := make([]domain.Bar, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -471,6 +491,15 @@ func (r *HistoricalRepairer) repairBars(
 	changed := false
 	for _, candidate := range filtered {
 		previous, ok := byOpen[candidate.OpenTime.UnixMilli()]
+		if cashIndexPriceOnly {
+			// Only an existing QNext futures-proxy observation may authorize
+			// index candle volume. Missing proxy data stays zero/unknown;
+			// an index history response must not invent volume.
+			candidate.Volume = 0
+			if ok {
+				candidate.Volume = previous.Volume
+			}
+		}
 		if !ok {
 			candidate.Revision = 0
 			candidate.Recovered = true
