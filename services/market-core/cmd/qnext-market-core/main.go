@@ -137,13 +137,15 @@ func main() {
 		volumeMarkets = config.EffectiveMarkets()
 	}
 	niftyVolumeSource := "NSE:NIFTY50"
+	synVolumeAliases := make(map[string]string, len(volumeMarkets))
 	for _, market := range volumeMarkets {
 		volumeAliases[market.Synthetic.InstrumentID] = market.Underlying.InstrumentID
+		synVolumeAliases[market.Synthetic.InstrumentID] = market.Underlying.InstrumentID
 		if strings.EqualFold(strings.TrimSpace(market.Symbol), "NIFTY") {
 			niftyVolumeSource = market.Underlying.InstrumentID
-			break
 		}
 	}
+	broker.ConfigureSyntheticVolume(synVolumeAliases)
 	synPlusID := strings.TrimSpace(os.Getenv("QNEXT_SYN_PLUS_INSTRUMENT_ID"))
 	if synPlusID == "" {
 		synPlusID = "QNEXT:NIFTY-SYN+"
