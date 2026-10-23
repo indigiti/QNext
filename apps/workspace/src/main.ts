@@ -181,7 +181,7 @@ async function bootstrapVela(timeframes: string[]) {
     },
     engines: {
       qnext: () => new QNextIndicatorEngine(),
-      pine: () => createQNextPineEngine(resolveQNextPineMode(runtime.pineEngine)),
+      pine: () => createQNextPineEngine(resolveQNextPineMode(runtime.pineEngine), pineTrace),
     },
     indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',

@@ -24,3 +24,16 @@ Run the same Pine script on TradingView and QNext for an identical symbol, timef
 Only after the cause is isolated should upstream Vela/Pine be patched. **Do not** simulate a fix by calling `setMarket({bars})`: Vela only extends the oldest edge, leaving recently corrected bars untouched. Forced market switches alter viewport/indicators and are not safe for production. For an enduring fix, add a supported revision-aware chart-core upsert + bounded invalidation/recompute from the earliest changed candle, with prior revision ordering and no duplicate alerts.
 
 Run existing staging-first CI and keep #117 available for rollback.
+
+
+## Post-#118 engine-output observation
+
+A `script:run` event alone does **not** show whether `plotshape` produced a Buy/Sell marker. In a diagnostic-only build, the `pine-model` event intercepts upstream `ScriptingEngine.onModel` before Vela applies the model. It captures only compact marker geometry from `model.labels` (plotshape/plotchar/plotarrow or label.new) and `model.series[kind='markers']`, with bar-index labels resolved against the current model anchor. No Pine source, account secrets or historical candle dump are retained. Only changes are logged, max 300 events.
+
+Decision:
+- Revised provider bar not emitted as a matching Vela bar: candle-revision gap (upstream Vela reconciler).
+- Vela accepts a finalized candle but no subsequent Pine execution/model: worker scheduling or execution gap.
+- Pine model contains the signal marker at the expected candle timestamp, but chart is visually missing it: renderer/mount/visibility issue.
+- Pine executes but model has no signal when TradingView does: compare exact script inputs and OHLCV, barstate confirmation, `request.security` and offset before making changes.
+
+This trace is passive. It cannot, by itself, verify a screenshot or TradingView behavior: side-by-side timestamp evidence is still required. Tests use mocked engine outputs, not a real exchange feed.

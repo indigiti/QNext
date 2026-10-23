@@ -10,9 +10,23 @@ export interface TraceBar {
   revision?: number;
 }
 
+/** Marker information emitted by the Pine engine, before Vela renders it. */
+export interface PineTraceMarker {
+  id: string;
+  source: 'label' | 'marker-series';
+  x: number;
+  xloc?: string;
+  time?: number;
+  shape: string;
+  text?: string;
+  color?: string;
+  visible: boolean;
+}
+
 export type TraceEvent =
   | { seq: number; at: number; kind: 'provider-bar' | 'vela-bar'; symbol: string; timeframe: string; bar: TraceBar; olderThanNewest: boolean }
   | { seq: number; at: number; kind: 'pine-run'; cell: string; indicator: string; cause: string; barTime: number; forming: boolean }
+  | { seq: number; at: number; kind: 'pine-model'; symbol: string; timeframe: string; indicator: string; id: string; initial: boolean; markerCount: number; addedCount: number; removedCount: number; added: PineTraceMarker[]; removed: PineTraceMarker[]; latest: PineTraceMarker[] }
   | { seq: number; at: number; kind: 'indicator-error'; symbol: string; timeframe: string; indicatorId: string; message: string };
 
 /**
@@ -23,6 +37,7 @@ export class VelaSignalTrace {
   private readonly history: TraceEvent[] = [];
   private readonly newestProviderTime = new Map<string, number>();
   private readonly newestVelaTime = new Map<string, number>();
+  private readonly modelMarkers = new Map<string, Map<string, PineTraceMarker>>();
   private nextSeq = 0;
   private maxEvents = 300;
 
@@ -38,6 +53,25 @@ export class VelaSignalTrace {
     this.push({ kind: 'pine-run', cell, indicator, cause, barTime, forming });
   }
 
+  pineModel(symbol: string, timeframe: string, indicator: string, id: string, markers: PineTraceMarker[]): void {
+    const key = symbol + '|' + timeframe + '|' + id;
+    const current = new Map(markers.map((m) => [JSON.stringify(m), m]));
+    const previous = this.modelMarkers.get(key);
+    const added = [...current].filter(([fingerprint]) => !previous?.has(fingerprint)).map(([, m]) => m);
+    const removed = [...(previous ?? new Map())].filter(([fingerprint]) => !current.has(fingerprint)).map(([, m]) => m);
+    this.modelMarkers.set(key, current);
+    // Full histories frequently re-emit without new markers. Log only material marker
+    // changes to preserve the bounded trace over a lengthy live market session.
+    if (previous && added.length === 0 && removed.length === 0) return;
+    this.push({
+      kind: 'pine-model', symbol, timeframe, indicator, id, initial: !previous,
+      markerCount: current.size, addedCount: previous ? added.length : 0,
+      removedCount: removed.length,
+      added: previous ? added.slice(-12) : [], removed: removed.slice(-12),
+      latest: [...current.values()].slice(-8),
+    });
+  }
+
   indicatorError(symbol: string, timeframe: string, indicatorId: string, error: Error): void {
     this.push({ kind: 'indicator-error', symbol, timeframe, indicatorId, message: error.message });
   }
@@ -46,13 +80,14 @@ export class VelaSignalTrace {
     return this.history.map((event) => structuredClone(event));
   }
 
-  summary(): { total: number; providerBars: number; velaBars: number; olderProviderBars: number; pineRuns: number; indicatorErrors: number } {
+  summary(): { total: number; providerBars: number; velaBars: number; olderProviderBars: number; pineRuns: number; pineModelChanges: number; indicatorErrors: number } {
     return {
       total: this.history.length,
       providerBars: this.history.filter((v) => v.kind === 'provider-bar').length,
       velaBars: this.history.filter((v) => v.kind === 'vela-bar').length,
       olderProviderBars: this.history.filter((v) => v.kind === 'provider-bar' && v.olderThanNewest).length,
       pineRuns: this.history.filter((v) => v.kind === 'pine-run').length,
+      pineModelChanges: this.history.filter((v) => v.kind === 'pine-model').length,
       indicatorErrors: this.history.filter((v) => v.kind === 'indicator-error').length,
     };
   }
@@ -73,7 +108,8 @@ export class VelaSignalTrace {
 
   private push(record: { kind: 'provider-bar' | 'vela-bar'; symbol: string; timeframe: string; bar: TraceBar; olderThanNewest: boolean } |
     { kind: 'pine-run'; cell: string; indicator: string; cause: string; barTime: number; forming: boolean } |
-    { kind: 'indicator-error'; symbol: string; timeframe: string; indicatorId: string; message: string }): void {
+    { kind: 'indicator-error'; symbol: string; timeframe: string; indicatorId: string; message: string } |
+    { kind: 'pine-model'; symbol: string; timeframe: string; indicator: string; id: string; initial: boolean; markerCount: number; addedCount: number; removedCount: number; added: PineTraceMarker[]; removed: PineTraceMarker[]; latest: PineTraceMarker[] }): void {
     this.history.push({ ...record, seq: ++this.nextSeq, at: Date.now() } as TraceEvent);
     if (this.history.length > this.maxEvents) this.history.splice(0, this.history.length - this.maxEvents);
   }
