@@ -80,7 +80,7 @@ const navGroups: Array<{ label: string; items: Array<{ view: View; label: string
     ],
   },
   {
-    label: 'Market & Data',
+    label: 'Market data & quality',
     items: [
       { view: 'market', label: 'Live Market & 5s', icon: '◉' },
       { view: 'candles', label: 'Candles & History', icon: '▥' },
@@ -88,25 +88,25 @@ const navGroups: Array<{ label: string; items: Array<{ view: View; label: string
     ],
   },
   {
-    label: 'Intelligence',
+    label: 'Strategies & research',
     items: [
-      { view: 'indicators', label: 'Indicators', icon: '⌁' },
-      { view: 'intelligence', label: 'Quant Intelligence', icon: '◫' },
+      { view: 'indicators', label: 'Indicators & Pine', icon: '⌁' },
       { view: 'lab', label: 'Intelligence Lab', icon: '◈' },
+      { view: 'intelligence', label: 'Quant Intelligence', icon: '◫' },
     ],
   },
   {
-    label: 'Operations',
+    label: 'System operations',
     items: [
-      { view: 'runtime', label: 'Runtime', icon: '⚡' },
-      { view: 'releases', label: 'Releases', icon: '⬆' },
-      { view: 'diagnostics', label: 'Diagnostics', icon: '▤' },
+      { view: 'runtime', label: 'Runtime & services', icon: '⚡' },
+      { view: 'diagnostics', label: 'Logs & diagnostics', icon: '▤' },
+      { view: 'releases', label: 'Releases & rollback', icon: '⬆' },
     ],
   },
   {
-    label: 'Platform',
+    label: 'Administration',
     items: [
-      { view: 'settings', label: 'Workspace & Brokers', icon: '⚙' },
+      { view: 'settings', label: 'Workspace & brokers', icon: '⚙' },
       { view: 'security', label: 'Security', icon: '◆' },
     ],
   },
@@ -246,7 +246,9 @@ function installShell(): void {
   mobileButton.id = 'ops-sidebar-toggle';
   mobileButton.type = 'button';
   mobileButton.className = 'ops-sidebar-toggle secondary';
-  mobileButton.setAttribute('aria-label', 'Open navigation');
+  mobileButton.setAttribute('aria-label', 'Toggle navigation');
+  mobileButton.setAttribute('aria-controls', 'ops-sidebar');
+  mobileButton.setAttribute('aria-expanded', 'false');
   mobileButton.textContent = '☰';
   topbar.prepend(mobileButton);
 
@@ -319,16 +321,16 @@ function dashboardMarkup(): string {
 
       <div class="ops-kpi-grid">
         <button type="button" class="ops-kpi" data-dashboard-view="runtime">
-          <span>Market Core</span><strong>${html(runtimeState)}</strong><small>Runtime & services</small>
+          <span>Market Core</span><strong data-ops-stat="runtime">${html(runtimeState)}</strong><small>Runtime & services</small>
         </button>
         <button type="button" class="ops-kpi" data-dashboard-view="market">
-          <span>Market data</span><strong>${html(feedState)}</strong><small>${html(transport)}</small>
+          <span>Market data</span><strong data-ops-stat="feed">${html(feedState)}</strong><small data-ops-stat="transport">${html(transport)}</small>
         </button>
         <button type="button" class="ops-kpi" data-dashboard-view="market">
-          <span>Canonical 5s</span><strong>${html(fiveSecondState)}</strong><small>Current-day integrity</small>
+          <span>Canonical 5s</span><strong data-ops-stat="five-second">${html(fiveSecondState)}</strong><small>Current-day integrity</small>
         </button>
         <button type="button" class="ops-kpi" data-dashboard-view="releases">
-          <span>Release</span><strong>${html(release)}</strong><small>Deploy / rollback</small>
+          <span>Release</span><strong data-ops-stat="release">${html(release)}</strong><small>Deploy / rollback</small>
         </button>
       </div>
 
@@ -357,17 +359,36 @@ function dashboardMarkup(): string {
 }
 
 let dashboardRenderQueued = false;
+let cachedHealthRows = '';
 
 function renderDashboard(): void {
   const dashboard = document.querySelector<HTMLElement>('#ops-dashboard-card');
   if (!dashboard) return;
-  const active = document.body.dataset.opsView === 'dashboard';
-  const replacement = document.createElement('div');
-  replacement.innerHTML = dashboardMarkup().trim();
-  const next = replacement.firstElementChild as HTMLElement;
-  dashboard.replaceWith(next);
+
+  // Keep the dashboard DOM stable: replacing the whole card on live telemetry
+  // refresh used to drop focus, break button interactions and move the viewport.
+  const stats: Record<string, string> = {
+    runtime: summaryValue('#runtime-status', ['state', 'status', 'service']),
+    feed: textFrom('#observability-health', summaryValue('#feed-summary', ['status', 'authority'])),
+    'five-second': textFrom('#five-second-day-health-state', 'WARMING'),
+    transport: textFrom('#browser-transport-status', 'Probing…').replace(/^Browser transport:\s*/i, ''),
+    release: summaryValue('#release-status', ['active', 'current', 'release']),
+  };
+  for (const [name, value] of Object.entries(stats)) {
+    const element = dashboard.querySelector<HTMLElement>(`[data-ops-stat="${name}"]`);
+    if (element && element.textContent !== value) element.textContent = value;
+  }
+
+  const list = dashboard.querySelector<HTMLElement>('.ops-health-list');
+  // Do not remove a keyboard-focused row while it is being activated.
+  if (list && !list.contains(document.activeElement)) {
+    const next = miniFiveSecondRows();
+    if (cachedHealthRows !== next) {
+      cachedHealthRows = next;
+      list.innerHTML = next;
+    }
+  }
   wireDashboardButtons();
-  if (active) applyView('dashboard', false);
 }
 
 function queueDashboardRender(): void {
@@ -398,8 +419,17 @@ function wireDashboardButtons(): void {
   });
 }
 
+function setMobileNavigation(open: boolean): void {
+  const sidebar = document.querySelector<HTMLElement>('#ops-sidebar');
+  const toggle = document.querySelector<HTMLButtonElement>('#ops-sidebar-toggle');
+  sidebar?.classList.toggle('open', open);
+  toggle?.setAttribute('aria-expanded', String(open));
+  document.body.classList.toggle('ops-nav-open', open);
+}
+
 function applyView(view: View, updateHash: boolean): void {
   const meta = views[view];
+  const changed = document.body.dataset.opsView !== view;
   document.body.dataset.opsView = view;
 
   document.querySelectorAll<HTMLElement>('main.grid > [data-ops-view]').forEach((section) => {
@@ -409,7 +439,8 @@ function applyView(view: View, updateHash: boolean): void {
   document.querySelectorAll<HTMLButtonElement>('[data-ops-nav]').forEach((button) => {
     const active = button.dataset.opsNav === view;
     button.classList.toggle('active', active);
-    button.setAttribute('aria-current', active ? 'page' : 'false');
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
   });
 
   const heading = document.querySelector<HTMLElement>('.ops-page-heading');
@@ -420,9 +451,17 @@ function applyView(view: View, updateHash: boolean): void {
     if (description) description.textContent = meta.description;
   }
 
-  document.querySelector('#ops-sidebar')?.classList.remove('open');
+  setMobileNavigation(false);
   if (updateHash) history.replaceState(null, '', `#${view}`);
-  window.scrollTo({ top: 0, behavior: 'auto' });
+  if (view === 'dashboard') renderDashboard();
+
+  // Only an actual route change or user navigation resets page scroll.
+  // Background polling/mutation reconciliation must never scroll the operator.
+  if (changed || updateHash) {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+  }
 }
 
 function viewFromHash(): View {
@@ -455,11 +494,28 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     first?.click();
   });
 
-  topbar.querySelector<HTMLButtonElement>('#ops-sidebar-toggle')?.addEventListener('click', () => {
-    sidebar.classList.toggle('open');
+  const mobileToggle = topbar.querySelector<HTMLButtonElement>('#ops-sidebar-toggle');
+  mobileToggle?.addEventListener('click', () => {
+    const opening = !sidebar.classList.contains('open');
+    setMobileNavigation(opening);
+    if (opening) search?.focus();
   });
   sidebar.querySelector<HTMLButtonElement>('#ops-sidebar-close')?.addEventListener('click', () => {
-    sidebar.classList.remove('open');
+    setMobileNavigation(false);
+    mobileToggle?.focus();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && sidebar.classList.contains('open')) {
+      setMobileNavigation(false);
+      mobileToggle?.focus();
+    }
+  });
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (target instanceof Node && sidebar.classList.contains('open')
+      && !sidebar.contains(target) && !mobileToggle?.contains(target)) {
+      setMobileNavigation(false);
+    }
   });
 
   window.addEventListener('hashchange', () => applyView(viewFromHash(), false));
@@ -492,8 +548,13 @@ function installMutationSync(grid: HTMLElement): void {
     applying = true;
     classifyCards();
     grid.querySelectorAll<HTMLElement>('.card').forEach((card) => card.classList.add('ops-managed-card'));
+    const active = (document.body.dataset.opsView as View) || viewFromHash();
+    // Cards are mounted asynchronously by independent admin modules. Reconcile
+    // visibility without invoking navigation (and without resetting scroll).
+    grid.querySelectorAll<HTMLElement>(':scope > [data-ops-view]').forEach((card) => {
+      card.hidden = card.dataset.opsView !== active;
+    });
     queueDashboardRender();
-    applyView((document.body.dataset.opsView as View) || viewFromHash(), false);
     applying = false;
   });
 

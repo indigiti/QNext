@@ -10,3 +10,148 @@ body:not([data-ops-view="dashboard"]) #ops-dashboard-card {
 body[data-ops-view="dashboard"] #ops-dashboard-card {
   display: block;
 }
+
+
+/* Shared admin presentation contract. Applies only after the secure gate. */
+body.ops-shell-ready {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ops-text);
+  background: var(--ops-bg);
+}
+body.ops-shell-ready .shell.ops-shell,
+body.ops-shell-ready .ops-main {
+  min-width: 0;
+}
+body.ops-shell-ready .ops-sidebar,
+body.ops-shell-ready .ops-sidebar-foot,
+body.ops-shell-ready .ops-search,
+body.ops-shell-ready .ops-nav-item {
+  color: var(--ops-text);
+}
+body.ops-shell-ready .ops-page-heading h1 {
+  font-size: clamp(1.1rem, 1.4vw, 1.3rem);
+  font-weight: 750;
+}
+body.ops-shell-ready .ops-page-heading .muted,
+body.ops-shell-ready .card-head .muted,
+body.ops-shell-ready .ops-dashboard-hero .muted {
+  color: var(--ops-muted);
+}
+body.ops-shell-ready .ops-nav-group[hidden],
+body.ops-shell-ready .ops-nav-item[hidden],
+body.ops-shell-ready main.grid > [hidden] { display: none !important; }
+body.ops-shell-ready main.grid > .card {
+  min-width: 0;
+  color: var(--ops-text);
+  background: var(--ops-panel);
+  border-color: var(--ops-border);
+}
+body.ops-shell-ready .card-head {
+  flex-wrap: wrap;
+  gap: .75rem;
+}
+body.ops-shell-ready .card-head > div { min-width: 0; }
+body.ops-shell-ready .card-head .actions { flex-wrap: wrap; }
+body.ops-shell-ready .card-head h2 { font-size: 1.05rem; line-height: 1.35; font-weight: 720; }
+body.ops-shell-ready main.grid > .card .status-grid,
+body.ops-shell-ready main.grid > .card .feed-provider-grid,
+body.ops-shell-ready main.grid > .card .market-toggle-grid,
+body.ops-shell-ready main.grid > .card .indicator-form-grid { min-width: 0; }
+body.ops-shell-ready .feed-kv { align-items: flex-start; flex-wrap: wrap; }
+body.ops-shell-ready .feed-kv > strong { overflow-wrap: anywhere; }
+body.ops-shell-ready button:focus-visible,
+body.ops-shell-ready a:focus-visible,
+body.ops-shell-ready input:focus-visible,
+body.ops-shell-ready select:focus-visible,
+body.ops-shell-ready textarea:focus-visible {
+  outline: 2px solid var(--ops-accent);
+  outline-offset: 2px;
+}
+body.ops-shell-ready .ops-sidebar-toggle,
+body.ops-shell-ready .ops-sidebar-close { flex-shrink: 0; }
+
+/* Do not override the selected light appearance with hard-coded dark panels. */
+:root[data-qnext-theme='light'] body.ops-shell-ready,
+:root[data-qnext-theme='light'] body.ops-shell-ready .shell.ops-shell {
+  background: var(--ops-bg);
+  color: var(--ops-text);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-sidebar {
+  background: var(--ops-sidebar);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .topbar {
+  background: rgba(244,247,252,.96);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-panel,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-kpi,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-dashboard-hero,
+:root[data-qnext-theme='light'] body.ops-shell-ready .card {
+  background: var(--ops-panel);
+  color: var(--ops-text);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-kpi strong,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-health-row,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-quick-grid button,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-sidebar-foot,
+:root[data-qnext-theme='light'] body.ops-shell-ready .qnext-health-symbols,
+:root[data-qnext-theme='light'] body.ops-shell-ready .qnext-health-detail {
+  color: var(--ops-text);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-health-row,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-quick-grid button,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-sidebar-foot,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-search,
+:root[data-qnext-theme='light'] body.ops-shell-ready .feed-provider-card,
+:root[data-qnext-theme='light'] body.ops-shell-ready .status-grid > div,
+:root[data-qnext-theme='light'] body.ops-shell-ready .qnext-health-symbols,
+:root[data-qnext-theme='light'] body.ops-shell-ready .qnext-health-detail,
+:root[data-qnext-theme='light'] body.ops-shell-ready .qnext-health-kpis > div {
+  background: var(--ops-panel-soft);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-health-row:hover,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-quick-grid button:hover {
+  background: #e8effa;
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-nav-item.active {
+  background: var(--ops-accent-soft);
+  border-color: var(--ops-border-strong);
+  color: var(--ops-text);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-nav-icon,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-health-pct strong {
+  color: var(--ops-accent);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-search input { color: var(--ops-text); }
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-empty-state { color: var(--ops-muted); }
+@media (max-width: 900px) {
+  body.ops-nav-open::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    background: rgba(0, 0, 0, .42);
+    pointer-events: auto;
+  }
+}
+@media (max-width: 700px) {
+  body.ops-shell-ready .topbar { gap: .6rem; }
+  body.ops-shell-ready main.grid { padding: .85rem; }
+  body.ops-shell-ready main.grid > .card { padding: .85rem; }
+  body.ops-shell-ready .card-head .actions,
+  body.ops-shell-ready .card-head > button { max-width: 100%; }
+  body.ops-shell-ready .status-grid,
+  body.ops-shell-ready .feed-provider-grid,
+  body.ops-shell-ready .market-toggle-grid { grid-template-columns: 1fr; }
+  body.ops-shell-ready .ops-dashboard-hero { padding: .95rem; }
+}
+@media (max-width: 450px) {
+  body.ops-shell-ready .ops-panel-head { flex-wrap: wrap; }
+  body.ops-shell-ready .ops-kpi strong { white-space: normal; overflow-wrap: anywhere; }
+}
