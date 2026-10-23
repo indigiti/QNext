@@ -23,6 +23,8 @@ export interface QNextBar {
   low: number;
   close: number;
   volume?: number;
+  volume_source?: string;
+  volume_status?: 'OBSERVED' | 'UNKNOWN' | string;
   // Allows a delayed finalized volume correction to replace a recent bar.
   revision?: number;
 }
@@ -830,6 +832,8 @@ function normalizeBar(bar: QNextBar): QNextBar {
     low: Number(bar.low),
     close: Number(bar.close),
     ...(bar.volume === undefined ? {} : { volume: Number(bar.volume) }),
+    ...(typeof bar.volume_source === 'string' ? { volume_source: bar.volume_source } : {}),
+    ...(typeof bar.volume_status === 'string' ? { volume_status: bar.volume_status } : {}),
     ...(bar.revision === undefined ? {} : { revision: Number(bar.revision) }),
   };
 }
