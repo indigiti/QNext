@@ -87,6 +87,8 @@ type wireBar struct {
 	Low      float64 `json:"low"`
 	Close    float64 `json:"close"`
 	Volume   float64 `json:"volume"`
+	VolumeSource string `json:"volume_source"`
+	VolumeStatus string `json:"volume_status"`
 	Final    bool    `json:"final"`
 	Revision uint32  `json:"revision"`
 }
@@ -407,6 +409,11 @@ func (b *synPlusShadowBridge) observe(snapshot research.SynPlusSnapshot) error {
 		for _, bar := range bars {
 			if volume, ok := b.sourceVolume(bar.Timeframe, bar.OpenTime); ok {
 				bar.Volume = volume
+				if volume > 0 {
+					bar.VolumeSource, bar.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
+				} else {
+					bar.VolumeSource, bar.VolumeStatus = "", "UNKNOWN"
+				}
 			}
 			if previous, ok := b.recentBar(bar.Timeframe, bar.OpenTime); ok && previous.Revision > bar.Revision {
 				bar.Revision = previous.Revision
@@ -438,6 +445,11 @@ func (b *synPlusShadowBridge) observeVolumeSource(source domain.Bar) {
 	// Only the volume field is sourced from the NIFTY futures proxy.
 	// Price OHLC, finality and synthetic lineage remain SYN+ owned.
 	bar.Volume = source.Volume
+	if source.Volume > 0 {
+		bar.VolumeSource, bar.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
+	} else {
+		bar.VolumeSource, bar.VolumeStatus = "", "UNKNOWN"
+	}
 	bar.Revision++
 	if bar.Final {
 		bar.Corrected = true
@@ -629,6 +641,11 @@ func toWireBar(bar domain.Bar) *wireBar {
 		Low:      bar.Low,
 		Close:    bar.Close,
 		Volume:   bar.Volume,
+		VolumeSource: bar.VolumeSource,
+		VolumeStatus: func() string {
+			if bar.VolumeStatus != "" { return bar.VolumeStatus }
+			return "UNKNOWN"
+		}(),
 		Final:    bar.Final,
 		Revision: bar.Revision,
 	}
