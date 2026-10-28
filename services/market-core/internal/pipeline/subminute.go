@@ -33,7 +33,7 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 	if source.Timeframe != "5s" {
 		return nil, errors.New("subminute rollup source must be 5s")
 	}
-	open, closeAt, err := candle.Bucket(source.OpenTime, timeframe)
+	open, closeAt, err := candle.BucketForInstrument(source.InstrumentID, source.OpenTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
