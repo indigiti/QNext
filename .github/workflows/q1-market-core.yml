@@ -31,9 +31,6 @@ jobs:
       - name: Verify module files are tidy
         run: git diff --exit-code -- go.mod go.sum
 
-      - name: Display formatting patch for review
-        run: gofmt -d cmd/qnext-market-core/main.go internal/capture/retention.go
-
       - name: Format check
         shell: bash
         run: |
