@@ -21,7 +21,15 @@ file_put_contents($dayRoot . '/15s/2025/01/' . $date . '.jsonl', "abcd\n");
 touch($dayRoot . '/1m/2025/01/' . $date . '.jsonl', time() - 3600 * 72);
 touch($dayRoot . '/15s/2025/01/' . $date . '.jsonl', time() - 3600 * 72);
 
-$days = new StorageDays($root);
+$disabled = new StorageDays($root);
+checkStorage($disabled->inventory($symbol)['actions_enabled'] === false, 'Actions must be disabled by default.');
+try {
+    $disabled->quarantine($symbol, $date, true);
+    checkStorage(false, 'Default quarantine must be disabled.');
+} catch (RuntimeException $e) {
+    checkStorage(str_contains($e->getMessage(), 'disabled'), 'Expected feature gate.');
+}
+$days = new StorageDays($root, true);
 $listing = $days->inventory($symbol);
 checkStorage($listing['complete'] === true && count($listing['days']) === 1, 'Expected single day.');
 checkStorage($listing['days'][0]['files'] === 2 && $listing['days'][0]['removal_eligible'], 'Expected eligible market files.');
