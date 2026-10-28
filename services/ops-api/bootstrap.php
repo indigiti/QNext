@@ -11,3 +11,4 @@ require_once __DIR__ . '/src/PaperProxy.php';
 require_once __DIR__ . '/src/PerformanceReport.php';
 require_once __DIR__ . '/src/OpsController.php';
 require_once __DIR__ . '/src/StorageHealth.php';
+require_once __DIR__ . '/src/StorageDays.php';
