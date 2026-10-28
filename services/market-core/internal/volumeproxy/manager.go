@@ -245,7 +245,7 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 				Exchange:   exchange,
 				Currency:   "INR",
 				Timezone:   "Asia/Kolkata",
-				CalendarID: market.CalendarID,
+				CalendarID: futuresCalendarID(market.Exchange, market.CalendarID),
 				Visible:    false,
 			}); err != nil {
 				refreshErr = errors.Join(refreshErr, fmt.Errorf("%s future registry: %w", market.Symbol, err))
@@ -664,6 +664,17 @@ func selectLiveFutures(
 		filtered = filtered[:2]
 	}
 	return filtered
+}
+
+func futuresCalendarID(exchange, fallback string) string {
+	switch strings.ToUpper(strings.TrimSpace(exchange)) {
+	case "NSE":
+		return "NSE_FO"
+	case "BSE":
+		return "BSE_FO"
+	default:
+		return fallback
+	}
 }
 
 func canonicalFutureID(contract upstox.FutureContract, fallbackSymbol string) string {
