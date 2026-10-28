@@ -22,7 +22,9 @@ func TestSynPlusFuturesVolumeWorksWhenIndexSourceCandleIsMissing(t *testing.T) {
 			Version:      "direct-proxy-test",
 			SnapshotAtMS: at.UnixMilli(),
 			Quality:      "GOOD", Value: price,
-		}); err != nil { t.Fatal(err) }
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	trade := func(at time.Time, qty float64) {
 		t.Helper()
@@ -56,7 +58,7 @@ func TestSynPlusFuturesVolumeWorksWhenIndexSourceCandleIsMissing(t *testing.T) {
 	// the same futures deltas and must not cause a false volume reset.
 	broker.PublishBar(domain.Bar{
 		InstrumentID: "NSE:NIFTY50", Timeframe: "15s",
-		OpenTime: at, CloseTime: at.Add(15*time.Second),
+		OpenTime: at, CloseTime: at.Add(15 * time.Second),
 		Volume: 30, VolumeSource: "FUTURES_PROXY", VolumeStatus: "OBSERVED",
 	})
 	check("15s", at, 30)
@@ -78,12 +80,14 @@ func TestSynPlusDirectVolumeBeforePriceSnapshot(t *testing.T) {
 		EventTime: at.Add(time.Second), Quantity: 25,
 	})
 	err := handler.shadow.observe(research.SynPlusSnapshot{
-		Schema: research.SynPlusSnapshotSchema,
+		Schema:       research.SynPlusSnapshotSchema,
 		InstrumentID: "QNEXT:NIFTY-SYN+",
-		SnapshotAtMS: at.Add(2*time.Second).UnixMilli(),
-		Value: 25110, Quality: "GOOD",
+		SnapshotAtMS: at.Add(2 * time.Second).UnixMilli(),
+		Value:        25110, Quality: "GOOD",
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	bar, ok := broker.LatestBar("QNEXT:NIFTY-SYN+", "15s")
 	if !ok || bar.Volume != 25 || bar.VolumeSource != "FUTURES_PROXY" {
 		t.Fatalf("early futures volume not mirrored when shadow price arrived: %+v ok=%v", bar, ok)

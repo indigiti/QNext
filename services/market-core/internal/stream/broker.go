@@ -38,7 +38,7 @@ type Broker struct {
 	reclaimedReplaySlots  uint64
 	evictedEmptyStreams   uint64
 	barObservers          map[string]func(domain.Bar)
-	proxyVolumeObservers map[string]func(domain.Tick)
+	proxyVolumeObservers  map[string]func(domain.Tick)
 	syntheticVolume       map[string]string
 	volumeTargets         map[string][]string
 	volumeSources         map[string][]domain.Bar
@@ -144,10 +144,10 @@ func NewBroker(retention, subscriberBuffer int) *Broker {
 		subscriberBuffer = 64
 	}
 	broker := &Broker{
-		retention:        retention,
-		subscriberBuffer: subscriberBuffer,
-		streams:          make(map[string]*streamState),
-		barObservers:          make(map[string]func(domain.Bar)),
+		retention:            retention,
+		subscriberBuffer:     subscriberBuffer,
+		streams:              make(map[string]*streamState),
+		barObservers:         make(map[string]func(domain.Bar)),
 		proxyVolumeObservers: make(map[string]func(domain.Tick)),
 	}
 	observability.SetBrokerSource(func() any { return broker.Stats() })

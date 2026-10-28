@@ -541,7 +541,7 @@ func (b *synPlusShadowBridge) observeProxyVolumeTick(tick domain.Tick) {
 		}
 		if len(entries) > 1 {
 			// Only one late prior bucket is relevant at normal session turnover.
-			for i := len(entries)-1; i > 0; i-- {
+			for i := len(entries) - 1; i > 0; i-- {
 				if !entries[i].openTime.Before(entries[i-1].openTime) {
 					break
 				}
