@@ -25,6 +25,7 @@ type rollupState struct {
 	volume    float64
 	recovered bool
 	quality   domain.Quality
+	terminalFinalEmitted bool
 }
 
 type rollupEngine struct {
@@ -52,7 +53,7 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 
 	var updates []domain.Bar
 	if state != nil && !open.Equal(state.open) {
-		if completeRollup(state) {
+		if completeRollup(state) && !state.terminalFinalEmitted {
 			final := aggregateRollup(state, timeframe, r.version)
 			final.Final = true
 			updates = append(updates, final)
@@ -67,7 +68,16 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 
 	state.applyMinute(oneMinute)
 	forming := aggregateRollup(state, timeframe, r.version)
-	forming.Final = false
+	_, sessionClose := candle.InstrumentSessionBounds(oneMinute.InstrumentID, oneMinute.OpenTime)
+	// Persist the final higher-timeframe bar at exchange close; there is
+	// no next in-session minute to trigger ordinary bucket rollover.
+	if oneMinute.Final && !oneMinute.CloseTime.Before(sessionClose) &&
+		completeRollup(state) {
+		forming.Final = true
+		state.terminalFinalEmitted = true
+	} else {
+		forming.Final = false
+	}
 	updates = append(updates, forming)
 	return updates, nil
 }
