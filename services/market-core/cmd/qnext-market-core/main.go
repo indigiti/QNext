@@ -617,7 +617,7 @@ func nonExactRecoveryTimeframes(timeframes []string) []string {
 }
 
 func regularMarketSessionActive(at time.Time) bool {
-	definition := marketcalendar.NSEEquities2026()
+	definition := marketcalendar.NSEDerivatives2026()
 	location, err := time.LoadLocation(definition.Timezone)
 	if err != nil {
 		return false
