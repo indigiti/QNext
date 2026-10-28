@@ -380,8 +380,7 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 	for _, market := range m.Markets {
 		state := m.targets[market.TargetInstrumentID]
 		if state == nil || state.firstUnderlyingAt.IsZero() ||
-			state.lastUnderlyingAt.IsZero() || at.Before(state.lastUnderlyingAt) ||
-			at.Sub(state.lastUnderlyingAt) > maxUnderlyingAge {
+			!underlyingWasUsable(state.lastUnderlyingAt, at) {
 			continue
 		}
 		sourceSince := state.firstUnderlyingAt
@@ -459,6 +458,27 @@ func inRegularSession(at time.Time) bool {
 	return minute >= 9*60+15 && minute < 15*60+40
 }
 
+// Cash-index price stops updating at 15:30. During the last ten minutes
+// of F&O trading, a recent final spot observation is sufficient to continue
+// checking the *independent* futures feed. Do not weaken stale-price checks
+// earlier in the cash session or accept yesterday's spot state.
+func underlyingWasUsable(last, now time.Time) bool {
+	if last.IsZero() || now.Before(last) {
+		return false
+	}
+	if now.Sub(last) <= maxUnderlyingAge {
+		return true
+	}
+	local := now.In(indiaLocation)
+	closeAt := time.Date(local.Year(), local.Month(), local.Day(), 15, 30, 0, 0, indiaLocation)
+	derivativeClose := closeAt.Add(10 * time.Minute)
+	lastLocal := last.In(indiaLocation)
+	return !local.Before(closeAt) && local.Before(derivativeClose) &&
+		!lastLocal.Before(closeAt.Add(-2*time.Minute)) &&
+		lastLocal.Before(closeAt) &&
+		lastLocal.Format("2006-01-02") == local.Format("2006-01-02")
+}
+
 // Status reports the health of the *separate* futures-volume stream, not just
 // the index price stream, so operators can distinguish source failure from an
 // empty volume histogram without inspecting secrets or broker credentials.
@@ -476,7 +496,7 @@ func (m *Manager) Status() any {
 		status := "WAITING_FOR_PRICE"
 		if !inRegularSession(now) {
 			status = "OUTSIDE_SESSION"
-		} else if !state.lastUnderlyingAt.IsZero() && now.Sub(state.lastUnderlyingAt) <= maxUnderlyingAge {
+		} else if underlyingWasUsable(state.lastUnderlyingAt, now) {
 			status = "HEALTHY"
 			if state.lastActiveFeedAt.IsZero() || now.Sub(state.lastActiveFeedAt) >= silentFuturesAfter {
 				status = "FUTURES_FEED_SILENT"
