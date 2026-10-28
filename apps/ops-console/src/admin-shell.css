@@ -672,7 +672,14 @@ button.ops-health-row {
   }
 }
 
-/* Read-only storage diagnostics */
+/* Symbol/day retention controls */
+.storage-days-heading { margin-top: 1.4rem; flex-wrap: wrap; gap: 1rem; }
+.storage-symbol-picker { display: flex; flex-direction: column; gap: .4rem; min-width: 13rem; max-width: 100%; color: var(--ops-muted); font-size: .84rem; }
+.storage-day-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.storage-day-actions button { white-space: nowrap; }
+#storage-days-notes { margin: .8rem 0; line-height: 1.5; font-size: .85rem; }
+.storage-table-wrap { max-width: 100%; }
+ /* Read-only storage diagnostics */
 .storage-table-wrap { width: 100%; overflow-x: auto; margin-top: 1rem; }
 .storage-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 .storage-table th, .storage-table td { padding: .75rem .9rem; border-bottom: 1px solid var(--ops-border, #2a3140); text-align: left; }
