@@ -372,7 +372,7 @@ export class OpsAPI {
   }
 
   storageDays(symbol?: string): Promise<StorageDayInventory> {
-    return this.request<StorageDayInventory>('/storage-days' + (symbol ? '&symbol=' + encodeURIComponent(symbol) : ''));
+    return this.request<StorageDayInventory>('/storage-days' + (symbol ? '/' + symbol : ''));
   }
 
   keepStorageDay(symbol: string, date: string, keep: boolean): Promise<{ ok: boolean }> {
