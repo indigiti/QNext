@@ -517,7 +517,7 @@ func (b *synPlusShadowBridge) observeProxyVolumeTick(tick domain.Tick) {
 	b.volumeMu.Lock()
 	defer b.volumeMu.Unlock()
 	for _, timeframe := range b.timeframes {
-		open, _, err := candle.Bucket(tick.EventTime, timeframe)
+		open, _, err := candle.BucketForInstrument(b.instrumentID, tick.EventTime, timeframe)
 		if err != nil {
 			continue
 		}
