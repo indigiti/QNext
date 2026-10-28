@@ -68,6 +68,24 @@ export interface OpsStatus {
   };
 }
 
+export interface StorageHealthSnapshot {
+  checked_at: string;
+  storage_root: string;
+  root_exists: boolean;
+  php_can_read: boolean;
+  php_can_write: boolean;
+  disk_total_bytes: number | null;
+  disk_free_bytes: number | null;
+  disk_used_percent: number | null;
+  scanned_bytes: number;
+  scanned_files: number;
+  scan_complete: boolean;
+  last_modified_at: string | null;
+  categories: Array<{ name: string; scanned_bytes: number; scanned_files: number; last_modified_at: string | null }>;
+  warnings: string[];
+  status: 'healthy' | 'warning' | 'unavailable';
+}
+
 export interface RuntimeDiagnostics {
   desiredState: 'running' | 'stopped';
   pid: number | null;
@@ -328,6 +346,10 @@ export class OpsAPI {
 
   getConfig(): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('/config');
+  }
+
+  storageHealth(): Promise<StorageHealthSnapshot> {
+    return this.request<StorageHealthSnapshot>('/storage-health');
   }
 
   diagnostics(): Promise<RuntimeDiagnostics> {
