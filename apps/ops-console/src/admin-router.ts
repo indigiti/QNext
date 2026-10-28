@@ -14,6 +14,7 @@ type OpsView =
   | 'runtime'
   | 'releases'
   | 'diagnostics'
+  | 'storage'
   | 'settings'
   | 'security';
 
@@ -28,6 +29,7 @@ const routeByView: Record<OpsView, string> = {
   runtime: 'runtime',
   releases: 'releases',
   diagnostics: 'diagnostics',
+  storage: 'storage',
   settings: 'settings',
   security: 'security',
 };
