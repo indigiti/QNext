@@ -94,6 +94,8 @@ jobs:
           bash tests/certification/qnext-stage-release.sh
           bash -n deploy/qnext-intelligence-lab-python
           php services/ops-api/tests/smoke.php
+          php services/ops-api/tests/storage_health.php
+          php services/ops-api/tests/storage_days.php
 
           cron_root="$(mktemp -d)"
           mkdir -p "$cron_root/private/deploy"
