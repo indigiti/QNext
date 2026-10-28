@@ -243,10 +243,8 @@ func completeRollup(state *rollupState) bool {
 
 func expectedMinuteCount(open, closeAt time.Time, timeframe, instrumentID string) int {
 	if timeframe == "1D" {
-		if candle.SyntheticDerivative(instrumentID) {
-			return 385
-		}
-		return 375
+		start, end := candle.InstrumentSessionBounds(instrumentID, open)
+		return int(end.Sub(start) / time.Minute)
 	}
 	if strings.HasSuffix(timeframe, "m") || strings.HasSuffix(timeframe, "h") {
 		return int(closeAt.Sub(open) / time.Minute)
