@@ -643,7 +643,7 @@ function renderStorageDays(data: StorageDayInventory): void {
   picker.innerHTML = data.symbols.map((name) => `<option value="${storageEscape(name)}">${storageEscape(name)}</option>`).join('');
   picker.value = data.symbol ?? previous;
   const notes = document.querySelector<HTMLDivElement>('#storage-days-notes')!;
-  notes.textContent = `${data.notice} Minimum protected age: ${data.minimum_age_days} days. ${data.complete ? '' : 'Inventory scan is partial; do not assume missing dates are absent.'}`;
+  notes.textContent = `${data.notice} Minimum protected age: ${data.minimum_age_days} days. ${data.actions_enabled ? 'Remove/Restore enabled on this host.' : 'Remove/Restore locked until staging verification.'} ${data.complete ? '' : 'Inventory scan is partial; do not assume missing dates are absent.'}`;
   const body = data.days.map((day) => {
     const state = day.state === 'quarantined' ? 'Quarantined'
       : day.state === 'mixed' ? 'Mixed — review'
@@ -651,9 +651,9 @@ function renderStorageDays(data: StorageDayInventory): void {
     const toggle = day.state === 'active' || day.state === 'quarantined'
       ? `<button type="button" class="secondary compact" data-storage-action="keep" data-day="${day.date}" data-keep="${day.kept ? 'false' : 'true'}">${day.kept ? 'Unkeep' : 'Keep'}</button>`
       : '';
-    const move = day.state === 'quarantined'
+    const move = day.state === 'quarantined' && data.actions_enabled
       ? `<button type="button" class="secondary compact" data-storage-action="restore" data-day="${day.date}">Restore</button>`
-      : day.removal_eligible ? `<button type="button" class="danger compact" data-storage-action="quarantine" data-day="${day.date}">Remove</button>` : '';
+      : day.removal_eligible && data.actions_enabled ? `<button type="button" class="danger compact" data-storage-action="quarantine" data-day="${day.date}">Remove</button>` : '';
     return `<tr>
       <td>${storageEscape(day.date)}</td><td>${storageEscape(day.timeframes.join(', '))}</td>
       <td>${day.files.toLocaleString()}</td><td>${formatStorageBytes(day.bytes)}</td>
