@@ -23,7 +23,7 @@ final class StorageDays
     private const SCAN_BUDGET_SECONDS = 0.25;
     private const MAX_FILES_PER_ACTION = 64;
 
-    public function __construct(private readonly string $privateRoot)
+    public function __construct(private readonly string $privateRoot, private readonly bool $actionsEnabled = false)
     {
     }
 
@@ -111,6 +111,7 @@ final class StorageDays
             'days' => array_slice($rows, 0, 120),
             'complete' => $complete,
             'minimum_age_days' => self::MIN_AGE_DAYS,
+            'actions_enabled' => $this->actionsEnabled,
             'notice' => 'Storage days use UTC date filenames. Only market candle JSONL files are managed. Quarantine does not reclaim disk space.',
         ];
     }
@@ -142,6 +143,7 @@ final class StorageDays
     public function quarantine(string $symbol, string $date, bool $coreStopped): array
     {
         $this->validate($symbol, $date);
+        if (!$this->actionsEnabled) throw new RuntimeException('Storage quarantine is disabled until staging verification.');
         if (!$coreStopped) throw new RuntimeException('Market Core must be confirmed stopped before historical data removal.');
         if (!$this->oldEnough($date)) throw new RuntimeException('Recent history is protected for at least 35 days.');
         return $this->locked(function () use ($symbol, $date): array {
@@ -189,6 +191,7 @@ final class StorageDays
     public function restore(string $symbol, string $date, bool $coreStopped): array
     {
         $this->validate($symbol, $date);
+        if (!$this->actionsEnabled) throw new RuntimeException('Storage restore is disabled until staging verification.');
         if (!$coreStopped) throw new RuntimeException('Market Core must be confirmed stopped before restore.');
         return $this->locked(function () use ($symbol, $date): array {
             $files = $this->dayFiles($this->quarantineRoot(), $symbol, $date);
