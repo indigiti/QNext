@@ -38,6 +38,7 @@ type Broker struct {
 	reclaimedReplaySlots  uint64
 	evictedEmptyStreams   uint64
 	barObservers          map[string]func(domain.Bar)
+	proxyVolumeObservers  map[string]func(domain.Tick)
 	syntheticVolume       map[string]string
 	volumeTargets         map[string][]string
 	volumeSources         map[string][]domain.Bar
@@ -143,10 +144,11 @@ func NewBroker(retention, subscriberBuffer int) *Broker {
 		subscriberBuffer = 64
 	}
 	broker := &Broker{
-		retention:        retention,
-		subscriberBuffer: subscriberBuffer,
-		streams:          make(map[string]*streamState),
-		barObservers:     make(map[string]func(domain.Bar)),
+		retention:            retention,
+		subscriberBuffer:     subscriberBuffer,
+		streams:              make(map[string]*streamState),
+		barObservers:         make(map[string]func(domain.Bar)),
+		proxyVolumeObservers: make(map[string]func(domain.Tick)),
 	}
 	observability.SetBrokerSource(func() any { return broker.Stats() })
 	return broker
@@ -167,6 +169,36 @@ func (b *Broker) SetBarObserver(instrumentID string, observe func(domain.Bar)) {
 		b.barObservers[instrumentID] = observe
 	}
 	b.mu.Unlock()
+}
+
+// SetProxyVolumeObserver listens to the authoritative routed futures deltas,
+// even when the index-price pipeline cannot finalize a 15s/30s source candle.
+// Each index has an independent observer and no extra provider subscriptions.
+func (b *Broker) SetProxyVolumeObserver(instrumentID string, observe func(domain.Tick)) {
+	if b == nil || strings.TrimSpace(instrumentID) == "" {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if observe == nil {
+		delete(b.proxyVolumeObservers, instrumentID)
+	} else {
+		b.proxyVolumeObservers[instrumentID] = observe
+	}
+}
+
+// PublishProxyVolumeTick invokes the registered SYN+ volume bridge outside
+// the broker lock; it publishes no synthetic price candle of its own.
+func (b *Broker) PublishProxyVolumeTick(tick domain.Tick) {
+	if b == nil || tick.Quantity <= 0 || tick.Provider != "upstox-futures-proxy" {
+		return
+	}
+	b.mu.Lock()
+	observer := b.proxyVolumeObservers[tick.InstrumentID]
+	b.mu.Unlock()
+	if observer != nil {
+		observer(tick)
+	}
 }
 
 func (b *Broker) PublishBar(bar domain.Bar) {

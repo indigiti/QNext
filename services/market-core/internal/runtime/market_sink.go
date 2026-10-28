@@ -107,6 +107,12 @@ func (s *MarketSink) Handle(tick domain.Tick) error {
 				return err
 			}
 			s.publishBars(bars)
+			// A complete source index price candle is not guaranteed for every
+			// futures trade (missing 5s source bucket, sparse index feed).
+			// Notify SYN+ of the actual traded delta independently.
+			if observer, ok := s.Publisher.(interface{ PublishProxyVolumeTick(domain.Tick) }); ok {
+				observer.PublishProxyVolumeTick(volumeTick)
+			}
 		}
 	}
 
