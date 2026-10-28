@@ -243,11 +243,10 @@ try {
 
     $storageDays = new StorageDays($config->privateRoot);
     if ($method === 'GET' && $path === '/storage-days') {
-        $symbol = $_GET['symbol'] ?? null;
-        if ($symbol !== null && !is_string($symbol)) {
-            respond(400, ['error' => 'symbol must be a string']);
-        }
-        respond(200, $storageDays->inventory($symbol));
+        respond(200, $storageDays->inventory());
+    }
+    if ($method === 'GET' && preg_match('#^/storage-days/([A-Za-z0-9_.+-]{1,80})$#D', $path, $matches)) {
+        respond(200, $storageDays->inventory($matches[1]));
     }
     if ($method === 'POST' && $path === '/storage-days/keep') {
         $body = request_body();
