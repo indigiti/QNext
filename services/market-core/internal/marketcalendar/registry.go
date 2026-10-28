@@ -144,12 +144,20 @@ func (r *Registry) Windows(id string, from, to time.Time, session Session) ([]Wi
 				0,
 				location,
 			)
+			// Equity derivatives extended their close on 2026-08-03.
+			// A single 2026 calendar ID must still answer earlier historical
+			// sessions with the previous 15:30 boundary.
+			dayClose := closeClock
+			if (definition.ID == "NSE_FO" || definition.ID == "BSE_FO") &&
+				dateKey < "2026-08-03" {
+				dayClose = Clock{Hour: 15, Minute: 30}
+			}
 			end := time.Date(
 				cursor.Year(),
 				cursor.Month(),
 				cursor.Day(),
-				closeClock.Hour,
-				closeClock.Minute,
+				dayClose.Hour,
+				dayClose.Minute,
 				0,
 				0,
 				location,
