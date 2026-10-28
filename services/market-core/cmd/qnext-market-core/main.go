@@ -249,7 +249,7 @@ func main() {
 				"telemetry":               snapshot,
 				"resilience":              resilienceMetrics.Snapshot(),
 				"gap_recovery":            gapRecoveryTracker.Snapshot(),
-				"raw_retention":          rawRetention.Snapshot(),
+				"raw_retention":           rawRetention.Snapshot(),
 			}
 		},
 	})
