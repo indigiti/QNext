@@ -195,7 +195,11 @@ func (b *Broker) PublishProxyVolumeTick(tick domain.Tick) {
 	}
 	b.mu.Lock()
 	observer := b.proxyVolumeObservers[tick.InstrumentID]
+	patches := b.alignDerivativeProxyTickLocked(tick)
 	b.mu.Unlock()
+	for _, patch := range patches {
+		b.PublishBar(patch)
+	}
 	if observer != nil {
 		observer(tick)
 	}

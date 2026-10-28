@@ -10,21 +10,22 @@ import (
 )
 
 type rollupState struct {
-	open      time.Time
-	close     time.Time
-	expected  int
-	minutes   map[int64]domain.Bar
-	count     int
-	finals    int
-	firstKey  int64
-	lastKey   int64
-	first     domain.Bar
-	last      domain.Bar
-	high      float64
-	low       float64
-	volume    float64
-	recovered bool
-	quality   domain.Quality
+	open                 time.Time
+	close                time.Time
+	expected             int
+	minutes              map[int64]domain.Bar
+	count                int
+	finals               int
+	firstKey             int64
+	lastKey              int64
+	first                domain.Bar
+	last                 domain.Bar
+	high                 float64
+	low                  float64
+	volume               float64
+	recovered            bool
+	quality              domain.Quality
+	terminalFinalEmitted bool
 }
 
 type rollupEngine struct {
@@ -43,7 +44,7 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 	if oneMinute.Timeframe != "1m" {
 		return nil, errors.New("rollup source must be 1m")
 	}
-	open, closeAt, err := candle.Bucket(oneMinute.OpenTime, timeframe)
+	open, closeAt, err := candle.BucketForInstrument(oneMinute.InstrumentID, oneMinute.OpenTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 
 	var updates []domain.Bar
 	if state != nil && !open.Equal(state.open) {
-		if completeRollup(state) {
+		if completeRollup(state) && !state.terminalFinalEmitted {
 			final := aggregateRollup(state, timeframe, r.version)
 			final.Final = true
 			updates = append(updates, final)
@@ -61,22 +62,31 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 	}
 
 	if state == nil {
-		state = newRollupState(open, closeAt, timeframe)
+		state = newRollupState(open, closeAt, timeframe, oneMinute.InstrumentID)
 		r.states[key] = state
 	}
 
 	state.applyMinute(oneMinute)
 	forming := aggregateRollup(state, timeframe, r.version)
-	forming.Final = false
+	_, sessionClose := candle.InstrumentSessionBounds(oneMinute.InstrumentID, oneMinute.OpenTime)
+	// Persist the final higher-timeframe bar at exchange close; there is
+	// no next in-session minute to trigger ordinary bucket rollover.
+	if oneMinute.Final && !oneMinute.CloseTime.Before(sessionClose) &&
+		completeRollup(state) {
+		forming.Final = true
+		state.terminalFinalEmitted = true
+	} else {
+		forming.Final = false
+	}
 	updates = append(updates, forming)
 	return updates, nil
 }
 
-func newRollupState(open, closeAt time.Time, timeframe string) *rollupState {
+func newRollupState(open, closeAt time.Time, timeframe, instrumentID string) *rollupState {
 	return &rollupState{
 		open:     open,
 		close:    closeAt,
-		expected: expectedMinuteCount(open, closeAt, timeframe),
+		expected: expectedMinuteCount(open, closeAt, timeframe, instrumentID),
 		minutes:  make(map[int64]domain.Bar),
 	}
 }
@@ -231,9 +241,10 @@ func completeRollup(state *rollupState) bool {
 	return state != nil && state.expected > 0 && state.count == state.expected && state.finals == state.expected
 }
 
-func expectedMinuteCount(open, closeAt time.Time, timeframe string) int {
+func expectedMinuteCount(open, closeAt time.Time, timeframe, instrumentID string) int {
 	if timeframe == "1D" {
-		return 375
+		start, end := candle.InstrumentSessionBounds(instrumentID, open)
+		return int(end.Sub(start) / time.Minute)
 	}
 	if strings.HasSuffix(timeframe, "m") || strings.HasSuffix(timeframe, "h") {
 		return int(closeAt.Sub(open) / time.Minute)

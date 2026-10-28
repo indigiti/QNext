@@ -11,10 +11,11 @@ import (
 const subminuteRollupVersion = "candle-rollup-v3-canonical-5s"
 
 type subminuteState struct {
-	open     time.Time
-	close    time.Time
-	expected int
-	children map[int64]domain.Bar
+	open                 time.Time
+	close                time.Time
+	expected             int
+	children             map[int64]domain.Bar
+	terminalFinalEmitted bool
 }
 
 type subminuteRollupEngine struct {
@@ -33,7 +34,7 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 	if source.Timeframe != "5s" {
 		return nil, errors.New("subminute rollup source must be 5s")
 	}
-	open, closeAt, err := candle.Bucket(source.OpenTime, timeframe)
+	open, closeAt, err := candle.BucketForInstrument(source.InstrumentID, source.OpenTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +47,7 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 	var updates []domain.Bar
 
 	if state != nil && !open.Equal(state.open) {
-		if subminuteComplete(state) {
+		if subminuteComplete(state) && !state.terminalFinalEmitted {
 			final := aggregateSubminute(state, timeframe)
 			final.Final = true
 			updates = append(updates, final)
@@ -72,7 +73,16 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 	}
 	forming := aggregateSubminute(state, timeframe)
 	if forming.InstrumentID != "" {
-		forming.Final = false
+		_, sessionClose := candle.InstrumentSessionBounds(source.InstrumentID, source.OpenTime)
+		// At the cash/derivatives session close no new 5s tick will arrive to
+		// trigger a bucket rollover. Persist the actual completed last
+		// 15s/30s/1m candle on the clock final instead of leaving it forming.
+		if source.Final && state.close.Equal(sessionClose) && subminuteComplete(state) {
+			forming.Final = true
+			state.terminalFinalEmitted = true
+		} else {
+			forming.Final = false
+		}
 		updates = append(updates, forming)
 	}
 	return updates, nil

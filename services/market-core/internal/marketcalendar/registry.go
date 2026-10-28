@@ -52,6 +52,8 @@ func DefaultRegistry() *Registry {
 	registry := NewRegistry()
 	_ = registry.Register(NSEEquities2026())
 	_ = registry.Register(BSEEquities2026())
+	_ = registry.Register(NSEDerivatives2026())
+	_ = registry.Register(BSEDerivatives2026())
 	return registry
 }
 
@@ -142,12 +144,20 @@ func (r *Registry) Windows(id string, from, to time.Time, session Session) ([]Wi
 				0,
 				location,
 			)
+			// Equity derivatives extended their close on 2026-08-03.
+			// A single 2026 calendar ID must still answer earlier historical
+			// sessions with the previous 15:30 boundary.
+			dayClose := closeClock
+			if (definition.ID == "NSE_FO" || definition.ID == "BSE_FO") &&
+				dateKey < "2026-08-03" {
+				dayClose = Clock{Hour: 15, Minute: 30}
+			}
 			end := time.Date(
 				cursor.Year(),
 				cursor.Month(),
 				cursor.Day(),
-				closeClock.Hour,
-				closeClock.Minute,
+				dayClose.Hour,
+				dayClose.Minute,
 				0,
 				0,
 				location,
@@ -229,5 +239,28 @@ func BSEEquities2026() Definition {
 	definition := NSEEquities2026()
 	definition.ID = "BSE_EQ"
 	definition.Version = "bse-equities-2026-v1"
+	return definition
+}
+
+// NSE equity derivatives continue trading to 15:40 IST from 2026-08-03
+// (NSE/FAOP/74467). Keep the cash-index calendar independent: the index
+// spot level itself must not create fabricated post-15:30 price candles.
+func NSEDerivatives2026() Definition {
+	definition := NSEEquities2026()
+	definition.ID = "NSE_FO"
+	definition.Version = "nse-equity-derivatives-2026-v2-aug03"
+	definition.RegularClose = Clock{Hour: 15, Minute: 40}
+	definition.ExtendedClose = definition.RegularClose
+	return definition
+}
+
+// BSE notice 20260612-9 likewise extended equity derivatives trading to
+// 15:40 from 2026-08-03. Separate futures/option price from cash indices.
+func BSEDerivatives2026() Definition {
+	definition := BSEEquities2026()
+	definition.ID = "BSE_FO"
+	definition.Version = "bse-equity-derivatives-2026-v2-aug03"
+	definition.RegularClose = Clock{Hour: 15, Minute: 40}
+	definition.ExtendedClose = definition.RegularClose
 	return definition
 }
