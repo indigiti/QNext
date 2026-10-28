@@ -1,0 +1,34 @@
+name: QNext Session Fix One-Time Gofmt
+on:
+  push:
+    branches:
+      - fix/derivatives-session-close-1540-20261028
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.ref == 'refs/heads/fix/derivatives-session-close-1540-20261028'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          ref: fix/derivatives-session-close-1540-20261028
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/market-core/go.mod
+      - name: Go formatting
+        run: |
+          gofmt -w services/market-core/internal/stream/volume_alias.go
+          gofmt -w services/market-core/internal/stream/broker.go
+          gofmt -w services/market-core/internal/stream/production_syn_1540_volume_test.go
+      - name: Commit clean formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/market-core/internal/stream/
+          if ! git diff --cached --quiet; then
+            git commit -m "style(stream): gofmt post-close SYN volume corrections"
+            git push origin HEAD:fix/derivatives-session-close-1540-20261028
+          fi
