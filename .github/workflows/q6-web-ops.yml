@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f dist/api/index.php
-          for route in dashboard market-data candles-history synthetic indicators intelligence intelligence-lab indicators-intelligence runtime releases diagnostics settings security; do
+          for route in dashboard market-data candles-history synthetic indicators intelligence intelligence-lab indicators-intelligence runtime releases diagnostics storage settings security; do
             test -s "dist/${route}/index.html"
             grep -Fq '/qnext/admin/assets/' "dist/${route}/index.html"
           done
@@ -91,6 +91,8 @@ jobs:
           php services/ops-api/tests/smoke.php
           php services/ops-api/tests/auth_migration.php
           php services/ops-api/tests/auth_session.php
+          php services/ops-api/tests/storage_health.php
+          php services/ops-api/tests/storage_days.php
       - name: Reject generic shell execution surface
         shell: bash
         run: |

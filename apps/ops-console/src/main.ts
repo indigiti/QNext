@@ -5,6 +5,8 @@ import {
   type HistoricalRepairStatusResponse,
   type OpsStatus,
   type RuntimeDiagnostics,
+  type StorageHealthSnapshot,
+  type StorageDayInventory,
   type ServiceAction,
   type CustomIndicator,
 } from './api';
@@ -74,6 +76,32 @@ root.innerHTML = `
           <button id="activate">Activate selected release</button>
           <button id="rollback" class="secondary">Rollback previous</button>
         </div>
+      </section>
+
+      <section class="card span-3" id="storage-health-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">File-backed persistence</p>
+            <h2>Data storage &amp; health</h2>
+            <p class="muted">Read-only filesystem metrics. This is not a candle or volume integrity check.</p>
+          </div>
+          <button id="refresh-storage" class="secondary" type="button">Refresh storage</button>
+        </div>
+        <div id="storage-health-summary" class="status-grid">Loading storage information…</div>
+        <div id="storage-health-notes" class="muted"></div>
+        <div id="storage-health-categories"></div>
+        <div class="card-head storage-days-heading">
+          <div>
+            <p class="eyebrow">Canonical market candles only</p>
+            <h2>Symbol / day retention</h2>
+            <p class="muted">Keep prevents removal. Remove moves old candle files into recoverable quarantine; it does not free disk space.</p>
+          </div>
+          <label class="storage-symbol-picker">Symbol key
+            <select id="storage-symbol-select" aria-label="Choose stored symbol"></select>
+          </label>
+        </div>
+        <div id="storage-days-notes" class="muted">Choose a symbol to inspect its stored dates.</div>
+        <div id="storage-days-list" class="storage-table-wrap"></div>
       </section>
 
       <section class="card span-3" id="diagnostics-card">
@@ -554,6 +582,136 @@ async function loadDiagnostics() {
     log.textContent = `Diagnostics unavailable: ${(error as Error).message}`;
   }
 }
+
+function formatStorageBytes(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'Unavailable';
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let amount = value;
+  let index = -1;
+  do { amount /= 1024; index++; } while (amount >= 1024 && index < units.length - 1);
+  return `${amount.toFixed(1)} ${units[index]}`;
+}
+
+function storageEscape(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function renderStorageHealth(data: StorageHealthSnapshot): void {
+  const summary = document.querySelector<HTMLDivElement>('#storage-health-summary')!;
+  const notes = document.querySelector<HTMLDivElement>('#storage-health-notes')!;
+  const categories = document.querySelector<HTMLDivElement>('#storage-health-categories')!;
+  const used = data.disk_total_bytes !== null && data.disk_free_bytes !== null
+    ? data.disk_total_bytes - data.disk_free_bytes : null;
+  const state = data.status === 'healthy' ? 'OK' : data.status.toUpperCase();
+  summary.innerHTML = `
+    <div><span>Storage probe</span><strong>${storageEscape(state)}</strong></div>
+    <div><span>Disk used / total</span><strong>${formatStorageBytes(used)} / ${formatStorageBytes(data.disk_total_bytes)}</strong></div>
+    <div><span>Disk free</span><strong>${formatStorageBytes(data.disk_free_bytes)}</strong></div>
+    <div><span>Disk utilization</span><strong>${data.disk_used_percent === null ? 'Unavailable' : data.disk_used_percent.toFixed(1) + '%'}</strong></div>
+    <div><span>Scanned files</span><strong>${data.scanned_files.toLocaleString()}</strong></div>
+    <div><span>Scanned storage</span><strong>${formatStorageBytes(data.scanned_bytes)}${data.scan_complete ? '' : ' (partial)'}</strong></div>
+    <div><span>Last modified file</span><strong>${data.last_modified_at ? storageEscape(new Date(data.last_modified_at).toLocaleString()) : 'None observed'}</strong></div>
+    <div><span>PHP filesystem access</span><strong>${data.php_can_read ? 'Read' : 'No read'} / ${data.php_can_write ? 'Write' : 'No write'}</strong></div>`;
+  notes.textContent = [
+    ...data.warnings,
+    'Capacity is filesystem-wide; scanned bytes are only the inspected QNeXT storage files.',
+    'PHP permissions do not prove that Market Core can write.',
+    data.scan_complete ? 'Directory scan complete.' : 'Directory scan incomplete: file totals are lower bounds.',
+  ].join('  •  ');
+  const rows = data.categories.map((c) => `<tr><td>${storageEscape(c.name)}</td><td>${c.scanned_files.toLocaleString()}</td><td>${formatStorageBytes(c.scanned_bytes)}</td><td>${c.last_modified_at ? storageEscape(new Date(c.last_modified_at).toLocaleString()) : '—'}</td></tr>`).join('');
+  categories.innerHTML = `<div class="storage-table-wrap"><table class="storage-table"><thead><tr><th>Category</th><th>Files scanned</th><th>Bytes scanned</th><th>Latest change</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No files observed.</td></tr>'}</tbody></table></div>`;
+}
+
+async function loadStorageHealth(): Promise<void> {
+  try {
+    renderStorageHealth(await api.storageHealth());
+  } catch (error) {
+    document.querySelector<HTMLDivElement>('#storage-health-summary')!.textContent = `Storage monitoring unavailable: ${(error as Error).message}`;
+  }
+}
+
+document.querySelector('#refresh-storage')!.addEventListener('click', () => void loadStorageHealth());
+
+let latestStorageInventory: StorageDayInventory | null = null;
+
+function renderStorageDays(data: StorageDayInventory): void {
+  latestStorageInventory = data;
+  const picker = document.querySelector<HTMLSelectElement>('#storage-symbol-select')!;
+  const previous = picker.value;
+  picker.innerHTML = data.symbols.map((name) => `<option value="${storageEscape(name)}">${storageEscape(name)}</option>`).join('');
+  picker.value = data.symbol ?? previous;
+  const notes = document.querySelector<HTMLDivElement>('#storage-days-notes')!;
+  notes.textContent = `${data.notice} Minimum protected age: ${data.minimum_age_days} days. ${data.actions_enabled ? 'Remove/Restore enabled on this host.' : 'Remove/Restore locked until staging verification.'} ${data.complete ? '' : 'Inventory scan is partial; do not assume missing dates are absent.'}`;
+  const body = data.days.map((day) => {
+    const state = day.state === 'quarantined' ? 'Quarantined'
+      : day.state === 'mixed' ? 'Mixed — review'
+      : day.kept ? 'Kept' : day.protected ? 'Protected' : 'Eligible';
+    const toggle = day.state === 'active' || day.state === 'quarantined'
+      ? `<button type="button" class="secondary compact" data-storage-action="keep" data-day="${day.date}" data-keep="${day.kept ? 'false' : 'true'}">${day.kept ? 'Unkeep' : 'Keep'}</button>`
+      : '';
+    const move = day.state === 'quarantined' && data.actions_enabled
+      ? `<button type="button" class="secondary compact" data-storage-action="restore" data-day="${day.date}">Restore</button>`
+      : day.removal_eligible && data.actions_enabled ? `<button type="button" class="danger compact" data-storage-action="quarantine" data-day="${day.date}">Remove</button>` : '';
+    return `<tr>
+      <td>${storageEscape(day.date)}</td><td>${storageEscape(day.timeframes.join(', '))}</td>
+      <td>${day.files.toLocaleString()}</td><td>${formatStorageBytes(day.bytes)}</td>
+      <td>${storageEscape(state)}</td><td><div class="storage-day-actions">${toggle}${move}</div></td>
+    </tr>`;
+  }).join('');
+  document.querySelector<HTMLDivElement>('#storage-days-list')!.innerHTML =
+    `<table class="storage-table"><thead><tr><th>UTC day</th><th>Timeframes</th><th>Files</th><th>Size</th><th>Retention state</th><th>Actions</th></tr></thead><tbody>${body || '<tr><td colspan="6">No canonical history days found for this symbol.</td></tr>'}</tbody></table>`;
+}
+
+async function loadStorageDays(symbol?: string): Promise<void> {
+  try {
+    renderStorageDays(await api.storageDays(symbol));
+  } catch (error) {
+    document.querySelector<HTMLDivElement>('#storage-days-notes')!.textContent =
+      `Day inventory unavailable: ${(error as Error).message}`;
+  }
+}
+
+document.querySelector<HTMLSelectElement>('#storage-symbol-select')!.addEventListener('change', (event) => {
+  void loadStorageDays((event.currentTarget as HTMLSelectElement).value);
+});
+
+document.querySelector<HTMLDivElement>('#storage-days-list')!.addEventListener('click', async (event) => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('button[data-storage-action]');
+  const symbol = latestStorageInventory?.symbol;
+  const date = button?.dataset.day;
+  const action = button?.dataset.storageAction;
+  if (!button || !symbol || !date || !action) return;
+  const record = latestStorageInventory?.days.find((day) => day.date === date);
+  if (!record) return;
+  let confirmed = false;
+  if (action === 'keep') {
+    confirmed = true;
+  } else if (action === 'quarantine') {
+    confirmed = window.confirm(
+      `Remove ${symbol} on ${date} from active history? All its stored candle timeframes will be moved to quarantine. Charts/backtests may lose this day. Market Core must already be stopped. This does not free disk space.`,
+    );
+  } else if (action === 'restore') {
+    confirmed = window.confirm(
+      `Restore quarantined ${symbol} on ${date}? Market Core must already be stopped and the active day must be absent.`,
+    );
+  }
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    if (action === 'keep') {
+      await api.keepStorageDay(symbol, date, button.dataset.keep === 'true');
+    } else if (action === 'quarantine' || action === 'restore') {
+      await api.moveStorageDay(symbol, date, action);
+    }
+    await Promise.all([loadStorageDays(symbol), loadStorageHealth()]);
+    toast(`Storage retention updated for ${symbol} on ${date}.`);
+  } catch (error) {
+    button.disabled = false;
+    toast((error as Error).message, true);
+  }
+});
 
 async function refresh() {
   try {
@@ -1344,6 +1502,8 @@ secretForm.addEventListener('submit', async (event) => {
 
 async function bootstrapAuthenticatedAdmin() {
   await refresh();
+  await loadStorageHealth();
+  await loadStorageDays();
   await loadConfig();
   await loadActiveMarkets();
   await loadCandleTimeframes();

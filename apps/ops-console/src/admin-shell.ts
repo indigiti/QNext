@@ -13,6 +13,7 @@ type View =
   | 'runtime'
   | 'releases'
   | 'diagnostics'
+  | 'storage'
   | 'settings'
   | 'security';
 
@@ -58,6 +59,10 @@ const views: Record<View, ViewMeta> = {
     title: 'Releases',
     description: 'Activate a release or roll back to the previous deployment.',
   },
+  storage: {
+    title: 'Data Storage',
+    description: 'Read-only disk usage, file persistence and bounded storage metadata checks.',
+  },
   diagnostics: {
     title: 'Diagnostics',
     description: 'Runtime diagnostics and recent Market Core logs.',
@@ -99,6 +104,7 @@ const navGroups: Array<{ label: string; items: Array<{ view: View; label: string
     label: 'System operations',
     items: [
       { view: 'runtime', label: 'Runtime & services', icon: '⚡' },
+      { view: 'storage', label: 'Data Storage', icon: '▤' },
       { view: 'diagnostics', label: 'Logs & diagnostics', icon: '▤' },
       { view: 'releases', label: 'Releases & rollback', icon: '⬆' },
     ],
@@ -135,6 +141,7 @@ function classifyCards(): void {
   setCardView(findCard('#runtime-status'), 'runtime', 'runtime-card');
   setCardView(findCard('#release-status'), 'releases', 'release-card');
   setCardView(document.querySelector<HTMLElement>('#diagnostics-card'), 'diagnostics');
+  setCardView(document.querySelector<HTMLElement>('#storage-health-card'), 'storage');
 
   setCardView(document.querySelector<HTMLElement>('#feed-status-card'), 'market');
   setCardView(document.querySelector<HTMLElement>('#active-markets-card'), 'market');
@@ -351,6 +358,7 @@ function dashboardMarkup(): string {
             <button type="button" data-dashboard-view="intelligence"><span>◫</span><strong>Intelligence</strong><small>Models & promotion gates</small></button>
             <button type="button" data-dashboard-view="lab"><span>◈</span><strong>Lab</strong><small>Experiments & ML challengers</small></button>
             <button type="button" data-dashboard-view="diagnostics"><span>▤</span><strong>Diagnostics</strong><small>Logs & runtime</small></button>
+            <button type="button" data-dashboard-view="storage"><span>▤</span><strong>Storage</strong><small>Capacity & files</small></button>
           </div>
         </section>
       </div>

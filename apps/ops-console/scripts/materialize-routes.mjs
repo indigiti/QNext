@@ -13,6 +13,7 @@ const routes = [
   'runtime',
   'releases',
   'diagnostics',
+  'storage',
   'settings',
   'security',
 ];

@@ -9,6 +9,8 @@ use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
 use QNext\Ops\PaperProxy;
 use QNext\Ops\LoginThrottle;
+use QNext\Ops\StorageHealth;
+use QNext\Ops\StorageDays;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/src/IntelligenceControl.php';
@@ -239,6 +241,52 @@ try {
     $intelligence = new IntelligenceControl($config);
     $intelligenceLab = new IntelligenceLabControl($config);
 
+    // Destructive history movements are disabled unless the PHP host is explicitly opted in.
+    $storageActionsEnabled = in_array(
+        strtolower(trim((string) (getenv('QNEXT_STORAGE_ACTIONS_ENABLED') ?: ($_SERVER['QNEXT_STORAGE_ACTIONS_ENABLED'] ?? '')))),
+        ['1', 'true', 'yes'],
+        true,
+    );
+    $storageDays = new StorageDays($config->privateRoot, $storageActionsEnabled);
+    if ($method === 'GET' && $path === '/storage-days') {
+        respond(200, $storageDays->inventory());
+    }
+    if ($method === 'GET' && preg_match('#^/storage-days/([A-Za-z0-9_.+-]{1,80})$#D', $path, $matches)) {
+        respond(200, $storageDays->inventory($matches[1]));
+    }
+    if ($method === 'POST' && $path === '/storage-days/keep') {
+        $body = request_body();
+        $symbol = $body['symbol'] ?? null;
+        $date = $body['date'] ?? null;
+        $keep = $body['keep'] ?? null;
+        if (!is_string($symbol) || !is_string($date) || !is_bool($keep)) {
+            respond(400, ['error' => 'symbol, date and boolean keep are required']);
+        }
+        respond(200, $storageDays->keep($symbol, $date, $keep));
+    }
+    if ($method === 'POST' && in_array($path, ['/storage-days/quarantine', '/storage-days/restore'], true)) {
+        $body = request_body();
+        $symbol = $body['symbol'] ?? null;
+        $date = $body['date'] ?? null;
+        $confirm = $body['confirm'] ?? null;
+        if (!is_string($symbol) || !is_string($date) || $confirm !== 'I UNDERSTAND') {
+            respond(400, ['error' => 'symbol, date and explicit confirmation are required']);
+        }
+        if (!$storageActionsEnabled) {
+            respond(409, ['error' => 'Storage Remove/Restore is disabled. Complete staging rollback verification before enabling it.']);
+        }
+        $core = $controller->status();
+        $diagnostics = $controller->diagnostics();
+        $stopped = ($core['service']['state'] ?? null) === 'stopped'
+            && ($core['marketCore']['health']['ok'] ?? true) === false
+            && ($diagnostics['pidAlive'] ?? true) === false;
+        respond(200, $path === '/storage-days/quarantine'
+            ? $storageDays->quarantine($symbol, $date, $stopped)
+            : $storageDays->restore($symbol, $date, $stopped));
+    }
+    if ($method === 'GET' && $path === '/storage-health') {
+        respond(200, StorageHealth::snapshot($config->privateRoot . '/storage'));
+    }
     if ($method === 'GET' && $path === '/status') {
         respond(200, $controller->status());
     }

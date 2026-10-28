@@ -68,6 +68,48 @@ export interface OpsStatus {
   };
 }
 
+export interface StorageDayRow {
+  date: string;
+  bytes: number;
+  files: number;
+  timeframes: string[];
+  modified_at: string | null;
+  active_files: number;
+  quarantined_files: number;
+  kept: boolean;
+  protected: boolean;
+  state: 'active' | 'quarantined' | 'mixed';
+  removal_eligible: boolean;
+}
+
+export interface StorageDayInventory {
+  symbol: string | null;
+  symbols: string[];
+  days: StorageDayRow[];
+  complete: boolean;
+  minimum_age_days: number;
+  actions_enabled: boolean;
+  notice: string;
+}
+
+export interface StorageHealthSnapshot {
+  checked_at: string;
+  storage_root: string;
+  root_exists: boolean;
+  php_can_read: boolean;
+  php_can_write: boolean;
+  disk_total_bytes: number | null;
+  disk_free_bytes: number | null;
+  disk_used_percent: number | null;
+  scanned_bytes: number;
+  scanned_files: number;
+  scan_complete: boolean;
+  last_modified_at: string | null;
+  categories: Array<{ name: string; scanned_bytes: number; scanned_files: number; last_modified_at: string | null }>;
+  warnings: string[];
+  status: 'healthy' | 'warning' | 'unavailable';
+}
+
 export interface RuntimeDiagnostics {
   desiredState: 'running' | 'stopped';
   pid: number | null;
@@ -328,6 +370,26 @@ export class OpsAPI {
 
   getConfig(): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('/config');
+  }
+
+  storageDays(symbol?: string): Promise<StorageDayInventory> {
+    return this.request<StorageDayInventory>('/storage-days' + (symbol ? '/' + symbol : ''));
+  }
+
+  keepStorageDay(symbol: string, date: string, keep: boolean): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>('/storage-days/keep', {
+      method: 'POST', body: JSON.stringify({ symbol, date, keep }),
+    });
+  }
+
+  moveStorageDay(symbol: string, date: string, action: 'quarantine' | 'restore'): Promise<{ ok: boolean; files: number }> {
+    return this.request<{ ok: boolean; files: number }>('/storage-days/' + action, {
+      method: 'POST', body: JSON.stringify({ symbol, date, confirm: 'I UNDERSTAND' }),
+    });
+  }
+
+  storageHealth(): Promise<StorageHealthSnapshot> {
+    return this.request<StorageHealthSnapshot>('/storage-health');
   }
 
   diagnostics(): Promise<RuntimeDiagnostics> {
