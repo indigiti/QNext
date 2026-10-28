@@ -335,7 +335,7 @@ func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 			Exchange:   "QNEXT",
 			Currency:   "INR",
 			Timezone:   "Asia/Kolkata",
-			CalendarID: market.CalendarID,
+			CalendarID: derivativeCalendarID(market.Exchange, market.CalendarID),
 			Aliases:    []string{market.Symbol + " SYN", "SYNTHETIC " + market.Symbol},
 			Synthetic:  true,
 			Visible:    true,
@@ -360,7 +360,7 @@ func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 				Exchange:   market.Exchange,
 				Currency:   "INR",
 				Timezone:   "Asia/Kolkata",
-				CalendarID: market.CalendarID,
+				CalendarID: derivativeCalendarID(market.Exchange, market.CalendarID),
 				Visible:    false,
 			}); err != nil {
 				return nil, err
@@ -614,6 +614,19 @@ func nonExactRecoveryTimeframes(timeframes []string) []string {
 		}
 	}
 	return result
+}
+
+// Cash-index and derivative instrument calendars are separate: options and
+// parity synthetics continue trading after the underlying index spot closes.
+func derivativeCalendarID(exchange, fallback string) string {
+	switch strings.ToUpper(strings.TrimSpace(exchange)) {
+	case "NSE":
+		return "NSE_FO"
+	case "BSE":
+		return "BSE_FO"
+	default:
+		return fallback
+	}
 }
 
 func regularMarketSessionActive(at time.Time) bool {
