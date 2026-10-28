@@ -10,6 +10,7 @@ use QNext\Ops\OpsController;
 use QNext\Ops\PaperProxy;
 use QNext\Ops\LoginThrottle;
 use QNext\Ops\StorageHealth;
+use QNext\Ops\StorageDays;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/src/IntelligenceControl.php';
@@ -240,6 +241,41 @@ try {
     $intelligence = new IntelligenceControl($config);
     $intelligenceLab = new IntelligenceLabControl($config);
 
+    $storageDays = new StorageDays($config->privateRoot);
+    if ($method === 'GET' && $path === '/storage-days') {
+        $symbol = $_GET['symbol'] ?? null;
+        if ($symbol !== null && !is_string($symbol)) {
+            respond(400, ['error' => 'symbol must be a string']);
+        }
+        respond(200, $storageDays->inventory($symbol));
+    }
+    if ($method === 'POST' && $path === '/storage-days/keep') {
+        $body = request_body();
+        $symbol = $body['symbol'] ?? null;
+        $date = $body['date'] ?? null;
+        $keep = $body['keep'] ?? null;
+        if (!is_string($symbol) || !is_string($date) || !is_bool($keep)) {
+            respond(400, ['error' => 'symbol, date and boolean keep are required']);
+        }
+        respond(200, $storageDays->keep($symbol, $date, $keep));
+    }
+    if ($method === 'POST' && in_array($path, ['/storage-days/quarantine', '/storage-days/restore'], true)) {
+        $body = request_body();
+        $symbol = $body['symbol'] ?? null;
+        $date = $body['date'] ?? null;
+        $confirm = $body['confirm'] ?? null;
+        if (!is_string($symbol) || !is_string($date) || $confirm !== 'I UNDERSTAND') {
+            respond(400, ['error' => 'symbol, date and explicit confirmation are required']);
+        }
+        $core = $controller->status();
+        $diagnostics = $controller->diagnostics();
+        $stopped = ($core['service']['state'] ?? null) === 'stopped'
+            && ($core['marketCore']['health']['ok'] ?? true) === false
+            && ($diagnostics['pidAlive'] ?? true) === false;
+        respond(200, $path === '/storage-days/quarantine'
+            ? $storageDays->quarantine($symbol, $date, $stopped)
+            : $storageDays->restore($symbol, $date, $stopped));
+    }
     if ($method === 'GET' && $path === '/storage-health') {
         respond(200, StorageHealth::snapshot($config->privateRoot . '/storage'));
     }
