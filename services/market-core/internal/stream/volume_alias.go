@@ -2,8 +2,10 @@ package stream
 
 import (
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
 
@@ -132,4 +134,70 @@ func rememberRecentBar(bars []domain.Bar, next domain.Bar) []domain.Bar {
 		bars[oldest] = next
 	}
 	return bars
+}
+
+// alignDerivativeProxyTickLocked consumes real futures-volume deltas in the
+// 15:30–15:40 window where cash-index price candles have legitimately ended.
+// This updates existing SYN price bars without publishing fabricated index
+// price candles. Must run under Broker.mu; no upstream subscription is added.
+func (b *Broker) alignDerivativeProxyTickLocked(tick domain.Tick) []domain.Bar {
+	if candle.InRegularSession(tick.EventTime) || len(b.volumeTargets[tick.InstrumentID]) == 0 {
+		return nil
+	}
+	var patches []domain.Bar
+	processed := make(map[string]bool)
+	for _, target := range b.volumeTargets[tick.InstrumentID] {
+		for key, synBars := range b.syntheticBars {
+			prefix := target + "|"
+			if !strings.HasPrefix(key, prefix) {
+				continue
+			}
+			timeframe := strings.TrimPrefix(key, prefix)
+			open, closeAt, err := candle.BucketForInstrument(target, tick.EventTime, timeframe)
+			if err != nil {
+				continue
+			}
+			sourceKey := streamKey(tick.InstrumentID, timeframe)
+			if !processed[sourceKey] {
+				var source domain.Bar
+				for _, prev := range b.volumeSources[sourceKey] {
+					if prev.OpenTime.Equal(open) {
+						source = prev
+						break
+					}
+				}
+				if source.InstrumentID == "" {
+					source = domain.Bar{InstrumentID: tick.InstrumentID,
+						Timeframe: timeframe, OpenTime: open, CloseTime: closeAt}
+				}
+				source.Volume += tick.Quantity
+				source.VolumeSource, source.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
+				b.volumeSources[sourceKey] = rememberRecentBar(b.volumeSources[sourceKey], source)
+				processed[sourceKey] = true
+			}
+			var sourceVolume float64
+			for _, source := range b.volumeSources[sourceKey] {
+				if source.OpenTime.Equal(open) {
+					sourceVolume = source.Volume
+					break
+				}
+			}
+			for _, syn := range synBars {
+				if !syn.OpenTime.Equal(open) || syn.Volume >= sourceVolume {
+					continue
+				}
+				patch := syn
+				patch.Volume = sourceVolume
+				patch.VolumeSource, patch.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
+				patch.Revision++
+				if patch.Final {
+					patch.Corrected = true
+					patch.CorrectedAt = time.Now().UTC()
+				}
+				patches = append(patches, patch)
+				break
+			}
+		}
+	}
+	return patches
 }
