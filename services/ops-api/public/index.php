@@ -241,7 +241,13 @@ try {
     $intelligence = new IntelligenceControl($config);
     $intelligenceLab = new IntelligenceLabControl($config);
 
-    $storageDays = new StorageDays($config->privateRoot);
+    // Destructive history movements are disabled unless the PHP host is explicitly opted in.
+    $storageActionsEnabled = in_array(
+        strtolower(trim((string) (getenv('QNEXT_STORAGE_ACTIONS_ENABLED') ?: ($_SERVER['QNEXT_STORAGE_ACTIONS_ENABLED'] ?? '')))),
+        ['1', 'true', 'yes'],
+        true,
+    );
+    $storageDays = new StorageDays($config->privateRoot, $storageActionsEnabled);
     if ($method === 'GET' && $path === '/storage-days') {
         respond(200, $storageDays->inventory());
     }
@@ -265,6 +271,9 @@ try {
         $confirm = $body['confirm'] ?? null;
         if (!is_string($symbol) || !is_string($date) || $confirm !== 'I UNDERSTAND') {
             respond(400, ['error' => 'symbol, date and explicit confirmation are required']);
+        }
+        if (!$storageActionsEnabled) {
+            respond(409, ['error' => 'Storage Remove/Restore is disabled. Complete staging rollback verification before enabling it.']);
         }
         $core = $controller->status();
         $diagnostics = $controller->diagnostics();
