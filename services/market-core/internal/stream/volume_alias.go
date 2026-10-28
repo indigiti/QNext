@@ -2,7 +2,6 @@ package stream
 
 import (
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
@@ -148,11 +147,10 @@ func (b *Broker) alignDerivativeProxyTickLocked(tick domain.Tick) []domain.Bar {
 	processed := make(map[string]bool)
 	for _, target := range b.volumeTargets[tick.InstrumentID] {
 		for key, synBars := range b.syntheticBars {
-			prefix := target + "|"
-			if !strings.HasPrefix(key, prefix) {
+			instrumentID, timeframe := splitStreamKey(key)
+			if instrumentID != target {
 				continue
 			}
-			timeframe := strings.TrimPrefix(key, prefix)
 			open, closeAt, err := candle.BucketForInstrument(target, tick.EventTime, timeframe)
 			if err != nil {
 				continue
