@@ -16,20 +16,20 @@ const (
 	// Keep the current UTC date and the preceding 29 UTC dates by default.
 	DefaultRawRetentionDays = 30
 	// Each pass is deliberately capped and runs outside the market tick hot path.
-	rawRetentionMaxDeletes = 256
-	rawRetentionMaxEntries = 10000
+	rawRetentionMaxDeletes  = 256
+	rawRetentionMaxEntries  = 10000
 	rawRetentionMaxDuration = 500 * time.Millisecond
-	rawRetentionMinIdle = 24 * time.Hour
-	rawRetentionInterval = time.Hour
+	rawRetentionMinIdle     = 24 * time.Hour
+	rawRetentionInterval    = time.Hour
 )
 
 type RawRetentionResult struct {
-	CutoffDate      string `json:"cutoff_date"`
-	ScannedFiles    int    `json:"scanned_files"`
-	DeletedFiles    int    `json:"deleted_files"`
-	ReclaimedBytes  int64  `json:"reclaimed_bytes"`
-	SkippedRecent   int    `json:"skipped_recent"`
-	Incomplete      bool   `json:"incomplete"`
+	CutoffDate     string `json:"cutoff_date"`
+	ScannedFiles   int    `json:"scanned_files"`
+	DeletedFiles   int    `json:"deleted_files"`
+	ReclaimedBytes int64  `json:"reclaimed_bytes"`
+	SkippedRecent  int    `json:"skipped_recent"`
+	Incomplete     bool   `json:"incomplete"`
 }
 
 // PruneRawFrames removes only YYYY-MM-DD.jsonl files in
@@ -182,11 +182,11 @@ func PruneRawFrames(storageRoot string, now time.Time, keepDays int) (RawRetenti
 }
 
 type RawRetentionSnapshot struct {
-	Enabled       bool                `json:"enabled"`
-	KeepDays      int                 `json:"keep_days"`
-	LastRunAt     string              `json:"last_run_at,omitempty"`
-	LastError     string              `json:"last_error,omitempty"`
-	LastResult    *RawRetentionResult `json:"last_result,omitempty"`
+	Enabled    bool                `json:"enabled"`
+	KeepDays   int                 `json:"keep_days"`
+	LastRunAt  string              `json:"last_run_at,omitempty"`
+	LastError  string              `json:"last_error,omitempty"`
+	LastResult *RawRetentionResult `json:"last_result,omitempty"`
 }
 
 // RawRetention runs asynchronously and never blocks market ingestion. A zero
