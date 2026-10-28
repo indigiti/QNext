@@ -6,6 +6,7 @@ import {
   type OpsStatus,
   type RuntimeDiagnostics,
   type StorageHealthSnapshot,
+  type StorageDayInventory,
   type ServiceAction,
   type CustomIndicator,
 } from './api';
@@ -89,6 +90,18 @@ root.innerHTML = `
         <div id="storage-health-summary" class="status-grid">Loading storage information…</div>
         <div id="storage-health-notes" class="muted"></div>
         <div id="storage-health-categories"></div>
+        <div class="card-head storage-days-heading">
+          <div>
+            <p class="eyebrow">Canonical market candles only</p>
+            <h2>Symbol / day retention</h2>
+            <p class="muted">Keep prevents removal. Remove moves old candle files into recoverable quarantine; it does not free disk space.</p>
+          </div>
+          <label class="storage-symbol-picker">Symbol key
+            <select id="storage-symbol-select" aria-label="Choose stored symbol"></select>
+          </label>
+        </div>
+        <div id="storage-days-notes" class="muted">Choose a symbol to inspect its stored dates.</div>
+        <div id="storage-days-list" class="storage-table-wrap"></div>
       </section>
 
       <section class="card span-3" id="diagnostics-card">
@@ -620,6 +633,85 @@ async function loadStorageHealth(): Promise<void> {
 }
 
 document.querySelector('#refresh-storage')!.addEventListener('click', () => void loadStorageHealth());
+
+let latestStorageInventory: StorageDayInventory | null = null;
+
+function renderStorageDays(data: StorageDayInventory): void {
+  latestStorageInventory = data;
+  const picker = document.querySelector<HTMLSelectElement>('#storage-symbol-select')!;
+  const previous = picker.value;
+  picker.innerHTML = data.symbols.map((name) => `<option value="${storageEscape(name)}">${storageEscape(name)}</option>`).join('');
+  picker.value = data.symbol ?? previous;
+  const notes = document.querySelector<HTMLDivElement>('#storage-days-notes')!;
+  notes.textContent = `${data.notice} Minimum protected age: ${data.minimum_age_days} days. ${data.complete ? '' : 'Inventory scan is partial; do not assume missing dates are absent.'}`;
+  const body = data.days.map((day) => {
+    const state = day.state === 'quarantined' ? 'Quarantined'
+      : day.state === 'mixed' ? 'Mixed — review'
+      : day.kept ? 'Kept' : day.protected ? 'Protected' : 'Eligible';
+    const toggle = day.state === 'active' || day.state === 'quarantined'
+      ? `<button type="button" class="secondary compact" data-storage-action="keep" data-day="${day.date}" data-keep="${day.kept ? 'false' : 'true'}">${day.kept ? 'Unkeep' : 'Keep'}</button>`
+      : '';
+    const move = day.state === 'quarantined'
+      ? `<button type="button" class="secondary compact" data-storage-action="restore" data-day="${day.date}">Restore</button>`
+      : day.removal_eligible ? `<button type="button" class="danger compact" data-storage-action="quarantine" data-day="${day.date}">Remove</button>` : '';
+    return `<tr>
+      <td>${storageEscape(day.date)}</td><td>${storageEscape(day.timeframes.join(', '))}</td>
+      <td>${day.files.toLocaleString()}</td><td>${formatStorageBytes(day.bytes)}</td>
+      <td>${storageEscape(state)}</td><td><div class="storage-day-actions">${toggle}${move}</div></td>
+    </tr>`;
+  }).join('');
+  document.querySelector<HTMLDivElement>('#storage-days-list')!.innerHTML =
+    `<table class="storage-table"><thead><tr><th>UTC day</th><th>Timeframes</th><th>Files</th><th>Size</th><th>Retention state</th><th>Actions</th></tr></thead><tbody>${body || '<tr><td colspan="6">No canonical history days found for this symbol.</td></tr>'}</tbody></table>`;
+}
+
+async function loadStorageDays(symbol?: string): Promise<void> {
+  try {
+    renderStorageDays(await api.storageDays(symbol));
+  } catch (error) {
+    document.querySelector<HTMLDivElement>('#storage-days-notes')!.textContent =
+      `Day inventory unavailable: ${(error as Error).message}`;
+  }
+}
+
+document.querySelector<HTMLSelectElement>('#storage-symbol-select')!.addEventListener('change', (event) => {
+  void loadStorageDays((event.currentTarget as HTMLSelectElement).value);
+});
+
+document.querySelector<HTMLDivElement>('#storage-days-list')!.addEventListener('click', async (event) => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('button[data-storage-action]');
+  const symbol = latestStorageInventory?.symbol;
+  const date = button?.dataset.day;
+  const action = button?.dataset.storageAction;
+  if (!button || !symbol || !date || !action) return;
+  const record = latestStorageInventory?.days.find((day) => day.date === date);
+  if (!record) return;
+  let confirmed = false;
+  if (action === 'keep') {
+    confirmed = true;
+  } else if (action === 'quarantine') {
+    confirmed = window.confirm(
+      `Remove ${symbol} on ${date} from active history? All its stored candle timeframes will be moved to quarantine. Charts/backtests may lose this day. Market Core must already be stopped. This does not free disk space.`,
+    );
+  } else if (action === 'restore') {
+    confirmed = window.confirm(
+      `Restore quarantined ${symbol} on ${date}? Market Core must already be stopped and the active day must be absent.`,
+    );
+  }
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    if (action === 'keep') {
+      await api.keepStorageDay(symbol, date, button.dataset.keep === 'true');
+    } else if (action === 'quarantine' || action === 'restore') {
+      await api.moveStorageDay(symbol, date, action);
+    }
+    await Promise.all([loadStorageDays(symbol), loadStorageHealth()]);
+    toast(`Storage retention updated for ${symbol} on ${date}.`);
+  } catch (error) {
+    button.disabled = false;
+    toast((error as Error).message, true);
+  }
+});
 
 async function refresh() {
   try {
@@ -1411,6 +1503,7 @@ secretForm.addEventListener('submit', async (event) => {
 async function bootstrapAuthenticatedAdmin() {
   await refresh();
   await loadStorageHealth();
+  await loadStorageDays();
   await loadConfig();
   await loadActiveMarkets();
   await loadCandleTimeframes();
