@@ -91,6 +91,8 @@ jobs:
           php services/ops-api/tests/smoke.php
           php services/ops-api/tests/auth_migration.php
           php services/ops-api/tests/auth_session.php
+          php services/ops-api/tests/storage_health.php
+          php services/ops-api/tests/storage_days.php
       - name: Reject generic shell execution surface
         shell: bash
         run: |
