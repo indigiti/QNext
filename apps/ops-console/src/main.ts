@@ -5,6 +5,7 @@ import {
   type HistoricalRepairStatusResponse,
   type OpsStatus,
   type RuntimeDiagnostics,
+  type StorageHealthSnapshot,
   type ServiceAction,
   type CustomIndicator,
 } from './api';
@@ -74,6 +75,20 @@ root.innerHTML = `
           <button id="activate">Activate selected release</button>
           <button id="rollback" class="secondary">Rollback previous</button>
         </div>
+      </section>
+
+      <section class="card span-3" id="storage-health-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">File-backed persistence</p>
+            <h2>Data storage &amp; health</h2>
+            <p class="muted">Read-only filesystem metrics. This is not a candle or volume integrity check.</p>
+          </div>
+          <button id="refresh-storage" class="secondary" type="button">Refresh storage</button>
+        </div>
+        <div id="storage-health-summary" class="status-grid">Loading storage information…</div>
+        <div id="storage-health-notes" class="muted"></div>
+        <div id="storage-health-categories"></div>
       </section>
 
       <section class="card span-3" id="diagnostics-card">
@@ -554,6 +569,57 @@ async function loadDiagnostics() {
     log.textContent = `Diagnostics unavailable: ${(error as Error).message}`;
   }
 }
+
+function formatStorageBytes(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return 'Unavailable';
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let amount = value;
+  let index = -1;
+  do { amount /= 1024; index++; } while (amount >= 1024 && index < units.length - 1);
+  return `${amount.toFixed(1)} ${units[index]}`;
+}
+
+function storageEscape(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function renderStorageHealth(data: StorageHealthSnapshot): void {
+  const summary = document.querySelector<HTMLDivElement>('#storage-health-summary')!;
+  const notes = document.querySelector<HTMLDivElement>('#storage-health-notes')!;
+  const categories = document.querySelector<HTMLDivElement>('#storage-health-categories')!;
+  const used = data.disk_total_bytes !== null && data.disk_free_bytes !== null
+    ? data.disk_total_bytes - data.disk_free_bytes : null;
+  const state = data.status === 'healthy' ? 'OK' : data.status.toUpperCase();
+  summary.innerHTML = `
+    <div><span>Storage probe</span><strong>${storageEscape(state)}</strong></div>
+    <div><span>Disk used / total</span><strong>${formatStorageBytes(used)} / ${formatStorageBytes(data.disk_total_bytes)}</strong></div>
+    <div><span>Disk free</span><strong>${formatStorageBytes(data.disk_free_bytes)}</strong></div>
+    <div><span>Disk utilization</span><strong>${data.disk_used_percent === null ? 'Unavailable' : data.disk_used_percent.toFixed(1) + '%'}</strong></div>
+    <div><span>Scanned files</span><strong>${data.scanned_files.toLocaleString()}</strong></div>
+    <div><span>Scanned storage</span><strong>${formatStorageBytes(data.scanned_bytes)}${data.scan_complete ? '' : ' (partial)'}</strong></div>
+    <div><span>Last modified file</span><strong>${data.last_modified_at ? storageEscape(new Date(data.last_modified_at).toLocaleString()) : 'None observed'}</strong></div>
+    <div><span>PHP filesystem access</span><strong>${data.php_can_read ? 'Read' : 'No read'} / ${data.php_can_write ? 'Write' : 'No write'}</strong></div>`;
+  notes.textContent = [
+    ...data.warnings,
+    'Capacity is filesystem-wide; scanned bytes are only the inspected QNeXT storage files.',
+    'PHP permissions do not prove that Market Core can write.',
+    data.scan_complete ? 'Directory scan complete.' : 'Directory scan incomplete: file totals are lower bounds.',
+  ].join('  •  ');
+  const rows = data.categories.map((c) => `<tr><td>${storageEscape(c.name)}</td><td>${c.scanned_files.toLocaleString()}</td><td>${formatStorageBytes(c.scanned_bytes)}</td><td>${c.last_modified_at ? storageEscape(new Date(c.last_modified_at).toLocaleString()) : '—'}</td></tr>`).join('');
+  categories.innerHTML = `<div class="storage-table-wrap"><table class="storage-table"><thead><tr><th>Category</th><th>Files scanned</th><th>Bytes scanned</th><th>Latest change</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No files observed.</td></tr>'}</tbody></table></div>`;
+}
+
+async function loadStorageHealth(): Promise<void> {
+  try {
+    renderStorageHealth(await api.storageHealth());
+  } catch (error) {
+    document.querySelector<HTMLDivElement>('#storage-health-summary')!.textContent = `Storage monitoring unavailable: ${(error as Error).message}`;
+  }
+}
+
+document.querySelector('#refresh-storage')!.addEventListener('click', () => void loadStorageHealth());
 
 async function refresh() {
   try {
@@ -1344,6 +1410,7 @@ secretForm.addEventListener('submit', async (event) => {
 
 async function bootstrapAuthenticatedAdmin() {
   await refresh();
+  await loadStorageHealth();
   await loadConfig();
   await loadActiveMarkets();
   await loadCandleTimeframes();
