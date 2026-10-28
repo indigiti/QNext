@@ -225,7 +225,7 @@ final class StorageDays
     private function dayFiles(string $root, string $symbol, string $date): array
     {
         $base = $root . '/' . $symbol;
-        if (is_link($root) || !is_dir($base) || is_link($base)) return [];
+        if (is_link($root) || is_link(dirname($root)) || !is_dir($base) || is_link($base)) return [];
         $files = [];
         foreach ($this->children($base) as $tf) {
             if (!self::validPart($tf) || is_link($base . '/' . $tf) || !is_dir($base . '/' . $tf)) continue;
@@ -273,7 +273,7 @@ final class StorageDays
 
     private function safeParent(string $root, string $dir): bool
     {
-        if (is_link($root)) return false;
+        if (is_link($root) || is_link(dirname($root))) return false;
         if (!is_dir($root) && !@mkdir($root, 0750, true) && !is_dir($root)) return false;
         $relative = ltrim(substr($dir, strlen($root)), '/');
         $current = $root;
