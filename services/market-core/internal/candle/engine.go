@@ -51,7 +51,13 @@ func SyntheticDerivative(instrumentID string) bool {
 func DerivativesSessionBounds(at time.Time) (time.Time, time.Time) {
 	open, _ := RegularSessionBounds(at)
 	local := at.In(indiaLocation)
-	closeAt := time.Date(local.Year(), local.Month(), local.Day(), 15, 40, 0, 0, indiaLocation)
+	// NSE/FAOP/74467 and BSE notice 20260612-9 took effect on 2026-08-03.
+	// Older historical derivative candles must retain their 15:30 boundary.
+	minute := 40
+	if local.Format("2006-01-02") < "2026-08-03" {
+		minute = 30
+	}
+	closeAt := time.Date(local.Year(), local.Month(), local.Day(), 15, minute, 0, 0, indiaLocation)
 	return open, closeAt.UTC()
 }
 
