@@ -39,6 +39,71 @@ func InRegularSession(at time.Time) bool {
 	return !at.Before(open) && at.Before(closeAt)
 }
 
+// QNext SYN and SYN+ are option-derived prices and follow the equity
+// derivatives session (09:15–15:40), not their cash-index underlying's
+// 09:15–15:30 session. The cash index itself must not create phantom ticks.
+func SyntheticDerivative(instrumentID string) bool {
+	id := strings.ToUpper(strings.TrimSpace(instrumentID))
+	return strings.HasPrefix(id, "QNEXT:") &&
+		(strings.HasSuffix(id, "-SYN") || strings.HasSuffix(id, "-SYN+"))
+}
+
+func DerivativesSessionBounds(at time.Time) (time.Time, time.Time) {
+	open, _ := RegularSessionBounds(at)
+	local := at.In(indiaLocation)
+	closeAt := time.Date(local.Year(), local.Month(), local.Day(), 15, 40, 0, 0, indiaLocation)
+	return open, closeAt.UTC()
+}
+
+func InstrumentSessionBounds(instrumentID string, at time.Time) (time.Time, time.Time) {
+	if SyntheticDerivative(instrumentID) {
+		return DerivativesSessionBounds(at)
+	}
+	return RegularSessionBounds(at)
+}
+
+func InInstrumentSession(instrumentID string, at time.Time) bool {
+	if at.IsZero() {
+		return false
+	}
+	open, closeAt := InstrumentSessionBounds(instrumentID, at)
+	return !at.Before(open) && at.Before(closeAt)
+}
+
+// BucketForInstrument uses the real trading session for each price authority.
+// Weekly, monthly and daily calendar-bucket identity remains unchanged.
+func BucketForInstrument(instrumentID string, at time.Time, timeframe string) (time.Time, time.Time, error) {
+	if !SyntheticDerivative(instrumentID) {
+		return Bucket(at, timeframe)
+	}
+	spec, err := parseTimeframe(timeframe)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	if spec.unit != 's' && spec.unit != 'm' && spec.unit != 'h' {
+		return Bucket(at, timeframe)
+	}
+	if !InInstrumentSession(instrumentID, at) {
+		return time.Time{}, time.Time{}, ErrOutsideSession
+	}
+	var duration time.Duration
+	switch spec.unit {
+	case 's':
+		duration = time.Duration(spec.value) * time.Second
+	case 'm':
+		duration = time.Duration(spec.value) * time.Minute
+	case 'h':
+		duration = time.Duration(spec.value) * time.Hour
+	}
+	start, end := InstrumentSessionBounds(instrumentID, at)
+	open := start.Add(at.UTC().Sub(start) / duration * duration)
+	closeAt := open.Add(duration)
+	if closeAt.After(end) {
+		closeAt = end
+	}
+	return open, closeAt, nil
+}
+
 type timeframeSpec struct {
 	value int
 	unit  byte
@@ -197,7 +262,7 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 		return nil, errors.New("tick requires instrument and event time")
 	}
 
-	openTime, closeTime, err := Bucket(tick.EventTime, timeframe)
+	openTime, closeTime, err := BucketForInstrument(tick.InstrumentID, tick.EventTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +328,7 @@ func (e *Engine) ApplyVolume(tick domain.Tick, timeframe string) ([]domain.Bar, 
 		return nil, nil
 	}
 
-	openTime, _, err := Bucket(tick.EventTime, timeframe)
+	openTime, _, err := BucketForInstrument(tick.InstrumentID, tick.EventTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
