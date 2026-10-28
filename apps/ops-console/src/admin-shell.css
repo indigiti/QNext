@@ -671,3 +671,11 @@ button.ops-health-row {
     justify-content: space-between;
   }
 }
+
+/* Read-only storage diagnostics */
+.storage-table-wrap { width: 100%; overflow-x: auto; margin-top: 1rem; }
+.storage-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.storage-table th, .storage-table td { padding: .75rem .9rem; border-bottom: 1px solid var(--ops-border, #2a3140); text-align: left; }
+.storage-table th { color: var(--ops-muted, #8e98aa); font-weight: 600; }
+#storage-health-notes { margin-top: 1rem; font-size: .85rem; line-height: 1.6; }
+#storage-health-summary strong { overflow-wrap: anywhere; }
