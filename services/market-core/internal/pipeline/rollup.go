@@ -10,21 +10,21 @@ import (
 )
 
 type rollupState struct {
-	open      time.Time
-	close     time.Time
-	expected  int
-	minutes   map[int64]domain.Bar
-	count     int
-	finals    int
-	firstKey  int64
-	lastKey   int64
-	first     domain.Bar
-	last      domain.Bar
-	high      float64
-	low       float64
-	volume    float64
-	recovered bool
-	quality   domain.Quality
+	open                 time.Time
+	close                time.Time
+	expected             int
+	minutes              map[int64]domain.Bar
+	count                int
+	finals               int
+	firstKey             int64
+	lastKey              int64
+	first                domain.Bar
+	last                 domain.Bar
+	high                 float64
+	low                  float64
+	volume               float64
+	recovered            bool
+	quality              domain.Quality
 	terminalFinalEmitted bool
 }
 

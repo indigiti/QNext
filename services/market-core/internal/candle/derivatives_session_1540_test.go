@@ -11,10 +11,10 @@ import (
 func TestDerivativeSyntheticCandlesContinueUntil1540WithoutExtendingCashIndex(t *testing.T) {
 	for _, test := range []struct {
 		instrument string
-		at string
-		accepted bool
-		wantOpen string
-		wantEnd string
+		at         string
+		accepted   bool
+		wantOpen   string
+		wantEnd    string
 	}{
 		{"NSE:NIFTY50", "2026-10-28T15:30:00+05:30", false, "", ""},
 		{"QNEXT:NIFTY-SYN", "2026-10-28T15:30:00+05:30", true, "2026-10-28T15:30:00+05:30", "2026-10-28T15:30:15+05:30"},
@@ -42,18 +42,24 @@ func TestDerivativeCandleClockFinalizesAt1540AndNot1530(t *testing.T) {
 	engine := New("derivatives-1540")
 	at, _ := time.Parse(time.RFC3339, "2026-10-28T15:29:55+05:30")
 	tick := domain.Tick{InstrumentID: "QNEXT:NIFTY-SYN+", Provider: "test", Price: 25000, EventTime: at, Quality: domain.QualityGood}
-	if _, err := engine.Apply(tick, "5s"); err != nil { t.Fatal(err) }
+	if _, err := engine.Apply(tick, "5s"); err != nil {
+		t.Fatal(err)
+	}
 	cashClose, _ := time.Parse(time.RFC3339, "2026-10-28T15:30:00+05:30")
 	bars, err := engine.Advance(tick.InstrumentID, "5s", cashClose, true)
 	if err != nil || len(bars) != 2 || !bars[0].Final || bars[1].Final ||
 		!bars[1].OpenTime.Equal(cashClose) {
 		t.Fatalf("synthetic candle stopped at cash close: %+v %v", bars, err)
 	}
-	tick.EventTime = cashClose.Add(2*time.Second)
+	tick.EventTime = cashClose.Add(2 * time.Second)
 	tick.Price = 25005
-	if _, err := engine.Apply(tick, "5s"); err != nil { t.Fatal(err) }
-	tick.EventTime = cashClose.Add(9*time.Minute+55*time.Second)
-	if _, err := engine.Apply(tick, "5s"); err != nil { t.Fatal(err) }
+	if _, err := engine.Apply(tick, "5s"); err != nil {
+		t.Fatal(err)
+	}
+	tick.EventTime = cashClose.Add(9*time.Minute + 55*time.Second)
+	if _, err := engine.Apply(tick, "5s"); err != nil {
+		t.Fatal(err)
+	}
 	foClose, _ := time.Parse(time.RFC3339, "2026-10-28T15:40:00+05:30")
 	bars, err = engine.Advance(tick.InstrumentID, "5s", foClose, true)
 	if err != nil || len(bars) != 1 || !bars[0].Final || !bars[0].CloseTime.Equal(foClose) {

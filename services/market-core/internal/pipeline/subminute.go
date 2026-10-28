@@ -11,10 +11,10 @@ import (
 const subminuteRollupVersion = "candle-rollup-v3-canonical-5s"
 
 type subminuteState struct {
-	open     time.Time
-	close    time.Time
-	expected int
-	children map[int64]domain.Bar
+	open                 time.Time
+	close                time.Time
+	expected             int
+	children             map[int64]domain.Bar
 	terminalFinalEmitted bool
 }
 
