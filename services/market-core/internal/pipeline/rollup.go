@@ -61,7 +61,7 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 	}
 
 	if state == nil {
-		state = newRollupState(open, closeAt, timeframe)
+		state = newRollupState(open, closeAt, timeframe, oneMinute.InstrumentID)
 		r.states[key] = state
 	}
 
@@ -72,11 +72,11 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 	return updates, nil
 }
 
-func newRollupState(open, closeAt time.Time, timeframe string) *rollupState {
+func newRollupState(open, closeAt time.Time, timeframe, instrumentID string) *rollupState {
 	return &rollupState{
 		open:     open,
 		close:    closeAt,
-		expected: expectedMinuteCount(open, closeAt, timeframe, oneMinute.InstrumentID),
+		expected: expectedMinuteCount(open, closeAt, timeframe, instrumentID),
 		minutes:  make(map[int64]domain.Bar),
 	}
 }
