@@ -10,7 +10,7 @@ import (
 func TestProductionSYNVolumeContinuesAfterCashCloses(t *testing.T) {
 	b := NewBroker(64, 16)
 	b.ConfigureSyntheticVolume(map[string]string{
-		"QNEXT:NIFTY-SYN": "NSE:NIFTY50",
+		"QNEXT:NIFTY-SYN":     "NSE:NIFTY50",
 		"QNEXT:BANKNIFTY-SYN": "NSE:BANKNIFTY",
 	})
 	at, _ := time.Parse(time.RFC3339, "2026-10-28T15:35:05+05:30")
