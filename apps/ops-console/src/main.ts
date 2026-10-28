@@ -90,6 +90,7 @@ root.innerHTML = `
         <div id="storage-health-summary" class="status-grid">Loading storage information…</div>
         <div id="storage-health-notes" class="muted"></div>
         <div id="storage-health-categories"></div>
+        <div id="storage-raw-retention" class="muted" aria-live="polite">Raw capture cleanup status is loading…</div>
         <div class="card-head storage-days-heading">
           <div>
             <p class="eyebrow">Canonical market candles only</p>
@@ -624,9 +625,34 @@ function renderStorageHealth(data: StorageHealthSnapshot): void {
   categories.innerHTML = `<div class="storage-table-wrap"><table class="storage-table"><thead><tr><th>Category</th><th>Files scanned</th><th>Bytes scanned</th><th>Latest change</th></tr></thead><tbody>${rows || '<tr><td colspan="4">No files observed.</td></tr>'}</tbody></table></div>`;
 }
 
+async function loadRawRetentionStatus(): Promise<void> {
+  const target = document.querySelector<HTMLDivElement>('#storage-raw-retention')!;
+  try {
+    const response = await api.feedStatus();
+    const state = response.body?.raw_retention;
+    if (!response.ok || !state) {
+      target.textContent = 'Raw capture retention status is unavailable while Market Core is offline.';
+      return;
+    }
+    if (!state.enabled) {
+      target.textContent = 'Raw capture automatic cleanup: disabled by runtime configuration.';
+      return;
+    }
+    const lastRun = state.last_run_at ? new Date(state.last_run_at).toLocaleString() : 'Not yet run';
+    const last = state.last_result;
+    const summary = last
+      ? `Last pass: ${last.deleted_files} removed; ${formatStorageBytes(last.reclaimed_bytes)} reclaimed; ${last.scanned_files} files checked.`
+      : 'No completed sweep yet.';
+    target.textContent = `Raw capture retention: ${state.keep_days} UTC calendar days (automatic hourly sweep). Last run: ${lastRun}. ${summary}${last?.incomplete ? ' Sweep bounded; remaining old files will be checked later.' : ''}${state.last_error ? ' Error: ' + state.last_error : ''}`;
+  } catch (error) {
+    target.textContent = `Raw cleanup status unavailable: ${(error as Error).message}`;
+  }
+}
+
 async function loadStorageHealth(): Promise<void> {
   try {
     renderStorageHealth(await api.storageHealth());
+    void loadRawRetentionStatus();
   } catch (error) {
     document.querySelector<HTMLDivElement>('#storage-health-summary')!.textContent = `Storage monitoring unavailable: ${(error as Error).message}`;
   }
