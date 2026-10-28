@@ -456,7 +456,7 @@ func inRegularSession(at time.Time) bool {
 		return false
 	}
 	minute := local.Hour()*60 + local.Minute()
-	return minute >= 9*60+15 && minute < 15*60+30
+	return minute >= 9*60+15 && minute < 15*60+40
 }
 
 // Status reports the health of the *separate* futures-volume stream, not just
