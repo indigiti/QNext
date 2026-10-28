@@ -45,6 +45,7 @@ type synPlusShadowBridge struct {
 
 	volumeMu     sync.Mutex
 	volumeMirror map[string][]synPlusVolumeMirror
+	volumeDirect map[string][]synPlusVolumeMirror
 	recentBars   map[string][]domain.Bar
 }
 
@@ -106,6 +107,7 @@ func NewWebSocketHandler(broker *Broker) http.Handler {
 		// Each enabled index has a distinct canonical volume observer.
 		// Registration must not evict another index's observer.
 		broker.SetBarObserver(bridge.volumeSourceID, bridge.observeVolumeSource)
+		broker.SetProxyVolumeObserver(bridge.volumeSourceID, bridge.observeProxyVolumeTick)
 		feedstatus.SetDefaultSyntheticStatusFor(bridge.instrumentID, bridge.status)
 	}
 	return handler
@@ -166,6 +168,7 @@ func newSynPlusShadowBridges(broker *Broker) []*synPlusShadowBridge {
 			volumeSourceID: market.Underlying.InstrumentID,
 			timeframes:     append([]string(nil), timeframes...),
 			volumeMirror:   make(map[string][]synPlusVolumeMirror),
+			volumeDirect:   make(map[string][]synPlusVolumeMirror),
 			recentBars:     make(map[string][]domain.Bar),
 		})
 	}
@@ -438,25 +441,7 @@ func (b *synPlusShadowBridge) observeVolumeSource(source domain.Bar) {
 	if !b.rememberVolume(source) {
 		return
 	}
-	bar, ok := b.recentBar(source.Timeframe, source.OpenTime)
-	if !ok || bar.Volume == source.Volume {
-		return
-	}
-	// Only the volume field is sourced from the NIFTY futures proxy.
-	// Price OHLC, finality and synthetic lineage remain SYN+ owned.
-	bar.Volume = source.Volume
-	if source.Volume > 0 {
-		bar.VolumeSource, bar.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
-	} else {
-		bar.VolumeSource, bar.VolumeStatus = "", "UNKNOWN"
-	}
-	bar.Revision++
-	if bar.Final {
-		bar.Corrected = true
-		bar.CorrectedAt = time.Now().UTC()
-	}
-	b.rememberBar(bar)
-	b.broker.PublishBar(bar)
+	b.publishVolumeCorrection(source.Timeframe, source.OpenTime)
 }
 
 // Cache only the latest two buckets per timeframe. This is enough to align
@@ -501,12 +486,93 @@ func (b *synPlusShadowBridge) rememberVolume(source domain.Bar) bool {
 }
 
 func (b *synPlusShadowBridge) sourceVolume(timeframe string, open time.Time) (float64, bool) {
-	for _, entry := range b.volumeMirror[timeframe] {
-		if entry.openTime.Equal(open) {
-			return entry.volume, true
+	var volume float64
+	var found bool
+	// Source candles are normally authoritative. The direct futures stream
+	// provides a fallback when the index price pipeline misses 5s children and
+	// consequently cannot publish a derived 15s/30s index source candle.
+	for _, entries := range [][]synPlusVolumeMirror{b.volumeMirror[timeframe], b.volumeDirect[timeframe]} {
+		for _, entry := range entries {
+			if entry.openTime.Equal(open) {
+				found = true
+				if entry.volume > volume {
+					volume = entry.volume
+				}
+			}
 		}
 	}
-	return 0, false
+	return volume, found
+}
+
+// observeProxyVolumeTick consumes the already-routed futures traded delta.
+// The price-engine and futures-volume subscriptions remain unchanged.
+// Volume is accumulated in its true exchange-time bucket, never allocated
+// by proportional interpolation from a minute candle.
+func (b *synPlusShadowBridge) observeProxyVolumeTick(tick domain.Tick) {
+	if tick.InstrumentID != b.volumeSourceID ||
+		tick.Provider != "upstox-futures-proxy" || tick.Quantity <= 0 ||
+		tick.EventTime.IsZero() {
+		return
+	}
+	b.volumeMu.Lock()
+	defer b.volumeMu.Unlock()
+	for _, timeframe := range b.timeframes {
+		open, _, err := candle.Bucket(tick.EventTime, timeframe)
+		if err != nil {
+			continue
+		}
+		entries := b.volumeDirect[timeframe]
+		found := false
+		for i := range entries {
+			if entries[i].openTime.Equal(open) {
+				entries[i].volume += tick.Quantity
+				found = true
+				break
+			}
+		}
+		if !found {
+			if len(entries) >= 3 {
+				if !open.After(entries[0].openTime) {
+					continue
+				}
+				entries = entries[1:]
+			}
+			entries = append(entries, synPlusVolumeMirror{openTime: open, volume: tick.Quantity})
+		}
+		if len(entries) > 1 {
+			// Only one late prior bucket is relevant at normal session turnover.
+			for i := len(entries)-1; i > 0; i-- {
+				if !entries[i].openTime.Before(entries[i-1].openTime) {
+					break
+				}
+				entries[i], entries[i-1] = entries[i-1], entries[i]
+			}
+		}
+		b.volumeDirect[timeframe] = entries
+		b.publishVolumeCorrection(timeframe, open)
+	}
+}
+
+// Called only under volumeMu. Corrections preserve SYN+ OHLC/finality,
+// and keep the current candle chronological after late prior-bucket deltas.
+func (b *synPlusShadowBridge) publishVolumeCorrection(timeframe string, open time.Time) {
+	bar, ok := b.recentBar(timeframe, open)
+	if !ok {
+		return
+	}
+	volume, found := b.sourceVolume(timeframe, open)
+	if !found || volume <= bar.Volume {
+		return
+	}
+	bar.Volume = volume
+	bar.VolumeSource, bar.VolumeStatus = "FUTURES_PROXY", "OBSERVED"
+	bar.Revision++
+	if bar.Final {
+		bar.Corrected = true
+		bar.CorrectedAt = time.Now().UTC()
+	}
+	b.rememberBar(bar)
+	b.broker.PublishBar(bar)
 }
 
 func (b *synPlusShadowBridge) recentBar(timeframe string, open time.Time) (domain.Bar, bool) {
