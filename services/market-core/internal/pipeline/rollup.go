@@ -43,7 +43,7 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 	if oneMinute.Timeframe != "1m" {
 		return nil, errors.New("rollup source must be 1m")
 	}
-	open, closeAt, err := candle.Bucket(oneMinute.OpenTime, timeframe)
+	open, closeAt, err := candle.BucketForInstrument(oneMinute.InstrumentID, oneMinute.OpenTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func newRollupState(open, closeAt time.Time, timeframe string) *rollupState {
 	return &rollupState{
 		open:     open,
 		close:    closeAt,
-		expected: expectedMinuteCount(open, closeAt, timeframe),
+		expected: expectedMinuteCount(open, closeAt, timeframe, oneMinute.InstrumentID),
 		minutes:  make(map[int64]domain.Bar),
 	}
 }
@@ -231,8 +231,11 @@ func completeRollup(state *rollupState) bool {
 	return state != nil && state.expected > 0 && state.count == state.expected && state.finals == state.expected
 }
 
-func expectedMinuteCount(open, closeAt time.Time, timeframe string) int {
+func expectedMinuteCount(open, closeAt time.Time, timeframe, instrumentID string) int {
 	if timeframe == "1D" {
+		if candle.SyntheticDerivative(instrumentID) {
+			return 385
+		}
 		return 375
 	}
 	if strings.HasSuffix(timeframe, "m") || strings.HasSuffix(timeframe, "h") {
