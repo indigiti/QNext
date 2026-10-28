@@ -88,6 +88,7 @@ export interface StorageDayInventory {
   days: StorageDayRow[];
   complete: boolean;
   minimum_age_days: number;
+  actions_enabled: boolean;
   notice: string;
 }
 
