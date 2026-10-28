@@ -144,7 +144,23 @@ export interface FeedInstrumentSnapshot {
   synthetic_version?: string;
 }
 
+export interface RawRetentionStatus {
+  enabled: boolean;
+  keep_days: number;
+  last_run_at?: string;
+  last_error?: string;
+  last_result?: {
+    cutoff_date: string;
+    scanned_files: number;
+    deleted_files: number;
+    reclaimed_bytes: number;
+    skipped_recent: number;
+    incomplete: boolean;
+  };
+}
+
 export interface FeedStatusBody {
+  raw_retention?: RawRetentionStatus;
   live_configured: boolean;
   resilience_configured: boolean;
   nifty_instrument_id: string;

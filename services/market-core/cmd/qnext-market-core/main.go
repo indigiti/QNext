@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -47,6 +48,28 @@ func main() {
 	addr := env("QNEXT_HTTP_ADDR", "127.0.0.1:18080")
 	storageRoot := env("QNEXT_STORAGE_ROOT", "./storage")
 	started := time.Now().UTC()
+
+	// Raw frame retention is independent of candle formation and history replay.
+	// 0 disables cleanup; malformed values fail closed without stopping Market Core.
+	retentionDays := capture.DefaultRawRetentionDays
+	if value := strings.TrimSpace(os.Getenv("QNEXT_RAW_RETENTION_DAYS")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 || parsed > 3650 {
+			log.Printf("invalid QNEXT_RAW_RETENTION_DAYS value; automatic raw cleanup disabled")
+			retentionDays = 0
+		} else {
+			retentionDays = parsed
+		}
+	}
+	rawRetention := capture.NewRawRetention(storageRoot, retentionDays)
+	go rawRetention.Run(ctx, func(stats capture.RawRetentionResult, err error) {
+		if err != nil {
+			log.Printf("raw frame retention sweep error: %v", err)
+		} else if stats.DeletedFiles > 0 || stats.Incomplete {
+			log.Printf("raw frame retention cutoff=%s deleted=%d reclaimed_bytes=%d incomplete=%t",
+				stats.CutoffDate, stats.DeletedFiles, stats.ReclaimedBytes, stats.Incomplete)
+		}
+	})
 
 	var config *marketconfig.Config
 	var accessToken string
@@ -226,6 +249,7 @@ func main() {
 				"telemetry":               snapshot,
 				"resilience":              resilienceMetrics.Snapshot(),
 				"gap_recovery":            gapRecoveryTracker.Snapshot(),
+				"raw_retention":           rawRetention.Snapshot(),
 			}
 		},
 	})
