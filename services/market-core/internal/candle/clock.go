@@ -39,7 +39,7 @@ func (e *Engine) Advance(instrumentID, timeframe string, at time.Time, carryForw
 			break
 		}
 
-		nextOpen, nextClose, err := Bucket(current.CloseTime, timeframe)
+		nextOpen, nextClose, err := BucketForInstrument(instrumentID, current.CloseTime, timeframe)
 		if errors.Is(err, ErrOutsideSession) {
 			// Reaching session close is normal. Finalize the current bar
 			// without manufacturing the next out-of-session carry candle.
