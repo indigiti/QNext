@@ -9,6 +9,7 @@ use QNext\Ops\OpsConfig;
 use QNext\Ops\OpsController;
 use QNext\Ops\PaperProxy;
 use QNext\Ops\LoginThrottle;
+use QNext\Ops\StorageHealth;
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/src/IntelligenceControl.php';
@@ -239,6 +240,9 @@ try {
     $intelligence = new IntelligenceControl($config);
     $intelligenceLab = new IntelligenceLabControl($config);
 
+    if ($method === 'GET' && $path === '/storage-health') {
+        respond(200, StorageHealth::snapshot($config->privateRoot . '/storage'));
+    }
     if ($method === 'GET' && $path === '/status') {
         respond(200, $controller->status());
     }
