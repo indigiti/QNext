@@ -68,6 +68,29 @@ export interface OpsStatus {
   };
 }
 
+export interface StorageDayRow {
+  date: string;
+  bytes: number;
+  files: number;
+  timeframes: string[];
+  modified_at: string | null;
+  active_files: number;
+  quarantined_files: number;
+  kept: boolean;
+  protected: boolean;
+  state: 'active' | 'quarantined' | 'mixed';
+  removal_eligible: boolean;
+}
+
+export interface StorageDayInventory {
+  symbol: string | null;
+  symbols: string[];
+  days: StorageDayRow[];
+  complete: boolean;
+  minimum_age_days: number;
+  notice: string;
+}
+
 export interface StorageHealthSnapshot {
   checked_at: string;
   storage_root: string;
@@ -346,6 +369,22 @@ export class OpsAPI {
 
   getConfig(): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('/config');
+  }
+
+  storageDays(symbol?: string): Promise<StorageDayInventory> {
+    return this.request<StorageDayInventory>('/storage-days' + (symbol ? '&symbol=' + encodeURIComponent(symbol) : ''));
+  }
+
+  keepStorageDay(symbol: string, date: string, keep: boolean): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>('/storage-days/keep', {
+      method: 'POST', body: JSON.stringify({ symbol, date, keep }),
+    });
+  }
+
+  moveStorageDay(symbol: string, date: string, action: 'quarantine' | 'restore'): Promise<{ ok: boolean; files: number }> {
+    return this.request<{ ok: boolean; files: number }>('/storage-days/' + action, {
+      method: 'POST', body: JSON.stringify({ symbol, date, confirm: 'I UNDERSTAND' }),
+    });
   }
 
   storageHealth(): Promise<StorageHealthSnapshot> {
