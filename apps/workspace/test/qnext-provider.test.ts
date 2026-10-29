@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { QNextProvider } from '../src/qnext-provider';
+import { QNextProvider, canonicalQNextTimeframe } from '../src/qnext-provider';
 
 const symbolsPayload = {
   symbols: [
@@ -28,6 +28,43 @@ const symbolsPayload = {
     },
   ],
 };
+
+describe('QNext Pine timeframe compatibility', () => {
+  it('maps Pine minutes and period shortcuts to canonical QNext units', () => {
+    expect(canonicalQNextTimeframe('1')).toBe('1m');
+    expect(canonicalQNextTimeframe('5')).toBe('5m');
+    expect(canonicalQNextTimeframe('60')).toBe('1h');
+    expect(canonicalQNextTimeframe('240')).toBe('4h');
+    expect(canonicalQNextTimeframe('D')).toBe('1D');
+    expect(canonicalQNextTimeframe('W')).toBe('1W');
+    expect(canonicalQNextTimeframe('M')).toBe('1M');
+    expect(canonicalQNextTimeframe('15S')).toBe('15s');
+    expect(canonicalQNextTimeframe('1m')).toBe('1m');
+    expect(canonicalQNextTimeframe('1h')).toBe('1h');
+    expect(canonicalQNextTimeframe('1D')).toBe('1D');
+    expect(canonicalQNextTimeframe('12M')).toBe('12M');
+    expect(() => canonicalQNextTimeframe('oops')).toThrow('Unsupported QNext timeframe');
+  });
+
+  it('requests canonical 1m and 1h history for Pine higher timeframe inputs', async () => {
+    const requests: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const target = String(input);
+      if (target.startsWith('/api/v1/symbols/')) return jsonResponse(symbolsPayload);
+      if (target.startsWith('/api/v1/bars/?')) {
+        requests.push(target);
+        return jsonResponse({ bars: [] });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+    const provider = new QNextProvider({ fetchImpl });
+    await provider.getBars('NIFTY-SYN', '1', { to: Date.UTC(2026, 9, 22), limit: 20 });
+    await provider.getBars('NIFTY-SYN', '60', { to: Date.UTC(2026, 9, 22), limit: 20 });
+    expect(requests).toHaveLength(2);
+    expect(new URL(requests[0], 'https://example.test').searchParams.get('timeframe')).toBe('1m');
+    expect(new URL(requests[1], 'https://example.test').searchParams.get('timeframe')).toBe('1h');
+  });
+});
 
 describe('QNextProvider', () => {
   it('exposes canonical QNext symbols to Vela', async () => {

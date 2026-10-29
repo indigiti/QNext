@@ -117,6 +117,41 @@ interface SharedBarSubscription {
 
 const WS_OPEN = 1;
 
+/**
+ * Pine timeframes use bare minutes ("1", "5", "60") and period names
+ * ("D", "W", "M"). QNext Market Core expects explicit canonical units.
+ * Keep this translation at the external provider boundary rather than
+ * changing Vela/Pine behavior or the core candle calculation path.
+ */
+export function canonicalQNextTimeframe(rawTimeframe: string): string {
+  const timeframe = rawTimeframe.trim();
+  const bareMinutes = /^([1-9]\d*)$/.exec(timeframe);
+  if (bareMinutes) {
+    const minutes = Number(bareMinutes[1]);
+    if (!Number.isSafeInteger(minutes)) throw new Error(`Unsupported QNext timeframe: ${rawTimeframe}`);
+    return minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes}m`;
+  }
+
+  if (timeframe === 'D' || timeframe === 'W' || timeframe === 'M') {
+    return `1${timeframe}`;
+  }
+
+  const match = /^([1-9]\d*)([smhDWM]|[SHdw])$/.exec(timeframe);
+  if (!match) throw new Error(`Unsupported QNext timeframe: ${rawTimeframe}`);
+
+  const number = Number(match[1]);
+  if (!Number.isSafeInteger(number)) throw new Error(`Unsupported QNext timeframe: ${rawTimeframe}`);
+  const unit = match[2] === 'S' ? 's' :
+    match[2] === 'H' ? 'h' :
+    match[2] === 'd' ? 'D' :
+    match[2] === 'w' ? 'W' : match[2];
+
+  return unit === 'm' && number % 60 === 0
+    ? `${number / 60}h`
+    : `${number}${unit}`;
+}
+
+
 export class QNextProvider {
   private readonly apiBase: string;
   private readonly explicitStreamUrl?: string;
@@ -191,6 +226,7 @@ export class QNextProvider {
     timeframe: string,
     range: QNextRange = {},
   ): Promise<QNextBar[]> {
+    timeframe = canonicalQNextTimeframe(timeframe);
     const instrument = await this.resolveInstrument(ticker);
     const to = range.to ?? Date.now();
     const limit = range.limit ?? 500;
@@ -223,6 +259,7 @@ export class QNextProvider {
     timeframe: string,
     range: QNextRange = {},
   ): Promise<QNextCanonicalBar[]> {
+    timeframe = canonicalQNextTimeframe(timeframe);
     const instrument = await this.resolveInstrument(ticker);
     const to = range.to ?? Date.now();
     const limit = range.limit ?? 500;
@@ -297,6 +334,7 @@ export class QNextProvider {
     onBar: (bar: QNextBar) => void,
     _options?: { session?: string },
   ): () => void {
+    timeframe = canonicalQNextTimeframe(timeframe);
     let cancelled = false;
     let attached: SharedBarSubscription | undefined;
 
