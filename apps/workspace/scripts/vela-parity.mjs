@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const expected = {
-  '@luxalgo/vela': '0.9.0',
-  '@luxalgo/vela-pinets': '0.2.18',
-  pinets: '0.12.1',
+  '@luxalgo/vela': '0.10.6',
+  '@luxalgo/vela-pinets': '0.3.4',
+  pinets: '0.13.1',
 };
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { PineEngine, PineWorkerEngine } from '@luxalgo/vela-pinets';
