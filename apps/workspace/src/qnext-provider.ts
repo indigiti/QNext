@@ -191,6 +191,7 @@ export class QNextProvider {
     timeframe: string,
     range: QNextRange = {},
   ): Promise<QNextBar[]> {
+    timeframe = normalizeHistoryTimeframe(timeframe);
     const instrument = await this.resolveInstrument(ticker);
     const to = range.to ?? Date.now();
     const limit = range.limit ?? 500;
@@ -223,6 +224,7 @@ export class QNextProvider {
     timeframe: string,
     range: QNextRange = {},
   ): Promise<QNextCanonicalBar[]> {
+    timeframe = normalizeHistoryTimeframe(timeframe);
     const instrument = await this.resolveInstrument(ticker);
     const to = range.to ?? Date.now();
     const limit = range.limit ?? 500;
@@ -850,6 +852,23 @@ function normalizeBar(bar: QNextBar): QNextBar {
 
 function subscriptionKey(instrumentID: string, timeframe: string): string {
   return `${instrumentID.trim().toUpperCase()}|${timeframe.trim()}`;
+}
+
+// Pine secondary requests use bare minutes and upper-case seconds/calendar units.
+// Normalize at the history boundary before computing lookback or querying storage.
+function normalizeHistoryTimeframe(timeframe: string): string {
+  const value = timeframe.trim();
+  if (/^[1-9]\d*$/.test(value)) {
+    const minutes = Number(value);
+    return Number.isSafeInteger(minutes) && minutes % 60 === 0
+      ? `${minutes / 60}h`
+      : `${value}m`;
+  }
+  if (/^\d+[SH]$/.test(value)) return value.toLowerCase();
+  if (/^\d*[dDwWM]$/.test(value)) {
+    return /^\d/.test(value) ? value.toUpperCase() : `1${value.toUpperCase()}`;
+  }
+  return value;
 }
 
 function defaultHistoryLookbackMs(timeframe: string, limit: number): number {
