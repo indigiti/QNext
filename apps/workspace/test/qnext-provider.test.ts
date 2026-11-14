@@ -157,6 +157,39 @@ describe('QNextProvider', () => {
     ]);
   });
 
+  it.each([
+    ['1', '1m'],
+    ['5', '5m'],
+    ['60', '1h'],
+    ['15S', '15s'],
+    ['D', '1D'],
+    ['1M', '1M'],
+    ['1m', '1m'],
+  ])('requests canonical candle history for Pine timeframe %s', async (requested, canonical) => {
+    const synthetic = {
+      ...symbolsPayload.symbols[1],
+      instrument_id: 'QNEXT:NIFTY-SYN+',
+      ticker: 'NIFTY-SYN+',
+    };
+    const bar = { time: 900, open: 10, high: 11, low: 9, close: 10.5, volume: 3 };
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), 'https://qnext.test');
+      if (url.pathname === '/api/v1/symbols/') return jsonResponse({ symbols: [synthetic] });
+      expect(url.pathname).toBe('/api/v1/bars/');
+      expect(url.searchParams.get('timeframe')).toBe(canonical);
+      expect(url.searchParams.get('instrument_id')).toBe(synthetic.instrument_id);
+      return jsonResponse({ bars: [bar] });
+    }) as typeof fetch;
+
+    const provider = new QNextProvider({ fetchImpl });
+    await expect(provider.getBars(synthetic.instrument_id, requested, {
+      from: 0, to: 1_000,
+    })).resolves.toEqual([bar]);
+    await expect(provider.getBars(synthetic.instrument_id, requested, {
+      to: Date.UTC(2026, 10, 13), limit: 1,
+    })).resolves.toEqual([bar]);
+  });
+
   it('preserves canonical final and quality metadata for Shadow-Live', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const target = String(input);
