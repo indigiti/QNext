@@ -11,10 +11,10 @@
     "vela:parity": "node scripts/vela-parity.mjs"
   },
   "dependencies": {
-    "@luxalgo/vela": "0.9.0",
-    "@luxalgo/vela-pinets": "0.2.18",
+    "@luxalgo/vela": "0.10.6",
+    "@luxalgo/vela-pinets": "0.3.4",
     "lightweight-charts": "5.2.1",
-    "pinets": "0.12.1"
+    "pinets": "0.13.1"
   },
   "devDependencies": {
     "typescript": "5.9.3",
