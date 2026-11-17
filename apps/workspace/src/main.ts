@@ -1,5 +1,5 @@
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
-import { createQNextPineEngine, resolveQNextPineMode } from './pine-engine';
+import { createQNextPineEngine, resolveQNextPineMode, withConfirmedMtfRecompute } from './pine-engine';
 
 import { resolveChartEngine, type QNextChartEngine } from './charts/chart-engine';
 import { VELA_INITIAL_HISTORY } from './charts/history-pagination';
@@ -181,7 +181,7 @@ async function bootstrapVela(timeframes: string[]) {
     },
     engines: {
       qnext: () => new QNextIndicatorEngine(),
-      pine: () => createQNextPineEngine(resolveQNextPineMode(runtime.pineEngine), pineTrace),
+      pine: () => withConfirmedMtfRecompute(createQNextPineEngine(resolveQNextPineMode(runtime.pineEngine), pineTrace)),
     },
     indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',
