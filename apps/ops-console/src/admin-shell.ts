@@ -1,4 +1,5 @@
 import './admin-shell.css';
+import './admin-sylva.css';
 
 export {};
 
@@ -186,7 +187,7 @@ function navMarkup(): string {
     <div class="ops-nav-group">
       <div class="ops-nav-label">${html(group.label)}</div>
       ${group.items.map((item) => `
-        <button type="button" class="ops-nav-item" data-ops-nav="${item.view}" data-search="${html(`${group.label} ${item.label}`.toLowerCase())}">
+        <button type="button" class="ops-nav-item" data-ops-nav="${item.view}" data-search="${html(`${group.label} ${item.label}`.toLowerCase())}" title="${html(item.label)}" aria-label="${html(item.label)}">
           <span class="ops-nav-icon" aria-hidden="true">${html(item.icon)}</span>
           <span>${html(item.label)}</span>
         </button>
@@ -216,17 +217,18 @@ function installShell(): void {
   sidebar.innerHTML = `
     <div class="ops-brand">
       <div class="ops-brand-mark">QN</div>
-      <div>
+      <div class="ops-brand-copy">
         <strong>QNeXT</strong>
-        <span>Operations</span>
+        <span>Operations workspace</span>
       </div>
+      <button type="button" id="ops-dock-toggle" class="ops-dock-toggle" aria-label="Collapse navigation" aria-expanded="true" aria-controls="ops-nav-region" title="Collapse navigation (Ctrl/⌘ B)">‹</button>
       <button type="button" id="ops-sidebar-close" class="ops-sidebar-close" aria-label="Close navigation">×</button>
     </div>
     <label class="ops-search" for="ops-nav-search">
       <span aria-hidden="true">⌕</span>
       <input id="ops-nav-search" type="search" autocomplete="off" placeholder="Quick navigation" />
     </label>
-    <nav class="ops-nav" aria-label="QNext Admin navigation">
+    <nav id="ops-nav-region" class="ops-nav" aria-label="QNext Admin navigation">
       ${navMarkup()}
     </nav>
     <div class="ops-sidebar-foot">
@@ -258,6 +260,16 @@ function installShell(): void {
   mobileButton.setAttribute('aria-expanded', 'false');
   mobileButton.textContent = '☰';
   topbar.prepend(mobileButton);
+
+  const commandButton = document.createElement('button');
+  commandButton.type = 'button';
+  commandButton.id = 'ops-command-trigger';
+  commandButton.className = 'ops-command-trigger secondary';
+  commandButton.setAttribute('aria-label', 'Search admin sections');
+  commandButton.setAttribute('aria-keyshortcuts', 'Control+K Meta+K');
+  commandButton.setAttribute('title', 'Search sections (Ctrl/⌘ K)');
+  commandButton.innerHTML = '<span>Search sections</span><kbd>⌘ K</kbd>';
+  heading?.insertAdjacentElement('afterend', commandButton);
 
   installDashboard(grid);
   installNavigation(sidebar, topbar, grid);
@@ -481,6 +493,28 @@ function viewFromHash(): View {
   return views[hash] ? hash : 'dashboard';
 }
 
+// Navigation preferences are deliberately presentation-only. No admin tokens,
+// feed state, or server-backed configuration is persisted in browser storage.
+const DOCK_PREF_KEY = 'qnext-ops-dock-v1';
+
+function readDockPreference(): boolean {
+  try { return window.sessionStorage.getItem(DOCK_PREF_KEY) === 'collapsed'; }
+  catch { return false; }
+}
+
+function setDockCollapsed(collapsed: boolean, remember = true): void {
+  document.body.dataset.opsDock = collapsed ? 'collapsed' : 'expanded';
+  const button = document.querySelector<HTMLButtonElement>('#ops-dock-toggle');
+  button?.setAttribute('aria-expanded', String(!collapsed));
+  button?.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
+  button?.setAttribute('title', collapsed ? 'Expand navigation (Ctrl/⌘ B)' : 'Collapse navigation (Ctrl/⌘ B)');
+  if (button) button.textContent = collapsed ? '›' : '‹';
+  if (remember) {
+    try { window.sessionStorage.setItem(DOCK_PREF_KEY, collapsed ? 'collapsed' : 'expanded'); }
+    catch { /* Navigation remains usable when storage is blocked. */ }
+  }
+}
+
 function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTMLElement): void {
   sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-nav]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -490,6 +524,23 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
   });
 
   const search = sidebar.querySelector<HTMLInputElement>('#ops-nav-search');
+  const mobileToggle = topbar.querySelector<HTMLButtonElement>('#ops-sidebar-toggle');
+  const commandButton = topbar.querySelector<HTMLButtonElement>('#ops-command-trigger');
+  setDockCollapsed(readDockPreference(), false);
+  sidebar.querySelector<HTMLButtonElement>('#ops-dock-toggle')?.addEventListener('click', () => {
+    setDockCollapsed(document.body.dataset.opsDock !== 'collapsed');
+  });
+
+  const focusSearch = (): void => {
+    if (window.matchMedia('(max-width: 900px)').matches) {
+      setMobileNavigation(true);
+    } else {
+      setDockCollapsed(false);
+    }
+    search?.focus();
+    search?.select();
+  };
+  commandButton?.addEventListener('click', focusSearch);
   search?.addEventListener('input', () => {
     const query = search.value.trim().toLowerCase();
     sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-nav]').forEach((button) => {
@@ -506,7 +557,6 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     first?.click();
   });
 
-  const mobileToggle = topbar.querySelector<HTMLButtonElement>('#ops-sidebar-toggle');
   mobileToggle?.addEventListener('click', () => {
     const opening = !sidebar.classList.contains('open');
     setMobileNavigation(opening);
@@ -517,9 +567,33 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     mobileToggle?.focus();
   });
   document.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        focusSearch();
+        return;
+      }
+      if (event.key.toLowerCase() === 'b') {
+        const element = event.target;
+        if (element instanceof HTMLElement
+          && element.closest('input, textarea, select, [contenteditable="true"]')) {
+          return;
+        }
+        event.preventDefault();
+        if (window.matchMedia('(max-width: 900px)').matches) {
+          setMobileNavigation(!sidebar.classList.contains('open'));
+        } else {
+          setDockCollapsed(document.body.dataset.opsDock !== 'collapsed');
+        }
+        return;
+      }
+    }
     if (event.key === 'Escape' && sidebar.classList.contains('open')) {
       setMobileNavigation(false);
       mobileToggle?.focus();
+    } else if (event.key === 'Escape' && document.activeElement === search) {
+      search?.blur();
+      commandButton?.focus();
     }
   });
   document.addEventListener('click', (event) => {
