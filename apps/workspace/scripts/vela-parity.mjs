@@ -36,7 +36,13 @@ const checks = [
   ['PineEngine streaming capability', new PineEngine().capabilities.streaming === true],
   ['PineWorkerEngine streaming capability', new PineWorkerEngine().capabilities.streaming === true],
   ['Vela icon action API', typeof registerIcon === 'function' && typeof registerWidgetAction === 'function'],
-  ['Lightweight Charts v5 chart/series API', typeof createChart === 'function' && typeof CandlestickSeries === 'function'],
+  // v5 exports CandlestickSeries as a series-definition object, not a
+  // callable constructor. The chart factory is callable; the series
+  // descriptor must exist for chart.addSeries(CandlestickSeries).
+  ['Lightweight Charts v5 chart/series API',
+    typeof createChart === 'function'
+    && CandlestickSeries !== null
+    && typeof CandlestickSeries === 'object'],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
