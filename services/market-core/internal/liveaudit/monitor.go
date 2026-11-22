@@ -311,7 +311,7 @@ func (m *Monitor) emit(at time.Time, alert Alert) {
 	}
 	// A published candle produces at most one alert of each kind per session.
 	// Counter transitions are distinct evidence events; unchanged counts are not.
-		if m.raised[id] {
+	if m.raised[id] {
 		return
 	}
 	m.raised[id] = true
