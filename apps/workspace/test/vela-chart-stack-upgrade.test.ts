@@ -18,7 +18,7 @@ describe('Vela 0.10.14 / chart stack upgrade safety', () => {
 
   it('adds Vela native fullscreen without removing existing QNext toolbar controls', () => {
     expect(workspaceSource).toContain(
-      "'actions', 'alerts', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot', 'fullscreen'",
+      "'actions', 'alerts', 'qnext.alerts.toggle', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot', 'fullscreen'",
     );
     expect(workspaceSource).toContain("'symbol', 'timeframes', 'style', 'indicators', 'undo-redo'");
     expect(workspaceSource).toContain('installVelaPanHistory(workspace)');
