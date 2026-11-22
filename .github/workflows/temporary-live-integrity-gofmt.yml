@@ -1,0 +1,37 @@
+name: Temporary live integrity gofmt
+
+on:
+  push:
+    branches:
+      - feat/live-market-integrity-monitor
+    paths:
+      - ".github/workflows/temporary-live-integrity-gofmt.yml"
+      - "services/market-core/internal/liveaudit/**"
+      - "services/market-core/cmd/qnext-market-core/main.go"
+      - "services/market-core/internal/observability/runtime.go"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/live-market-integrity-monitor
+          persist-credentials: true
+      - name: Apply gofmt to feature-only Go paths
+        run: |
+          gofmt -w services/market-core/internal/liveaudit/*.go
+          gofmt -w services/market-core/internal/observability/runtime.go
+          gofmt -w services/market-core/cmd/qnext-market-core/main.go
+          if git diff --quiet -- services/market-core; then
+            echo "All files already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/market-core/internal/liveaudit services/market-core/internal/observability/runtime.go services/market-core/cmd/qnext-market-core/main.go
+          git commit -m "style: gofmt live integrity monitor"
+          git push origin HEAD:feat/live-market-integrity-monitor
