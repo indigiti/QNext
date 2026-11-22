@@ -1,0 +1,40 @@
+name: Temporary NSE 1m gofmt
+on:
+  push:
+    branches: [feat/nse-selectable-one-minute-history]
+    paths:
+      - ".github/workflows/temporary-nse-minute-gofmt.yml"
+      - "services/market-core/internal/marketconfig/nse_one_minute_test.go"
+      - "services/market-core/internal/marketconfig/config.go"
+      - "services/market-core/internal/provider/upstox/nse_one_minute_sync.go"
+      - "services/market-core/internal/provider/upstox/nse_one_minute_sync_test.go"
+      - "services/market-core/cmd/qnext-market-core/main.go"
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/nse-selectable-one-minute-history
+          persist-credentials: true
+      - name: Apply Go formatter on exact modified files
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w services/market-core/internal/marketconfig/config.go
+          gofmt -w services/market-core/internal/marketconfig/nse_one_minute_test.go
+          gofmt -w services/market-core/internal/provider/upstox/nse_one_minute_sync.go
+          gofmt -w services/market-core/internal/provider/upstox/nse_one_minute_sync_test.go
+          gofmt -w services/market-core/cmd/qnext-market-core/main.go
+          if git diff --quiet -- services/market-core; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/market-core/internal/marketconfig/config.go
+          git add services/market-core/internal/marketconfig/nse_one_minute_test.go
+          git add services/market-core/internal/provider/upstox/nse_one_minute_sync.go
+          git add services/market-core/internal/provider/upstox/nse_one_minute_sync_test.go
+          git add services/market-core/cmd/qnext-market-core/main.go
+          git commit -m "style: format NSE 1m selected history collector"
+          git push origin HEAD:feat/nse-selectable-one-minute-history
