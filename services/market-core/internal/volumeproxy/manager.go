@@ -92,13 +92,13 @@ type targetState struct {
 	next      liquidity
 	session   string
 
-	firstUnderlyingAt time.Time
-	lastUnderlyingAt  time.Time
-	lastActiveFeedAt  time.Time
-	lastVolumeAt      time.Time
-	lastRepairAt      time.Time
-	lastRepairFailed  bool
-	repairAttempts    uint64
+	firstUnderlyingAt  time.Time
+	lastUnderlyingAt   time.Time
+	lastActiveFeedAt   time.Time
+	lastVolumeAt       time.Time
+	lastRepairAt       time.Time
+	lastRepairFailed   bool
+	repairAttempts     uint64
 	silentReassertions uint64
 	lastRenewAt        time.Time
 	renewAttempts      uint64
@@ -396,10 +396,10 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 		return errors.New("futures subscription does not support full-mode recovery")
 	}
 	type repair struct {
-		symbol string
-		targetID string
-		keys   []string
-		renew  bool
+		symbol       string
+		targetID     string
+		keys         []string
+		renew        bool
 		sourceSilent bool
 	}
 	var repairs []repair
@@ -558,18 +558,18 @@ func (m *Manager) Status() any {
 			}
 		}
 		result[market.Symbol] = map[string]any{
-			"status":             status,
-			"active_future":      state.activeID,
-			"last_index_at_ms":   timeMillis(state.lastUnderlyingAt),
-			"last_future_at_ms":  timeMillis(state.lastActiveFeedAt),
-			"last_volume_at_ms":  timeMillis(state.lastVolumeAt),
-			"last_repair_at_ms":  timeMillis(state.lastRepairAt),
-			"repair_attempts":    state.repairAttempts,
-			"last_repair_failed": state.lastRepairFailed,
-			"auto_renew_enabled": m.AutoRenew,
-			"last_renew_at_ms": timeMillis(state.lastRenewAt),
-			"renew_attempts": state.renewAttempts,
-			"silent_reassertions": state.silentReassertions,
+			"status":               status,
+			"active_future":        state.activeID,
+			"last_index_at_ms":     timeMillis(state.lastUnderlyingAt),
+			"last_future_at_ms":    timeMillis(state.lastActiveFeedAt),
+			"last_volume_at_ms":    timeMillis(state.lastVolumeAt),
+			"last_repair_at_ms":    timeMillis(state.lastRepairAt),
+			"repair_attempts":      state.repairAttempts,
+			"last_repair_failed":   state.lastRepairFailed,
+			"auto_renew_enabled":   m.AutoRenew,
+			"last_renew_at_ms":     timeMillis(state.lastRenewAt),
+			"renew_attempts":       state.renewAttempts,
+			"silent_reassertions":  state.silentReassertions,
 			"last_recovery_action": state.lastRecoveryAction,
 		}
 	}

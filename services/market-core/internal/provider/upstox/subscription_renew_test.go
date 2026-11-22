@@ -7,7 +7,9 @@ import (
 
 func TestRenewFullCyclesOnlyExistingEnabledFuturesKeys(t *testing.T) {
 	s, err := NewSubscriptionState("qnext", ModeLTPC, []string{"NSE_INDEX|Nifty 50"})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Subscribe(context.Background(), []string{"NSE_FO|101", "NSE_FO|100"}); err != nil {
 		t.Fatal(err)
 	}
@@ -47,8 +49,12 @@ func TestRenewFullCyclesOnlyExistingEnabledFuturesKeys(t *testing.T) {
 
 func TestRenewFullReservesBothQueueSlotsOrFailsClosed(t *testing.T) {
 	s, err := NewSubscriptionState("qnext", ModeLTPC, nil)
-	if err != nil { t.Fatal(err) }
-	if err := s.Subscribe(context.Background(), []string{"NSE_FO|100"}); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Subscribe(context.Background(), []string{"NSE_FO|100"}); err != nil {
+		t.Fatal(err)
+	}
 	<-s.Updates()
 	for len(s.updates) < cap(s.updates)-1 {
 		s.updates <- SubscriptionRequest{GUID: "test", Method: MethodChangeMode, Data: SubscriptionData{
@@ -67,5 +73,7 @@ func TestRenewFullReservesBothQueueSlotsOrFailsClosed(t *testing.T) {
 	if err := s.RenewFull(ctx, []string{"NSE_FO|100"}); err == nil {
 		t.Fatal("cancelled renewal was accepted")
 	}
-	if len(s.updates) != length { t.Fatal("cancelled renewal modified queue") }
+	if len(s.updates) != length {
+		t.Fatal("cancelled renewal modified queue")
+	}
 }
