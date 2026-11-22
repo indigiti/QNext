@@ -18,6 +18,10 @@ import { applyTheme, currentTheme } from './theme';
 import { registerVelaAppearanceAction } from './vela-theme-action';
 import { createScreenAwakeController } from './screen-awake';
 import { registerVelaScreenAwakeAction } from './vela-screen-awake-action';
+import {
+  registerVelaChartAlertAction, syncVelaChartAlertAction,
+  velaChartAlerts, withChartAlertSwitch,
+} from './vela-alert-toggle';
 import { installVelaWheelZoomControl, registerVelaZoomSettings } from './vela-zoom-settings';
 import './theme.css';
 
@@ -165,6 +169,7 @@ async function bootstrapVela(timeframes: string[]) {
   registerVelaAppearanceAction();
   registerVelaZoomSettings();
   registerVelaScreenAwakeAction(screenAwake);
+  registerVelaChartAlertAction(velaChartAlerts);
   const disposeWheelZoom = installVelaWheelZoomControl(document.getElementById('app')!);
   window.addEventListener('pagehide', disposeWheelZoom, { once: true });
   const workspace = new VelaWorkspace('#app', {
@@ -180,19 +185,23 @@ async function bootstrapVela(timeframes: string[]) {
       qnext: () => createProvider(pineTrace),
     },
     engines: {
-      qnext: () => new QNextIndicatorEngine(),
-      pine: () => withConfirmedMtfRecompute(createQNextPineEngine(resolveQNextPineMode(runtime.pineEngine), pineTrace)),
+      qnext: () => withChartAlertSwitch(new QNextIndicatorEngine(), velaChartAlerts),
+      pine: () => withChartAlertSwitch(
+        withConfirmedMtfRecompute(createQNextPineEngine(resolveQNextPineMode(runtime.pineEngine), pineTrace)),
+        velaChartAlerts,
+      ),
     },
     indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',
     topbar: {
       left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
       // Zoom action sits immediately before the Data Window / Object Tree buttons.
-      right: ['actions', 'alerts', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot', 'fullscreen'],
+      right: ['actions', 'alerts', 'qnext.alerts.toggle', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot', 'fullscreen'],
     },
   });
 
   window.__QNEXT_WORKSPACE__ = workspace;
+  syncVelaChartAlertAction();
   installVelaPanHistory(workspace);
   if (pineTrace) installVelaSignalTrace(workspace, pineTrace);
   const labResolverProvider = createProvider();
