@@ -5,6 +5,7 @@
  */
 body.ops-shell-ready {
   --ops-sidebar-width: 268px;
+  color-scheme: dark;
   --ops-bg: #090e1b;
   --ops-sidebar: rgba(19, 28, 45, .88);
   --ops-panel: #151e2e;
@@ -113,6 +114,15 @@ body.ops-shell-ready .ops-search input {
   font-size: .82rem;
 }
 body.ops-shell-ready .ops-search input::placeholder { color: var(--ops-muted); opacity: .85; }
+body.ops-shell-ready .ops-search-feedback {
+  margin: -.35rem .35rem .2rem;
+  padding: .55rem .6rem;
+  border-radius: 9px;
+  color: var(--ops-muted);
+  font-size: .73rem;
+  background: var(--ops-panel-soft);
+}
+body.ops-shell-ready .ops-search-feedback[hidden] { display: none; }
 body.ops-shell-ready .ops-nav { gap: 1.1rem; }
 body.ops-shell-ready .ops-nav-group { gap: .27rem; }
 body.ops-shell-ready .ops-nav-label {
@@ -294,6 +304,7 @@ body.ops-shell-ready :is(button, input, select, textarea, a):focus-visible {
 
 /* Theme overrides use QNext's existing theme state and preserve contrast. */
 :root[data-qnext-theme='light'] body.ops-shell-ready {
+  color-scheme: light;
   --ops-bg: #eff3f8;
   --ops-sidebar: rgba(248, 250, 253, .91);
   --ops-panel: #fff;
