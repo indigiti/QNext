@@ -1,5 +1,6 @@
 import './admin-shell.css';
 import './admin-sylva.css';
+import './admin-sylva-v2.css';
 
 export {};
 
@@ -182,13 +183,38 @@ function classifyCards(): void {
   });
 }
 
+// Inline, fixed SVG glyphs keep the navigation crisp across DPI and
+// platforms without loading a font CDN or additional icon runtime.
+const navIconPaths: Record<View, string> = {
+  dashboard: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  market: '<path d="M3 12h3l3-7 4 14 3-7h5"/><path d="M3 4v2M21 18v2"/>',
+  candles: '<path d="M6 3v18M18 3v18"/><rect x="3" y="7" width="6" height="9" rx="1"/><rect x="15" y="5" width="6" height="13" rx="1"/>',
+  synthetic: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>',
+  indicators: '<path d="M4 17 10 7l4 6 6-9"/><path d="M4 21h16"/>',
+  intelligence: '<path d="M12 18v4M8 12v8M16 8v12M4 16v4M20 4v16"/>',
+  lab: '<path d="M9 3h6M10 3v7l-6 9a2 2 0 0 0 1.7 3h12.6a2 2 0 0 0 1.7-3l-6-9V3"/><path d="M7 16h10"/>',
+  runtime: '<path d="m13 2-3 8h8L9 22l2-9H4z"/>',
+  releases: '<path d="M12 16V3m-5 5 5-5 5 5"/><path d="M4 16v4h16v-4"/>',
+  diagnostics: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
+  storage: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v7c0 1.7 4 3 9 3s9-1.3 9-3V5M3 12v7c0 1.7 4 3 9 3s9-1.3 9-3v-7"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l-2.8 2.8a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6h-4a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-2.8-2.8a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14v-4a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l2.8-2.8a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3h4a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l2.8 2.8a1.7 1.7 0 0 0-.3 1.9A1.7 1.7 0 0 0 21 10v4a1.7 1.7 0 0 0-1.6 1z"/>',
+  security: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/>',
+};
+
+function navIcon(view: View): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+    focusable="false" aria-hidden="true">${navIconPaths[view]}</svg>`;
+}
+
 function navMarkup(): string {
   return navGroups.map((group) => `
     <div class="ops-nav-group">
       <div class="ops-nav-label">${html(group.label)}</div>
       ${group.items.map((item) => `
         <button type="button" class="ops-nav-item" data-ops-nav="${item.view}" data-search="${html(`${group.label} ${item.label}`.toLowerCase())}" title="${html(item.label)}" aria-label="${html(item.label)}">
-          <span class="ops-nav-icon" aria-hidden="true">${html(item.icon)}</span>
+          <span class="ops-nav-icon" aria-hidden="true">${navIcon(item.view)}</span>
           <span>${html(item.label)}</span>
         </button>
       `).join('')}
@@ -308,7 +334,7 @@ function marketHealthSummary(): { symbols: string; gaps: string; message: string
     const missingText = Array.from(row.querySelectorAll<HTMLElement>('.five-second-symbol-kpis > span'))
       .find((item) => item.textContent?.trim().startsWith('Missing'))
       ?.querySelector('strong')?.textContent?.trim();
-    if (!missingText || !/^\\d[\\d,]*$/.test(missingText)) {
+    if (!missingText || !/^\d[\d,]*$/.test(missingText)) {
       incomplete++;
       continue;
     }
@@ -335,7 +361,7 @@ function miniFiveSecondRows(): string {
     const missing = kpis.find((item) => item.textContent?.trim().startsWith('Missing'))?.querySelector('strong')?.textContent?.trim() ?? '—';
     const status = row.querySelector<HTMLElement>('.five-second-symbol-title .badge')?.textContent?.trim() ?? 'WAITING';
     const needsAttention = status.toUpperCase() === 'CHECK' || (Number(missing.replaceAll(',', '')) > 0);
-    const percentage = /^\\d+(?:\\.\\d+)?%$/.test(health) ? Math.min(100, Math.max(0, Number(health.slice(0, -1)))) : null;
+    const percentage = /^\d+(?:\.\d+)?%$/.test(health) ? Math.min(100, Math.max(0, Number(health.slice(0, -1)))) : null;
     const meter = percentage === null
       ? '<span class="ops-health-track ops-health-track-empty" aria-label="Health percentage unavailable"></span>'
       : `<span class="ops-health-track" role="progressbar" aria-label="${html(symbol)} candle health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}"><span class="ops-health-fill" style="width: ${percentage}%"></span></span>`;
@@ -354,7 +380,7 @@ function dashboardMarkup(): string {
   const feedState = textFrom('#observability-health', summaryValue('#feed-summary', ['status', 'authority']));
   const fiveSecondState = textFrom('#five-second-day-health-state', 'WARMING');
   const release = summaryValue('#release-status', ['active', 'current', 'release']);
-  const transport = textFrom('#browser-transport-status', 'Probing…').replace(/^Browser transport:\\s*/i, '');
+  const transport = textFrom('#browser-transport-status', 'Probing…').replace(/^Browser transport:\s*/i, '');
   const sessionDay = new Intl.DateTimeFormat('en-IN', {
     timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'short',
   }).format(new Date());
@@ -465,15 +491,16 @@ function renderDashboard(): void {
 
   // Keep the dashboard DOM stable: replacing the whole card on live telemetry
   // refresh used to drop focus, break button interactions and move the viewport.
+  const market = marketHealthSummary();
   const stats: Record<string, string> = {
     runtime: summaryValue('#runtime-status', ['state', 'status', 'service']),
     feed: textFrom('#observability-health', summaryValue('#feed-summary', ['status', 'authority'])),
     'five-second': textFrom('#five-second-day-health-state', 'WARMING'),
     transport: textFrom('#browser-transport-status', 'Probing…').replace(/^Browser transport:\s*/i, ''),
     release: summaryValue('#release-status', ['active', 'current', 'release']),
-    tracked: marketHealthSummary().symbols,
-    gaps: marketHealthSummary().gaps,
-    'market-note': marketHealthSummary().message,
+    tracked: market.symbols,
+    gaps: market.gaps,
+    'market-note': market.message,
   };
   for (const [name, value] of Object.entries(stats)) {
     dashboard.querySelectorAll<HTMLElement>(`[data-ops-stat="${name}"]`).forEach((element) => {
