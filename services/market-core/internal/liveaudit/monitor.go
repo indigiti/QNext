@@ -304,9 +304,14 @@ func (m *Monitor) emit(at time.Time, alert Alert) {
 		m.raised = make(map[string]bool)
 	}
 	id := fmt.Sprintf("%s|%s|%s|%d", alert.Kind, alert.InstrumentID, alert.Timeframe, alert.OpenTimeMS)
-	// Capture/audit loss is summarized once per monitoring day; counts still
-	// expose total drops, rather than repeating a high-volume warning every poll.
-	if m.raised[id] {
+	// Non-bar diagnostics have no candle key; record each new counter
+	// transition while suppressing unchanged totals between polls.
+	if alert.InstrumentID == "" {
+		id += "|" + alert.Detail
+	}
+	// A published candle produces at most one alert of each kind per session.
+	// Counter transitions are distinct evidence events; unchanged counts are not.
+		if m.raised[id] {
 		return
 	}
 	m.raised[id] = true
