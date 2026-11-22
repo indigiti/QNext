@@ -313,6 +313,21 @@ body.ops-shell-ready .ops-command-trigger {
   font-size: .76rem;
   font-weight: 540;
 }
+body.ops-shell-ready .ops-command-trigger svg {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+}
+body.ops-shell-ready .ops-command-trigger > span {
+  flex: 1 1 auto;
+  text-align: left;
+}
+body.ops-shell-ready .ops-overview-caption {
+  color: #d2e1d3;
+  font-size: .75rem;
+  font-weight: 680;
+  letter-spacing: .015em;
+}
 body.ops-shell-ready .ops-command-trigger kbd {
   background: rgba(242,246,241,.09);
   color: #d2dbd0;
@@ -421,7 +436,8 @@ body.ops-shell-ready .ops-shortcut-grid > button:hover {
   background: rgba(246,250,245,.8);
   border-bottom-color: #dae4d9;
 }
-:root[data-qnext-theme="light"] body.ops-shell-ready .ops-page-heading .eyebrow { color: #283e2d; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-page-heading .eyebrow,
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-overview-caption { color: #283e2d; }
 :root[data-qnext-theme="light"] body.ops-shell-ready .ops-command-trigger {
   background: #fff;
   border-color: #d2ddd1;
