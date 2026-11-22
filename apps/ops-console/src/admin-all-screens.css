@@ -1,0 +1,715 @@
+/*
+ * QNeXT authenticated specialist workspaces.
+ * Full-page structural redesign, not another generic sidebar skin.
+ *
+ * The old controls and REST/WSS bindings are intentionally kept in the
+ * same DOM nodes. This stylesheet only changes presentation. No remote
+ * imagery, web fonts, animations, or large backdrop-filter cards.
+ */
+body.ops-shell-ready {
+  --ops-editor-background: #111a1a;
+  --ops-screen-surface: #1d2525;
+  --ops-screen-inset: #242d2d;
+  --ops-screen-outline: rgba(224,239,227,.12);
+  --ops-screen-label: #bbc9c0;
+  --ops-screen-dim: #97a99f;
+  --ops-screen-white: #f6f8f1;
+  --ops-screen-focus: #c3f052;
+}
+
+/* Each specialist workspace has its own content hierarchy. It uses QNeXT's
+ * existing route state and is never mistaken for a market-data KPI. */
+body.ops-shell-ready main.grid > .ops-screen-frame {
+  grid-column: 1 / -1;
+  display: grid;
+  min-width: 0;
+  gap: clamp(.9rem,1.5vw,1.3rem);
+  padding: 0 .05rem .45rem;
+  margin-bottom: .15rem;
+  color: var(--ops-screen-white);
+}
+body.ops-shell-ready main.grid > .ops-screen-frame[hidden] { display: none !important; }
+body.ops-shell-ready .ops-screen-head {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) minmax(235px,305px);
+  gap: clamp(1.2rem,2.4vw,2.7rem);
+  align-items: center;
+  min-height: 186px;
+  padding: .5rem 0 .65rem;
+}
+body.ops-shell-ready .ops-screen-headcopy { min-width: 0; }
+body.ops-shell-ready .ops-screen-path {
+  display: inline-block;
+  margin-bottom: .76rem;
+  color: #dfebe1;
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: -.015em;
+}
+body.ops-shell-ready .ops-screen-index {
+  display: inline-block;
+  margin-left: 1rem;
+  padding: .25rem .52rem;
+  border: 1px solid rgba(250,255,240,.16);
+  border-radius: 999px;
+  color: #bdcabf;
+  font: 680 .65rem/1.2 ui-monospace,Consolas,monospace;
+  font-variant-numeric: tabular-nums;
+}
+body.ops-shell-ready .ops-screen-head h2 {
+  margin: 0 0 .65rem;
+  max-width: 760px;
+  color: var(--ops-screen-white);
+  font-size: clamp(2rem,3.15vw,3rem);
+  font-weight: 810;
+  letter-spacing: -.059em;
+  line-height: 1.11;
+  text-wrap: balance;
+}
+body.ops-shell-ready .ops-screen-headcopy p {
+  max-width: 710px;
+  margin: 0;
+  color: #c4d1c8;
+  font-size: clamp(.84rem,1vw,.97rem);
+  line-height: 1.6;
+}
+body.ops-shell-ready .ops-screen-aside {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+  align-self: stretch;
+  justify-content: center;
+  padding: 1rem 1.18rem;
+  border: 1px solid rgba(237,247,236,.13);
+  border-radius: 19px;
+  background: linear-gradient(125deg,rgba(89,109,99,.15),rgba(14,21,20,.19));
+}
+body.ops-shell-ready .ops-screen-aside::before {
+  content: '';
+  display: block;
+  width: 27px;
+  height: 4px;
+  margin-bottom: .3rem;
+  border-radius: 99px;
+  background: #c3f052;
+}
+body.ops-shell-ready .ops-screen-frame[data-ops-tone="sky"] .ops-screen-aside::before { background: #91c3fa; }
+body.ops-shell-ready .ops-screen-frame[data-ops-tone="coral"] .ops-screen-aside::before { background: #ffad90; }
+body.ops-shell-ready .ops-screen-frame[data-ops-tone="violet"] .ops-screen-aside::before { background: #c4b6f9; }
+body.ops-shell-ready .ops-screen-aside-label {
+  color: #b4c3ba;
+  font-size: .62rem;
+  font-weight: 760;
+  letter-spacing: .11em;
+}
+body.ops-shell-ready .ops-screen-aside strong {
+  color: #eff6e9;
+  font-size: clamp(.95rem,1.22vw,1.12rem);
+  line-height: 1.4;
+  letter-spacing: -.02em;
+}
+body.ops-shell-ready .ops-screen-aside-note {
+  color: #a6b7ac;
+  font-size: .71rem;
+}
+body.ops-shell-ready .ops-screen-toolbar {
+  display: flex;
+  gap: .8rem 1.25rem;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: .2rem 0 .87rem;
+  border-bottom: 1px solid rgba(234,248,235,.11);
+}
+body.ops-shell-ready .ops-screen-related,
+body.ops-shell-ready .ops-screen-sections {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: .4rem;
+  align-items: center;
+}
+body.ops-shell-ready .ops-screen-sections[hidden] { display: none !important; }
+body.ops-shell-ready .ops-screen-related::before {
+  content: 'EXPLORE';
+  margin-right: .38rem;
+  font-size: .64rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  color: #a8b9ac;
+}
+body.ops-shell-ready .ops-related-link,
+body.ops-shell-ready .ops-section-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  min-height: 37px;
+  max-width: 100%;
+  padding: .45rem .78rem;
+  border-radius: 999px;
+  border: 1px solid rgba(232,245,225,.17);
+  color: #e8f0e6;
+  background: rgba(22,31,30,.67);
+  font-size: .75rem;
+  line-height: 1.3;
+  font-weight: 680;
+  text-align: left;
+  transition: background 100ms ease,border-color 100ms ease;
+}
+body.ops-shell-ready .ops-related-link:hover,
+body.ops-shell-ready .ops-section-link:hover {
+  background: rgba(195,240,82,.11);
+  border-color: rgba(195,240,82,.40);
+}
+body.ops-shell-ready .ops-related-link > span { color: #c3f052; }
+body.ops-shell-ready .ops-section-link {
+  background: rgba(249,251,245,.045);
+  border-color: rgba(237,242,232,.10);
+  white-space: normal;
+}
+body.ops-shell-ready .ops-section-number {
+  color: #c3f052;
+  font-size: .67rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+/* Deep pages: matte cards, clear editorial headings and generous gutters.
+ * This intentionally overrules the old generic .span-3 grid behavior. */
+body.ops-shell-ready main.grid > .card.ops-screen-card {
+  grid-column: 1 / -1;
+  align-self: start;
+  min-width: 0;
+  padding: clamp(1.25rem,1.8vw,1.95rem);
+  border: 1px solid var(--ops-screen-outline);
+  border-radius: 20px;
+  background: var(--ops-screen-surface);
+  box-shadow: none;
+  scroll-margin-top: 100px;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card:focus-within {
+  border-color: rgba(195,240,82,.20);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card > .card-head {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .8rem 1.25rem;
+  margin-bottom: 1.35rem;
+  padding-bottom: 1.05rem;
+  border-bottom: 1px solid var(--ops-screen-outline);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card > .card-head > div { max-width: 850px; }
+body.ops-shell-ready main.grid > .card.ops-screen-card .card-head .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .48rem;
+  margin: 0 0 .36rem;
+  color: var(--ops-screen-label);
+  font-size: .69rem;
+  font-weight: 810;
+  letter-spacing: .07em;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card > .card-head .eyebrow::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #c3f052;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card[data-ops-tone="sky"] > .card-head .eyebrow::before { background: #91c3fa; }
+body.ops-shell-ready main.grid > .card.ops-screen-card[data-ops-tone="coral"] > .card-head .eyebrow::before { background: #ffad90; }
+body.ops-shell-ready main.grid > .card.ops-screen-card[data-ops-tone="violet"] > .card-head .eyebrow::before { background: #c4b6f9; }
+body.ops-shell-ready main.grid > .card.ops-screen-card .card-head h2 {
+  margin: 0 0 .3rem;
+  color: #f5f7ef;
+  font-size: clamp(1.29rem,1.7vw,1.58rem);
+  line-height: 1.22;
+  font-weight: 785;
+  letter-spacing: -.047em;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card > .card-head .muted {
+  margin: .4rem 0 0;
+  color: #b5c4b8;
+  font-size: .78rem;
+  line-height: 1.55;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .muted {
+  color: var(--ops-screen-label);
+  line-height: 1.55;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .actions,
+body.ops-shell-ready main.grid > .card.ops-screen-card .line {
+  align-items: center;
+  gap: .6rem .8rem;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .actions:not(.indicator-row-actions) {
+  margin-top: 1.1rem;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .card-head .actions {
+  margin-top: 0;
+}
+
+/* Designed system status tiles: truthful data from the existing APIs. */
+body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: .75rem;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .45rem;
+  min-width: 0;
+  min-height: 112px;
+  padding: 1.08rem 1.13rem;
+  border: 1px solid rgba(244,249,240,.10);
+  border-radius: 15px;
+  background: #293233;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid span {
+  margin: 0;
+  color: #c5d1c5;
+  font-size: .70rem;
+  font-weight: 670;
+  line-height: 1.35;
+  letter-spacing: .004em;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid strong {
+  color: #f6faf0;
+  font-size: clamp(.91rem,1.28vw,1.18rem);
+  font-weight: 780;
+  line-height: 1.4;
+  letter-spacing: -.018em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  font-variant-numeric: tabular-nums;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,315px),1fr));
+  gap: .78rem;
+  align-items: stretch;
+  margin-top: .9rem;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-card,
+body.ops-shell-ready main.grid > .card.ops-screen-card .indicator-kind-panel,
+body.ops-shell-ready main.grid > .card.ops-screen-card .cron-setup,
+body.ops-shell-ready main.grid > .card.ops-screen-card .diagnostics-log-wrap {
+  border: 1px solid rgba(234,248,228,.11);
+  border-radius: 16px;
+  background: var(--ops-screen-inset);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-card {
+  min-width: 0;
+  padding: 1.05rem;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-card > strong,
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-card .line strong {
+  color: #eff5ed;
+  font-size: .84rem;
+  font-weight: 770;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-kv {
+  min-height: 29px;
+  align-items: baseline;
+  gap: .4rem;
+  padding: .3rem 0;
+  border-color: rgba(239,250,234,.09);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-kv span,
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-kv small { color: #bdccbd; }
+body.ops-shell-ready main.grid > .card.ops-screen-card .feed-kv strong {
+  color: #f0f6e9;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Controls are functional UI, not tiny blue pill buttons from the old console. */
+body.ops-shell-ready main.grid > .card.ops-screen-card button:not(.indicator-icon-action):not(.qnext-theme-choice) {
+  min-height: 39px;
+  border-radius: 11px;
+  padding: .56rem .86rem;
+  font-size: .77rem;
+  font-weight: 730;
+  letter-spacing: -.007em;
+  transition: background 105ms ease,border-color 105ms ease;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card button:not(.secondary):not(.danger):not(.indicator-icon-action):not(.qnext-theme-choice) {
+  border: 1px solid transparent;
+  color: #1c2915;
+  background: #c3f052;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card button:not(.secondary):not(.danger):not(.indicator-icon-action):not(.qnext-theme-choice):hover {
+  background: #d7f78a;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card button.secondary {
+  border: 1px solid rgba(238,249,233,.17);
+  color: #e3ece3;
+  background: rgba(243,250,242,.075);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card button.secondary:hover {
+  border-color: rgba(195,240,82,.4);
+  background: rgba(195,240,82,.11);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card button.danger {
+  border: 1px solid rgba(252,164,149,.29);
+  color: #ffb6a9;
+  background: rgba(206,82,69,.18);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card button.danger:hover {
+  background: rgba(206,82,69,.27);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card button:disabled { opacity: .46; }
+body.ops-shell-ready main.grid > .card.ops-screen-card :is(button,input,select,textarea,a):focus-visible {
+  outline: 2px solid #c3f052;
+  outline-offset: 3px;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+  min-height: 42px;
+  border: 1px solid rgba(234,249,231,.22);
+  border-radius: 11px;
+  background: #151e1e;
+  color: #f6f9f1;
+  line-height: 1.45;
+  padding: .68rem .81rem;
+  font-size: .82rem;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card :is(input,textarea)::placeholder { color: #a0b2a5; opacity: 1; }
+body.ops-shell-ready main.grid > .card.ops-screen-card :is(select,input) { accent-color: #c3f052; }
+body.ops-shell-ready main.grid > .card.ops-screen-card input[type="checkbox"] {
+  accent-color: #c3f052;
+  width: 18px;
+  height: 18px;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card :is(label,fieldset) { color: #d5e2d5; }
+body.ops-shell-ready main.grid > .card.ops-screen-card textarea {
+  resize: vertical;
+  min-height: 240px;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card #config-editor,
+body.ops-shell-ready main.grid > .card.ops-screen-card #pine-script-editor {
+  min-height: 440px;
+  font: 500 .83rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-variant-ligatures: none;
+  tab-size: 2;
+  background: #101818;
+  color: #e9f6e6;
+}
+
+/* Existing enabled-symbol and timeframe controls become large, deliberate
+ * option rows. Checked state is derived from the API-created input. */
+body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(min(100%,235px),1fr));
+  gap: .75rem;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle {
+  min-height: 83px;
+  padding: 1.05rem;
+  border: 1px solid rgba(237,250,234,.12);
+  border-radius: 15px;
+  background: #25302d;
+  transition: background 105ms ease,border-color 105ms ease;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle:has(input:checked) {
+  border-color: rgba(195,240,82,.4);
+  background: linear-gradient(135deg,rgba(154,200,87,.14),rgba(39,55,45,.7));
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle:hover {
+  border-color: rgba(195,240,82,.34);
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle strong {
+  color: #eff6ed;
+  font-size: .84rem;
+  font-weight: 770;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle small {
+  color: #bad2b7;
+  font-size: .68rem;
+  font-weight: 670;
+}
+
+/* Table/data areas should retain density and legibility. */
+body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table-wrap,
+body.ops-shell-ready main.grid > .card.ops-screen-card .diagnostics-log-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid rgba(238,246,235,.12);
+  border-radius: 15px;
+  background: #172120;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .77rem;
+  font-variant-numeric: tabular-nums;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table th {
+  position: relative;
+  color: #c6d6c6;
+  font-size: .67rem;
+  font-weight: 750;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  background: #2b3632;
+  padding: .92rem .78rem;
+  white-space: nowrap;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table td {
+  padding: .82rem .78rem;
+  color: #eef5ea;
+  border-color: rgba(232,244,234,.085);
+  vertical-align: middle;
+}
+body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table tbody tr:hover { background: rgba(195,240,82,.045); }
+body.ops-shell-ready main.grid > .card.ops-screen-card pre,
+body.ops-shell-ready main.grid > .card.ops-screen-card code {
+  font-variant-ligatures: none;
+}
+body.ops-shell-ready #diagnostics-log {
+  min-height: 270px;
+  max-height: min(61vh,680px);
+  overflow: auto;
+  border-radius: 11px;
+  background: #0f1918;
+  color: #cfe9d5;
+  padding: 1.12rem;
+  font: 500 .75rem/1.65 ui-monospace,Consolas,monospace;
+}
+
+/* Research screens: real two-pane indicator workspace, readable script
+ * editor and clearly separated candidate/experiment cards. */
+body.ops-shell-ready #custom-indicators-card .indicator-workspace {
+  grid-template-columns: minmax(255px, .76fr) minmax(0,2.15fr);
+  gap: 1.05rem;
+  align-items: start;
+}
+body.ops-shell-ready #custom-indicators-card .indicator-library-pane,
+body.ops-shell-ready #custom-indicators-card .indicator-editor-pane {
+  min-width: 0;
+  padding: clamp(1rem,1.4vw,1.45rem);
+  border: 1px solid rgba(234,247,229,.12);
+  border-radius: 18px;
+  background: #26302e;
+  color: #f5f8ef;
+}
+body.ops-shell-ready #custom-indicators-card .indicator-library-pane {
+  position: sticky;
+  top: 92px;
+  max-height: calc(100vh - 118px);
+  overflow-y: auto;
+}
+body.ops-shell-ready #custom-indicators-card .indicator-pane-heading h3 {
+  color: #f6f8ef;
+  font-size: 1.09rem;
+  font-weight: 770;
+  letter-spacing: -.037em;
+}
+body.ops-shell-ready #custom-indicators-card .custom-indicator-row {
+  border: 1px solid rgba(234,247,229,.1);
+  border-radius: 13px;
+  padding: 1.02rem;
+  background: #1e2827;
+}
+body.ops-shell-ready #custom-indicators-card .custom-indicator-row:hover { border-color: rgba(195,240,82,.29); }
+body.ops-shell-ready #custom-indicators-card .indicator-icon-action {
+  border: 1px solid rgba(238,251,233,.19);
+  border-radius: 11px;
+  background: #303c37;
+  color: #e8f2e4;
+}
+body.ops-shell-ready #custom-indicators-card .indicator-icon-action:focus-visible { outline: 2px solid #c3f052; }
+body.ops-shell-ready :is(#quant-intelligence-card,#intelligence-lab-card) .feed-provider-card {
+  background: #293232;
+  border-color: rgba(242,249,238,.12);
+  border-radius: 17px;
+}
+body.ops-shell-ready :is(#quant-intelligence-card,#intelligence-lab-card) .feed-provider-grid { margin-top: 1rem; }
+
+/* Page compositions: the first iteration was uniformly full-width. These
+ * layouts make the information architecture fit the actual QNext workload. */
+@media (min-width: 1181px) {
+  body.ops-shell-ready[data-ops-view="candles"] #candle-timeframes-card,
+  body.ops-shell-ready[data-ops-view="candles"] #chart-timeframes-card {
+    grid-column: span 6;
+    height: 100%;
+  }
+  body.ops-shell-ready[data-ops-view="settings"] #broker-secrets-card { grid-column: span 4; }
+  body.ops-shell-ready[data-ops-view="settings"] #market-config-card { grid-column: span 8; }
+}
+body.ops-shell-ready[data-ops-view="releases"] #release-card,
+body.ops-shell-ready[data-ops-view="security"] #admin-access-card {
+  max-width: 1050px;
+}
+body.ops-shell-ready[data-ops-view="settings"] #broker-secrets-card #secret-form {
+  display: grid;
+  gap: .75rem;
+}
+body.ops-shell-ready[data-ops-view="releases"] #release-card .actions.vertical {
+  align-items: flex-start;
+  max-width: 610px;
+}
+body.ops-shell-ready[data-ops-view="releases"] #release-card .actions.vertical :is(select,button) {
+  width: 100%;
+}
+body.ops-shell-ready[data-ops-view="storage"] #storage-health-card .storage-days-heading {
+  margin-top: 1.55rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid var(--ops-screen-outline);
+}
+body.ops-shell-ready[data-ops-view="market"] #feed-status-card .feed-summary {
+  margin-bottom: 1.05rem;
+}
+body.ops-shell-ready #historical-repair-card .history-repair-actions {
+  padding: .65rem 0 .25rem;
+  flex-wrap: wrap;
+}
+body.ops-shell-ready #active-markets-card .actions,
+body.ops-shell-ready #candle-timeframes-card .actions,
+body.ops-shell-ready #chart-timeframes-card .actions {
+  padding-top: 1rem;
+  border-top: 1px solid var(--ops-screen-outline);
+  margin-top: 1.3rem;
+}
+
+/* Light mode: no charcoal backgrounds or lime-on-white low-contrast text. */
+:root[data-qnext-theme="light"] body.ops-shell-ready {
+  --ops-editor-background: #fff;
+  --ops-screen-surface: #fff;
+  --ops-screen-inset: #f2f6f0;
+  --ops-screen-outline: #d8e3d6;
+  --ops-screen-label: #526b57;
+  --ops-screen-dim: #607565;
+  --ops-screen-white: #213829;
+  --ops-screen-focus: #417b37;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-frame { color: #24382a; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-path,
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-head h2 { color: #24382a; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-index {
+  border-color: #ccdccc; color: #4f6655;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-headcopy p { color: #4c6752; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-aside {
+  border-color: #d5e3d4; background: #f7faf3;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-aside-label,
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-aside-note { color: #516a55; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-aside strong { color: #253e29; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-toolbar { border-color: #d5e1d2; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-screen-related::before { color: #617562; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-related-link,
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-section-link {
+  color: #24402a; background: #fff; border-color: #cbdcca;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-related-link > span,
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-section-number { color: #44783b; }
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-related-link:hover,
+:root[data-qnext-theme="light"] body.ops-shell-ready .ops-section-link:hover { background: #e7f3dd; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card {
+  background: #fff; color: #293d2d; border-color: #d8e3d6;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card > .card-head,
+:root[data-qnext-theme="light"] body.ops-shell-ready #active-markets-card .actions,
+:root[data-qnext-theme="light"] body.ops-shell-ready #candle-timeframes-card .actions,
+:root[data-qnext-theme="light"] body.ops-shell-ready #chart-timeframes-card .actions { border-color: #d8e3d6; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .card-head h2 { color: #263e2c; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card > .card-head .muted,
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .muted { color: #59715e; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid > div {
+  background: #edf3ed; border-color: #d6e1d5;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid span { color: #4e6553; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid strong { color: #253b2b; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card :is(.feed-provider-card,.indicator-kind-panel,.cron-setup,.diagnostics-log-wrap) {
+  background: #f1f5f0; border-color: #d7e3d5;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-card > strong,
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-card .line strong,
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .feed-kv strong { color: #273d2b; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .feed-kv span,
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .feed-kv small { color: #506c56; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card button.secondary {
+  color: #2c4b34; background: #eff5ec; border-color: #cedfca;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card button.secondary:hover { background: #e0efda; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card button.danger {
+  color: #922e27; background: #fff0eb; border-color: #edc8c1;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card :is(input,select,textarea):not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+  color: #263c2d; background: #f9fbf7; border-color: #bdcdbd;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card :is(input,textarea)::placeholder { color: #5f7360; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card :is(label,fieldset) { color: #334f3a; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card :is(#config-editor,#pine-script-editor) {
+  background: #f7faf6; color: #253b2c;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle {
+  background: #f0f5ef; border-color: #d7e3d4;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle:has(input:checked) {
+  border-color: #8aad76; background: #e6f1dc;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle strong { color: #27412d; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle small { color: #477248; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card :is(.storage-table-wrap,.diagnostics-log-wrap) {
+  background: #f7faf6; border-color: #d4e0d1;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table th { background: #e5efe2; color: #3b5c41; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table td { color: #29432d; border-color: #d7e3d5; }
+:root[data-qnext-theme="light"] body.ops-shell-ready main.grid > .card.ops-screen-card .storage-table tbody tr:hover { background: #eaf3e6; }
+:root[data-qnext-theme="light"] body.ops-shell-ready #diagnostics-log { background: #ecf4e9; color: #254431; }
+:root[data-qnext-theme="light"] body.ops-shell-ready #custom-indicators-card :is(.indicator-library-pane,.indicator-editor-pane) {
+  background: #f2f7f0; border-color: #d4e2d1; color: #263f2a;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #custom-indicators-card .indicator-pane-heading h3 { color: #263f2a; }
+:root[data-qnext-theme="light"] body.ops-shell-ready #custom-indicators-card .custom-indicator-row {
+  color: #263c2d; background: #fff; border-color: #d4e1d2;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #custom-indicators-card .indicator-icon-action {
+  background: #e9f0e5; color: #2b5032; border-color: #cddccd;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready :is(#quant-intelligence-card,#intelligence-lab-card) .feed-provider-card {
+  background: #f1f6f0; border-color: #d4e1d2;
+}
+
+@media (max-width: 1180px) {
+  body.ops-shell-ready main.grid > .card.ops-screen-card { grid-column: 1 / -1; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  body.ops-shell-ready #custom-indicators-card .indicator-workspace { grid-template-columns: minmax(230px,.65fr) minmax(0,1.5fr); }
+}
+@media (max-width: 900px) {
+  body.ops-shell-ready .ops-screen-head { grid-template-columns: 1fr; gap: .85rem; }
+  body.ops-shell-ready .ops-screen-aside { min-height: 86px; padding: .82rem 1rem; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  body.ops-shell-ready #custom-indicators-card .indicator-workspace { grid-template-columns: 1fr; }
+  body.ops-shell-ready #custom-indicators-card .indicator-library-pane { position: static; max-height: none; }
+}
+@media (max-width: 640px) {
+  body.ops-shell-ready .ops-screen-head { min-height: 0; }
+  body.ops-shell-ready .ops-screen-head h2 { font-size: clamp(1.87rem,8.6vw,2.45rem); }
+  body.ops-shell-ready .ops-screen-headcopy p { font-size: .83rem; }
+  body.ops-shell-ready .ops-screen-path { margin-bottom: .5rem; }
+  body.ops-shell-ready .ops-screen-index { margin-left: .5rem; }
+  body.ops-shell-ready .ops-screen-toolbar { align-items: stretch; }
+  body.ops-shell-ready .ops-screen-related { order: 2; }
+  body.ops-shell-ready .ops-screen-sections { order: 1; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card { padding: 1rem; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card > .card-head { gap: .72rem; padding-bottom: .85rem; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid { grid-template-columns: 1fr; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .feed-provider-grid { grid-template-columns: minmax(0,1fr); }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .market-toggle-grid { grid-template-columns: minmax(0,1fr); }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .status-grid > div { min-height: 83px; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .actions button { max-width: 100%; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .card-head .actions { width: 100%; }
+  body.ops-shell-ready main.grid > .card.ops-screen-card .card-head .actions button { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.ops-shell-ready :is(.ops-related-link,.ops-section-link,.ops-screen-card button,.ops-screen-card .market-toggle) {
+    transition: none !important;
+  }
+}
