@@ -1,0 +1,399 @@
+/*
+ * QNeXT control-plane design system, inspired by modern frosted-glass admin
+ * layouts. Original styling; no third-party template assets or runtime.
+ * Glass effects are limited to the navigation and header compositing layers.
+ */
+body.ops-shell-ready {
+  --ops-sidebar-width: 268px;
+  color-scheme: dark;
+  --ops-bg: #090e1b;
+  --ops-sidebar: rgba(19, 28, 45, .88);
+  --ops-panel: #151e2e;
+  --ops-panel-soft: #111a2a;
+  --ops-border: rgba(144, 166, 198, .17);
+  --ops-border-strong: rgba(166, 191, 226, .30);
+  --ops-text: #f1f5fc;
+  --ops-muted: #a2b0c5;
+  --ops-accent: #9cb9ff;
+  --ops-accent-soft: rgba(118, 156, 248, .18);
+  --ops-glass: rgba(25, 35, 56, .83);
+  --ops-ring: rgba(143, 179, 255, .29);
+  --ops-good: #70dfb2;
+  --ops-bad: #ff8796;
+  background: var(--ops-bg);
+  color: var(--ops-text);
+}
+
+body.ops-shell-ready .shell.ops-shell {
+  grid-template-columns: var(--ops-sidebar-width) minmax(0, 1fr);
+  background: radial-gradient(ellipse at 84% 0%, rgba(95, 122, 196, .11), transparent 35%),
+              radial-gradient(ellipse at 36% 45%, rgba(61, 143, 162, .06), transparent 45%),
+              var(--ops-bg);
+  transition: grid-template-columns 170ms ease;
+}
+
+body.ops-shell-ready .ops-sidebar {
+  gap: 1rem;
+  padding: 1.2rem .85rem;
+  background: var(--ops-sidebar);
+  border-right: 1px solid var(--ops-border);
+  box-shadow: 12px 0 44px rgba(2, 8, 20, .10);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ops-border-strong) transparent;
+}
+
+@supports (backdrop-filter: blur(14px)) {
+  body.ops-shell-ready .ops-sidebar {
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+}
+
+body.ops-shell-ready .ops-brand {
+  gap: .7rem;
+  padding: .15rem .35rem .65rem;
+}
+
+body.ops-shell-ready .ops-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  border: 1px solid rgba(156, 185, 255, .46);
+  background: linear-gradient(135deg, #4774d7, #25417f 62%, #213358);
+  color: #fff;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.24);
+  font-size: .82rem;
+  font-weight: 850;
+}
+body.ops-shell-ready .ops-brand strong { font-size: .99rem; letter-spacing: .025em; }
+body.ops-shell-ready .ops-brand span { color: var(--ops-muted); font-size: .72rem; }
+body.ops-shell-ready .ops-brand-copy { min-width: 0; flex: 1; }
+
+body.ops-shell-ready .ops-dock-toggle,
+body.ops-shell-ready .ops-command-trigger {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 5px 9px;
+  border: 1px solid var(--ops-border);
+  border-radius: 11px;
+  color: var(--ops-text);
+  background: var(--ops-glass);
+  font-size: .86rem;
+}
+body.ops-shell-ready .ops-dock-toggle:hover,
+body.ops-shell-ready .ops-command-trigger:hover {
+  background: var(--ops-accent-soft);
+  border-color: var(--ops-border-strong);
+}
+body.ops-shell-ready .ops-dock-toggle { margin-left: auto; }
+body.ops-shell-ready .ops-command-trigger { gap: .6rem; grid-auto-flow: column; }
+body.ops-shell-ready .ops-command-trigger kbd {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--ops-panel-soft);
+  color: var(--ops-muted);
+  font: 650 .67rem ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+body.ops-shell-ready .ops-search {
+  min-height: 43px;
+  padding: .5rem .75rem;
+  border: 1px solid var(--ops-border);
+  border-radius: 13px;
+  background: var(--ops-panel-soft);
+}
+body.ops-shell-ready .ops-search:focus-within {
+  border-color: var(--ops-accent);
+  box-shadow: 0 0 0 3px var(--ops-ring);
+}
+body.ops-shell-ready .ops-search input {
+  color: var(--ops-text);
+  font-size: .82rem;
+}
+body.ops-shell-ready .ops-search input::placeholder { color: var(--ops-muted); opacity: .85; }
+body.ops-shell-ready .ops-search-feedback {
+  margin: -.35rem .35rem .2rem;
+  padding: .55rem .6rem;
+  border-radius: 9px;
+  color: var(--ops-muted);
+  font-size: .73rem;
+  background: var(--ops-panel-soft);
+}
+body.ops-shell-ready .ops-search-feedback[hidden] { display: none; }
+body.ops-shell-ready .ops-nav { gap: 1.1rem; }
+body.ops-shell-ready .ops-nav-group { gap: .27rem; }
+body.ops-shell-ready .ops-nav-label {
+  color: var(--ops-muted);
+  padding: 0 .8rem .32rem;
+  font-size: .64rem;
+  letter-spacing: .075em;
+}
+body.ops-shell-ready button.ops-nav-item {
+  min-height: 43px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: .7rem;
+  padding: .5rem .7rem;
+  border-radius: 12px;
+  color: var(--ops-muted);
+  font-size: .80rem;
+  font-weight: 630;
+  box-shadow: none;
+}
+body.ops-shell-ready button.ops-nav-item:hover {
+  color: var(--ops-text);
+  background: var(--ops-accent-soft);
+}
+body.ops-shell-ready button.ops-nav-item.active {
+  border: 1px solid rgba(148, 184, 255, .21);
+  color: var(--ops-text);
+  background: var(--ops-accent-soft);
+  box-shadow: inset 3px 0 0 var(--ops-accent);
+}
+body.ops-shell-ready .ops-nav-icon {
+  width: 29px;
+  height: 29px;
+  border-radius: 9px;
+  background: rgba(147, 177, 234, .085);
+  color: var(--ops-accent);
+  font-size: .98rem;
+}
+body.ops-shell-ready button.ops-nav-item.active .ops-nav-icon {
+  background: rgba(144, 176, 251, .16);
+}
+body.ops-shell-ready .ops-sidebar-foot {
+  background: var(--ops-panel-soft);
+  border-color: var(--ops-border);
+  border-radius: 14px;
+  padding: .85rem;
+}
+body.ops-shell-ready .ops-sidebar-health { color: var(--ops-text); }
+body.ops-shell-ready .ops-live-dot { flex: none; }
+
+body.ops-shell-ready .topbar {
+  min-height: 78px;
+  padding: .75rem clamp(1rem, 2.4vw, 2rem);
+  background: rgba(11, 17, 30, .83);
+  border-bottom: 1px solid var(--ops-border);
+}
+body.ops-shell-ready .ops-page-heading .eyebrow {
+  color: var(--ops-accent);
+  letter-spacing: .12em;
+  font-size: .62rem;
+}
+body.ops-shell-ready .ops-page-heading h1 {
+  color: var(--ops-text);
+  font-size: clamp(1.25rem, 1.65vw, 1.55rem);
+  font-weight: 760;
+  letter-spacing: -.028em;
+}
+body.ops-shell-ready .ops-page-heading .muted {
+  max-width: 810px;
+  font-size: .74rem;
+}
+body.ops-shell-ready #ops-content-grid {
+  max-width: 1740px;
+  padding: clamp(1rem, 2.25vw, 2rem);
+  gap: clamp(.8rem, 1.3vw, 1.25rem);
+}
+
+/* Content is intentionally opaque to retain chart/table clarity and
+ * prevent hundreds of expensive backdrop-filter compositing surfaces. */
+body.ops-shell-ready main.grid > .card,
+body.ops-shell-ready .ops-panel,
+body.ops-shell-ready .ops-kpi,
+body.ops-shell-ready .ops-dashboard-hero {
+  color: var(--ops-text);
+  background: var(--ops-panel);
+  border: 1px solid var(--ops-border);
+  border-radius: 18px;
+  box-shadow: 0 10px 35px rgba(2, 8, 21, .13);
+}
+body.ops-shell-ready main.grid > .card { padding: clamp(1rem, 1.7vw, 1.55rem); }
+body.ops-shell-ready .ops-dashboard-hero {
+  padding: clamp(1.25rem, 2vw, 2rem);
+  background: linear-gradient(120deg, rgba(82, 115, 193, .16), rgba(62, 126, 139, .09)), var(--ops-panel);
+}
+body.ops-shell-ready .ops-dashboard-hero h2 { letter-spacing: -.035em; font-size: clamp(1.45rem, 2.1vw, 1.85rem); }
+body.ops-shell-ready .ops-dashboard-hero .muted { color: var(--ops-muted); }
+body.ops-shell-ready .ops-kpi { min-height: 128px; padding: 1.2rem; }
+body.ops-shell-ready .ops-kpi > span { color: var(--ops-muted); }
+body.ops-shell-ready .ops-kpi > strong {
+  color: var(--ops-text);
+  font-size: clamp(1.23rem, 1.8vw, 1.62rem);
+  font-variant-numeric: tabular-nums;
+}
+body.ops-shell-ready .ops-kpi > small,
+body.ops-shell-ready .ops-health-pct small { color: var(--ops-muted); }
+body.ops-shell-ready .ops-kpi:hover,
+body.ops-shell-ready .ops-health-row:hover,
+body.ops-shell-ready .ops-quick-grid button:hover {
+  border-color: var(--ops-border-strong);
+  background: #1a263a;
+  transform: none;
+}
+body.ops-shell-ready .ops-panel-head h3,
+body.ops-shell-ready .card-head h2 { color: var(--ops-text); letter-spacing: -.013em; }
+body.ops-shell-ready .ops-health-row,
+body.ops-shell-ready .ops-quick-grid button,
+body.ops-shell-ready .status-grid > div,
+body.ops-shell-ready .feed-provider-card,
+body.ops-shell-ready .qnext-health-symbols,
+body.ops-shell-ready .qnext-health-detail {
+  background: var(--ops-panel-soft);
+  border: 1px solid var(--ops-border);
+  border-radius: 13px;
+  color: var(--ops-text);
+}
+body.ops-shell-ready .ops-health-row { min-height: 69px; }
+body.ops-shell-ready .ops-health-symbol small { color: var(--ops-muted); }
+body.ops-shell-ready :is(button, input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--ops-accent);
+  outline-offset: 2px;
+}
+
+/* A compact sidebar is a real navigation dock, not a hidden or remounted
+ * navigation tree. Screen-reader labels and routes remain intact. */
+@media (min-width: 901px) {
+  body.ops-shell-ready[data-ops-dock='collapsed'] {
+    --ops-sidebar-width: 78px;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-sidebar {
+    padding-left: .55rem;
+    padding-right: .55rem;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-brand {
+    display: grid;
+    justify-items: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-brand-copy,
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-search,
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-nav-label,
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-nav-item > span:last-child,
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-sidebar-health > span:last-child,
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-sidebar-foot > .muted {
+    display: none;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-dock-toggle {
+    margin: 0;
+    width: 36px;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-nav {
+    gap: .58rem;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] button.ops-nav-item {
+    grid-template-columns: 1fr;
+    place-items: center;
+    padding: .5rem;
+    min-height: 42px;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-nav-icon {
+    width: 30px;
+    height: 30px;
+  }
+  body.ops-shell-ready[data-ops-dock='collapsed'] .ops-sidebar-foot {
+    padding: .65rem;
+    display: grid;
+    place-items: center;
+  }
+}
+
+/* Theme overrides use QNext's existing theme state and preserve contrast. */
+:root[data-qnext-theme='light'] body.ops-shell-ready {
+  color-scheme: light;
+  --ops-bg: #eff3f8;
+  --ops-sidebar: rgba(248, 250, 253, .91);
+  --ops-panel: #fff;
+  --ops-panel-soft: #f4f7fb;
+  --ops-border: #d9e2ed;
+  --ops-border-strong: #aac0da;
+  --ops-text: #19283d;
+  --ops-muted: #53657d;
+  --ops-accent: #2b5da2;
+  --ops-accent-soft: rgba(46, 104, 183, .09);
+  --ops-glass: rgba(255,255,255,.92);
+  --ops-ring: rgba(50, 105, 192, .17);
+  --ops-good: #0c804d;
+  --ops-bad: #b73149;
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .shell.ops-shell {
+  background: radial-gradient(ellipse at 90% 0%, rgba(137, 174, 229, .15), transparent 40%), var(--ops-bg);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-sidebar,
+:root[data-qnext-theme='light'] body.ops-shell-ready .topbar { background: var(--ops-sidebar); border-color: var(--ops-border); }
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-sidebar-foot,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-search,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-health-row,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-quick-grid button,
+:root[data-qnext-theme='light'] body.ops-shell-ready .status-grid > div,
+:root[data-qnext-theme='light'] body.ops-shell-ready .feed-provider-card,
+:root[data-qnext-theme='light'] body.ops-shell-ready .qnext-health-symbols,
+:root[data-qnext-theme='light'] body.ops-shell-ready .qnext-health-detail {
+  color: var(--ops-text);
+  background: var(--ops-panel-soft);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-panel,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-kpi,
+:root[data-qnext-theme='light'] body.ops-shell-ready main.grid > .card {
+  color: var(--ops-text);
+  background: var(--ops-panel);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-dashboard-hero {
+  background: linear-gradient(120deg, rgba(195, 215, 247, .32), rgba(234, 247, 247, .3)), var(--ops-panel);
+  border-color: var(--ops-border);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-kpi:hover,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-health-row:hover,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-quick-grid button:hover {
+  background: #e9f0fb;
+  border-color: var(--ops-border-strong);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready button.ops-nav-item {
+  color: var(--ops-muted);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready button.ops-nav-item.active,
+:root[data-qnext-theme='light'] body.ops-shell-ready button.ops-nav-item:hover {
+  color: var(--ops-text);
+  background: var(--ops-accent-soft);
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-command-trigger,
+:root[data-qnext-theme='light'] body.ops-shell-ready .ops-dock-toggle {
+  color: var(--ops-text);
+  background: var(--ops-glass);
+}
+
+/* On narrow screens the dock always becomes the existing accessible drawer. */
+@media (max-width: 900px) {
+  body.ops-shell-ready .shell.ops-shell { grid-template-columns: minmax(0, 1fr); }
+  body.ops-shell-ready .ops-sidebar {
+    width: min(310px, 88vw);
+    box-shadow: 16px 0 44px rgba(0,0,0,.23);
+  }
+  body.ops-shell-ready .ops-dock-toggle { display: none; }
+  body.ops-shell-ready .ops-command-trigger kbd { display: none; }
+}
+@media (max-width: 680px) {
+  body.ops-shell-ready .ops-command-trigger {
+    order: 2;
+    min-width: 36px;
+    padding: .4rem;
+  }
+  body.ops-shell-ready .ops-command-trigger > span { display: none; }
+  body.ops-shell-ready .topbar .ops-page-heading { flex-basis: calc(100% - 100px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.ops-shell-ready .shell.ops-shell,
+  body.ops-shell-ready .ops-sidebar,
+  body.ops-shell-ready .ops-kpi,
+  body.ops-shell-ready .ops-health-row,
+  body.ops-shell-ready .ops-quick-grid button {
+    animation: none !important;
+    transition: none !important;
+  }
+}
