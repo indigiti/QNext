@@ -1,13 +1,12 @@
+/// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest';
 import {
   CORE_INDEX_SYMBOLS, CORE_GROUP_ID, NSE_MINUTE_GROUP_ID, orderVisibleSymbols,
   symbolSection,
 } from '../src/symbol-sections';
-import { readFileSync } from 'node:fs';
-
-const lightweight = readFileSync(new URL('../src/charts/lightweight-workspace.ts', import.meta.url), 'utf8');
-const admin = readFileSync(new URL('../../ops-console/src/main.ts', import.meta.url), 'utf8');
-const shell = readFileSync(new URL('../../ops-console/src/admin-shell.ts', import.meta.url), 'utf8');
+import lightweight from '../src/charts/lightweight-workspace.ts?raw';
+import admin from '../../ops-console/src/main.ts?raw';
+import shell from '../../ops-console/src/admin-shell.ts?raw';
 
 describe('core index and additional NSE 1m separation', () => {
   it('retains exactly the 13 explicitly requested core tickers in stable order', () => {
