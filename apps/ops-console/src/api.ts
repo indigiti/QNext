@@ -159,7 +159,31 @@ export interface RawRetentionStatus {
   };
 }
 
+export interface NSEMinuteSymbolSnapshot {
+  symbol: string;
+  instrument_id: string;
+  asset_class: 'equity' | 'index';
+  source: string;
+  last_attempt_ms?: number;
+  last_success_ms?: number;
+  last_error?: string;
+  scanned: number;
+  missing: number;
+  corrected: number;
+  unchanged: number;
+}
+
+export interface NSEMinuteFeedSnapshot {
+  enabled: boolean;
+  mode: string;
+  timeframe: string;
+  refresh_interval_seconds?: number;
+  running?: boolean;
+  symbols?: NSEMinuteSymbolSnapshot[];
+}
+
 export interface FeedStatusBody {
+  nse_1m?: NSEMinuteFeedSnapshot;
   raw_retention?: RawRetentionStatus;
   live_configured: boolean;
   resilience_configured: boolean;
