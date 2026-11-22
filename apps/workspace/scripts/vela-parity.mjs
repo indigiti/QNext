@@ -3,13 +3,15 @@ import { readFileSync } from 'node:fs';
 
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const expected = {
-  '@luxalgo/vela': '0.10.6',
+  '@luxalgo/vela': '0.10.14',
   '@luxalgo/vela-pinets': '0.3.4',
   pinets: '0.13.1',
+  'lightweight-charts': '5.3.0',
 };
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { PineEngine, PineWorkerEngine } from '@luxalgo/vela-pinets';
 import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
+import { createChart, CandlestickSeries } from 'lightweight-charts';
 
 const shellCSS = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
 
@@ -28,11 +30,19 @@ const checks = [
   ['workspace getState', typeof VelaWorkspace.prototype.getState === 'function'],
   ['workspace applyState', typeof VelaWorkspace.prototype.applyState === 'function'],
   ['workspace destroy', typeof VelaWorkspace.prototype.destroy === 'function'],
+  ['Vela fullscreen API (v0.10.14)', typeof VelaWorkspace.prototype.setFullscreen === 'function'],
   ['PineEngine constructor', typeof PineEngine === 'function'],
   ['PineWorkerEngine constructor', typeof PineWorkerEngine === 'function'],
   ['PineEngine streaming capability', new PineEngine().capabilities.streaming === true],
   ['PineWorkerEngine streaming capability', new PineWorkerEngine().capabilities.streaming === true],
   ['Vela icon action API', typeof registerIcon === 'function' && typeof registerWidgetAction === 'function'],
+  // v5 exports CandlestickSeries as a series-definition object, not a
+  // callable constructor. The chart factory is callable; the series
+  // descriptor must exist for chart.addSeries(CandlestickSeries).
+  ['Lightweight Charts v5 chart/series API',
+    typeof createChart === 'function'
+    && CandlestickSeries !== null
+    && typeof CandlestickSeries === 'object'],
 ];
 
 const failed = checks.filter(([, ok]) => !ok);
