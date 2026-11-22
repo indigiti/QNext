@@ -2,6 +2,8 @@ import './admin-shell.css';
 import './admin-sylva.css';
 import './admin-sylva-v2.css';
 import './admin-sylva-v3.css';
+import './admin-all-screens.css';
+import { installScreenPages, syncScreenPageSections } from './admin-screens';
 
 export {};
 
@@ -336,7 +338,9 @@ function installShell(): void {
   heading?.insertAdjacentElement('afterend', commandButton);
 
   installDashboard(grid);
+  installScreenPages(grid, (view) => applyView(view, true));
   installNavigation(sidebar, topbar, grid);
+  syncScreenPageSections(grid);
   installMutationSync(grid);
 }
 
@@ -602,6 +606,8 @@ function setMobileNavigation(open: boolean): void {
 
 function applyView(view: View, updateHash: boolean): void {
   const meta = views[view];
+  const grid = document.querySelector<HTMLElement>('#ops-content-grid');
+  if (grid) syncScreenPageSections(grid);
   const changed = document.body.dataset.opsView !== view;
   document.body.dataset.opsView = view;
 
@@ -886,6 +892,7 @@ function installMutationSync(grid: HTMLElement): void {
     if (!addedCard) return;
 
     classifyCards();
+    syncScreenPageSections(grid);
     const active = (document.body.dataset.opsView as View) || viewFromHash();
     grid.querySelectorAll<HTMLElement>(':scope > .card').forEach((card) => {
       card.classList.add('ops-managed-card');
