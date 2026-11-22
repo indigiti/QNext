@@ -309,6 +309,7 @@ function installShell(): void {
 
   const heading = topbar.firstElementChild as HTMLElement | null;
   heading?.classList.add('ops-page-heading');
+  heading?.querySelector('h1')?.setAttribute('tabindex', '-1');
   if (heading) {
     const eyebrow = heading.querySelector<HTMLElement>('.eyebrow');
     if (eyebrow) eyebrow.textContent = 'QNeXT / Overview';
@@ -691,16 +692,23 @@ function setDockCollapsed(collapsed: boolean, remember = true): void {
 }
 
 function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTMLElement): void {
+  const activateFromSidebar = (view: View): void => {
+    const wasMobileOpen = sidebar.classList.contains('open');
+    applyView(view, true);
+    if (wasMobileOpen) {
+      document.querySelector<HTMLElement>('.ops-page-heading h1')?.focus({ preventScroll: true });
+    }
+  };
   sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
     button.addEventListener('click', () => {
       const view = button.dataset.opsArea as View;
-      if (views[view]) applyView(view, true);
+      if (views[view]) activateFromSidebar(view);
     });
   });
   sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-nav]').forEach((button) => {
     button.addEventListener('click', () => {
       const view = button.dataset.opsNav as View;
-      applyView(view, true);
+      activateFromSidebar(view);
     });
   });
 
