@@ -38,6 +38,9 @@ type Broker struct {
 	reclaimedReplaySlots  uint64
 	evictedEmptyStreams   uint64
 	barObservers          map[string]func(domain.Bar)
+	auditSink             chan<- BarEvent
+	auditTargets          map[string]bool
+	auditDropped          uint64
 	proxyVolumeObservers  map[string]func(domain.Tick)
 	syntheticVolume       map[string]string
 	volumeTargets         map[string][]string
@@ -171,6 +174,26 @@ func (b *Broker) SetBarObserver(instrumentID string, observe func(domain.Bar)) {
 	b.mu.Unlock()
 }
 
+// SetAuditSink installs a bounded, nonblocking diagnostic tap on published bars.
+// Audit loss is counted but cannot stop the canonical stream or its subscribers.
+func (b *Broker) SetAuditSink(sink chan<- BarEvent, instrumentIDs []string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.auditSink = sink
+	b.auditTargets = make(map[string]bool, len(instrumentIDs))
+	for _, id := range instrumentIDs {
+		if id != "" {
+			b.auditTargets[id] = true
+		}
+	}
+}
+
+func (b *Broker) AuditDrops() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.auditDropped
+}
+
 // SetProxyVolumeObserver listens to the authoritative routed futures deltas,
 // even when the index-price pipeline cannot finalize a 15s/30s source candle.
 // Each index has an independent observer and no extra provider subscriptions.
@@ -249,6 +272,13 @@ func (b *Broker) PublishBar(bar domain.Bar) {
 		state.idleSinceMS = time.Now().UnixMilli()
 	}
 	observer := b.barObservers[bar.InstrumentID]
+	if b.auditSink != nil && b.auditTargets[bar.InstrumentID] {
+		select {
+		case b.auditSink <- event:
+		default:
+			b.auditDropped++
+		}
+	}
 	b.mu.Unlock()
 
 	if observer != nil {
