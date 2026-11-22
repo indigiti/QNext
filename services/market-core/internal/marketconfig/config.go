@@ -34,8 +34,8 @@ type Config struct {
 	// NSEOneMinute enables a small, explicitly selected stock/index history
 	// watchlist. These entries never activate SYN/SYN+, derivatives or live
 	// broker subscriptions; candles are sourced from Upstox 1m history.
-	NSEOneMinute   []NSEMinuteSymbol `json:"nse_1m_symbols,omitempty"`
-	ActiveMarkets   []string       `json:"active_markets,omitempty"`
+	NSEOneMinute  []NSEMinuteSymbol `json:"nse_1m_symbols,omitempty"`
+	ActiveMarkets []string          `json:"active_markets,omitempty"`
 
 	// Legacy single-market fields are retained for backwards compatibility
 	// with already-deployed q1-market.json files.

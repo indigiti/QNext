@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 )
 
 // NSEMinuteFetcher is intentionally limited to an instrument allowlist
@@ -20,41 +20,41 @@ type NSEMinuteFetcher interface {
 }
 
 type NSEMinuteSymbolStatus struct {
-	Symbol string `json:"symbol"`
-	InstrumentID string `json:"instrument_id"`
-	AssetClass string `json:"asset_class"`
-	Source string `json:"source"`
-	LastAttemptMS int64 `json:"last_attempt_ms,omitempty"`
-	LastSuccessMS int64 `json:"last_success_ms,omitempty"`
-	LastError string `json:"last_error,omitempty"`
-	Scanned uint64 `json:"scanned"`
-	Missing uint64 `json:"missing"`
-	Corrected uint64 `json:"corrected"`
-	Unchanged uint64 `json:"unchanged"`
+	Symbol        string `json:"symbol"`
+	InstrumentID  string `json:"instrument_id"`
+	AssetClass    string `json:"asset_class"`
+	Source        string `json:"source"`
+	LastAttemptMS int64  `json:"last_attempt_ms,omitempty"`
+	LastSuccessMS int64  `json:"last_success_ms,omitempty"`
+	LastError     string `json:"last_error,omitempty"`
+	Scanned       uint64 `json:"scanned"`
+	Missing       uint64 `json:"missing"`
+	Corrected     uint64 `json:"corrected"`
+	Unchanged     uint64 `json:"unchanged"`
 }
 
 type NSEMinuteStatus struct {
-	Enabled bool `json:"enabled"`
-	Mode string `json:"mode"`
-	Timeframe string `json:"timeframe"`
-	RefreshIntervalSeconds int `json:"refresh_interval_seconds"`
-	Running bool `json:"running"`
-	Symbols []NSEMinuteSymbolStatus `json:"symbols"`
+	Enabled                bool                    `json:"enabled"`
+	Mode                   string                  `json:"mode"`
+	Timeframe              string                  `json:"timeframe"`
+	RefreshIntervalSeconds int                     `json:"refresh_interval_seconds"`
+	Running                bool                    `json:"running"`
+	Symbols                []NSEMinuteSymbolStatus `json:"symbols"`
 }
 
 // NSEMinuteSync periodically fetches *completed provider 1-minute candles*.
 // It does not create a second Upstox websocket, invent 5s candles, or treat
 // cash-index historical volume as exchange-traded index volume.
 type NSEMinuteSync struct {
-	Client NSEMinuteFetcher
-	History HistoricalRepairStore
-	Resync HistoricalRepairResync
+	Client      NSEMinuteFetcher
+	History     HistoricalRepairStore
+	Resync      HistoricalRepairResync
 	AccessToken string
-	Symbols []marketconfig.NSEMinuteSymbol
-	Now func() time.Time
-	Interval time.Duration
+	Symbols     []marketconfig.NSEMinuteSymbol
+	Now         func() time.Time
+	Interval    time.Duration
 
-	mu sync.RWMutex
+	mu      sync.RWMutex
 	running bool
 	results map[string]NSEMinuteSymbolStatus
 }
@@ -63,7 +63,9 @@ func (s *NSEMinuteSync) Snapshot() NSEMinuteStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	interval := s.Interval
-	if interval <= 0 { interval = 5 * time.Minute }
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
 	result := NSEMinuteStatus{
 		Enabled: true, Mode: "historical_polling_not_live_ticks",
 		Timeframe: "1m", RefreshIntervalSeconds: int(interval.Seconds()),
@@ -74,11 +76,13 @@ func (s *NSEMinuteSync) Snapshot() NSEMinuteStatus {
 		entry, ok := s.results[item.InstrumentID()]
 		if !ok {
 			class := "equity"
-			if item.IsIndex() { class = "index" }
+			if item.IsIndex() {
+				class = "index"
+			}
 			entry = NSEMinuteSymbolStatus{
-				Symbol: strings.ToUpper(item.Symbol),
+				Symbol:       strings.ToUpper(item.Symbol),
 				InstrumentID: item.InstrumentID(),
-				AssetClass: class, Source: "upstox_historical_1m",
+				AssetClass:   class, Source: "upstox_historical_1m",
 			}
 		}
 		result.Symbols = append(result.Symbols, entry)
@@ -88,7 +92,9 @@ func (s *NSEMinuteSync) Snapshot() NSEMinuteStatus {
 
 func (s *NSEMinuteSync) Run(ctx context.Context) {
 	interval := s.Interval
-	if interval <= 0 { interval = 5 * time.Minute }
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -118,7 +124,9 @@ func (s *NSEMinuteSync) SyncOnce(ctx context.Context) error {
 		return errors.New("NSE minute sync already running")
 	}
 	s.running = true
-	if s.results == nil { s.results = make(map[string]NSEMinuteSymbolStatus) }
+	if s.results == nil {
+		s.results = make(map[string]NSEMinuteSymbolStatus)
+	}
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
@@ -127,29 +135,39 @@ func (s *NSEMinuteSync) SyncOnce(ctx context.Context) error {
 	}()
 
 	now := time.Now
-	if s.Now != nil { now = s.Now }
+	if s.Now != nil {
+		now = s.Now
+	}
 	current := now().UTC()
 	ist, err := time.LoadLocation("Asia/Kolkata")
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	local := current.In(ist)
 	from := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, ist).AddDate(0, 0, -2).UTC()
 	// Upstox intraday data may include the still-forming candle. Allow a
 	// 30-second publication buffer and accept only fully closed 1m bars.
 	to := current.Add(-30 * time.Second)
-	if !from.Before(to) { return nil }
+	if !from.Before(to) {
+		return nil
+	}
 	repairer := &HistoricalRepairer{History: s.History}
 	var failures []error
 
 	for _, item := range s.Symbols {
-		if ctx.Err() != nil { return ctx.Err() }
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		candles, fetchErr := s.Client.FetchRange(ctx, s.AccessToken, item.ProviderKey, from, to)
 		status := NSEMinuteSymbolStatus{
-			Symbol: strings.ToUpper(strings.TrimSpace(item.Symbol)),
+			Symbol:       strings.ToUpper(strings.TrimSpace(item.Symbol)),
 			InstrumentID: item.InstrumentID(),
-			Source: "upstox_historical_1m", LastAttemptMS: current.UnixMilli(),
+			Source:       "upstox_historical_1m", LastAttemptMS: current.UnixMilli(),
 			AssetClass: "equity",
 		}
-		if item.IsIndex() { status.AssetClass = "index" }
+		if item.IsIndex() {
+			status.AssetClass = "index"
+		}
 		if fetchErr == nil {
 			bars := make([]domain.Bar, 0, len(candles))
 			for _, candle := range candles {
@@ -186,9 +204,13 @@ func (s *NSEMinuteSync) SyncOnce(ctx context.Context) error {
 		}
 		s.mu.Lock()
 		if prior, ok := s.results[item.InstrumentID()]; ok {
-			if status.LastSuccessMS == 0 { status.LastSuccessMS = prior.LastSuccessMS }
+			if status.LastSuccessMS == 0 {
+				status.LastSuccessMS = prior.LastSuccessMS
+			}
 		}
-		if fetchErr != nil { status.LastError = fetchErr.Error() }
+		if fetchErr != nil {
+			status.LastError = fetchErr.Error()
+		}
 		s.results[item.InstrumentID()] = status
 		s.mu.Unlock()
 		if fetchErr != nil {

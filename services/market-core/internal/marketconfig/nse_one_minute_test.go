@@ -13,7 +13,9 @@ func TestNSEOneMinuteWatchlistValidationAndSubscriptionIsolation(t *testing.T) {
 			{Symbol: "NIFTY100", Name: "Nifty 100", ProviderKey: "NSE_INDEX|Nifty 100"},
 		},
 	}
-	if err := c.Validate(); err != nil { t.Fatal(err) }
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	if c.NSEOneMinute[0].InstrumentID() != "NSE:RELIANCE" ||
 		c.NSEOneMinute[1].InstrumentID() != "NSE:NIFTY100" ||
 		!c.NSEOneMinute[1].IsIndex() || c.NSEOneMinute[0].IsIndex() {

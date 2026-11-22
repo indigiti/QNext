@@ -139,11 +139,11 @@ func main() {
 	var nseMinuteSync *upstox.NSEMinuteSync
 	if config != nil && len(config.NSEOneMinute) > 0 && strings.TrimSpace(os.Getenv("QNEXT_NSE_1M_SYNC")) == "1" {
 		nseMinuteSync = &upstox.NSEMinuteSync{
-			Client: upstox.HistoricalRangeClient{Intraday: upstox.IntradayClient{}, MarketTimezone: "Asia/Kolkata"},
+			Client:  upstox.HistoricalRangeClient{Intraday: upstox.IntradayClient{}, MarketTimezone: "Asia/Kolkata"},
 			History: store, Resync: broker,
 			AccessToken: accessToken,
-			Symbols: append([]marketconfig.NSEMinuteSymbol(nil), config.NSEOneMinute...),
-			Interval: 5 * time.Minute,
+			Symbols:     append([]marketconfig.NSEMinuteSymbol(nil), config.NSEOneMinute...),
+			Interval:    5 * time.Minute,
 		}
 		log.Printf("NSE 1m historical watchlist enabled: %d instruments, 5m refresh, no live equity WS subscriptions", len(config.NSEOneMinute))
 	}
@@ -470,17 +470,17 @@ func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 				assetClass = "INDEX"
 			}
 			if err := registry.Register(symbol.Instrument{
-				ID: entry.InstrumentID(),
-				Symbol: strings.ToUpper(strings.TrimSpace(entry.Symbol)),
-				Name: entry.Name,
+				ID:         entry.InstrumentID(),
+				Symbol:     strings.ToUpper(strings.TrimSpace(entry.Symbol)),
+				Name:       entry.Name,
 				AssetClass: assetClass,
-				Exchange: "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
+				Exchange:   "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
 				CalendarID: "NSE_EQ", Visible: true,
 			}); err != nil {
 				return nil, err
 			}
 			if err := registry.RegisterProvider(symbol.ProviderInstrument{
-				Provider: upstox.ProviderName,
+				Provider:     upstox.ProviderName,
 				InstrumentID: entry.InstrumentID(), ProviderKey: entry.ProviderKey,
 			}); err != nil {
 				return nil, err
