@@ -1,0 +1,34 @@
+name: One-time futures subscriptions gofmt
+
+on:
+  push:
+    branches: [fix/auto-recover-enabled-futures-volume]
+    paths: [".github/workflows/temporary-futures-gofmt-v2.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/auto-recover-enabled-futures-volume
+          persist-credentials: true
+      - name: Format and commit changed Go files
+        shell: bash
+        run: |
+          set -euo pipefail
+          gofmt -w services/market-core/internal/provider/upstox/subscription_state.go
+          gofmt -w services/market-core/internal/provider/upstox/subscription_transaction_test.go
+          gofmt -w services/market-core/internal/provider/upstox/subscription_renew_test.go
+          gofmt -w services/market-core/internal/volumeproxy/manager.go
+          gofmt -w services/market-core/internal/volumeproxy/manager_auto_renew_test.go
+          gofmt -w services/market-core/cmd/qnext-market-core/main.go
+          if git diff --quiet -- services/market-core; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/market-core
+          git commit -m "style: gofmt futures subscription state and tests"
+          git push origin HEAD:fix/auto-recover-enabled-futures-volume
