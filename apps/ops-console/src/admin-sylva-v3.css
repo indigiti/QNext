@@ -458,7 +458,23 @@ body.ops-shell-ready .ops-shortcut-grid > button:hover {
   body.ops-shell-ready .ops-command-trigger kbd { display: none; }
   body.ops-shell-ready .ops-dashboard-hero h2 { font-size: clamp(2.2rem,3.3vw,2.85rem); }
 }
+body.ops-shell-ready .ops-nav-scrim { display: none; }
+body.ops-shell-ready .ops-nav-scrim[hidden] { display: none !important; }
 @media (max-width: 900px) {
+  body.ops-nav-open::before { content: none !important; }
+  body.ops-shell-ready .ops-nav-scrim:not([hidden]) {
+    display: block;
+    position: fixed;
+    z-index: 35;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    background: rgba(5,11,10,.56);
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    cursor: pointer;
+  }
   body.ops-shell-ready .shell.ops-shell { grid-template-columns: minmax(0,1fr); }
   body.ops-shell-ready .ops-sidebar {
     position: fixed;
