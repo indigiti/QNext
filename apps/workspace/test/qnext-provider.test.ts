@@ -39,16 +39,26 @@ describe('QNextProvider', () => {
 
     await expect(provider.listSymbols()).resolves.toEqual([
       {
+        ticker: 'QNEXT-CORE',
+        description: 'Indices & SYN / SYN+',
+        type: 'root',
+        prefix: 'QNEXT',
+        group: 'QNEXT-CORE',
+      },
+      {
         ticker: 'NIFTY',
         description: 'Nifty 50',
         type: 'index',
         prefix: 'NSE',
+        group: 'QNEXT-CORE',
+        default: true,
       },
       {
         ticker: 'NIFTY-SYN',
         description: 'QNext Nifty Synthetic',
         type: 'index',
         prefix: 'QNEXT',
+        group: 'QNEXT-CORE',
       },
     ]);
   });
@@ -88,6 +98,7 @@ describe('QNextProvider', () => {
 
     const symbols = await provider.listSymbols();
     expect(symbols.map((symbol) => symbol.ticker)).toEqual([
+      'QNEXT-CORE',
       'NIFTY',
       'NIFTY-SYN',
       'BANKNIFTY',
@@ -101,6 +112,55 @@ describe('QNextProvider', () => {
       'BANKEX',
       'BANKEX-SYN',
     ]);
+  });
+
+  it('keeps all 13 core symbols in the requested order and NSE 1m symbols separate', async () => {
+    const core = [
+      'NIFTY', 'NIFTY-SYN', 'NIFTY-SYN+', 'BANKNIFTY',
+      'BANKNIFTY-SYN', 'MIDCPNIFTY', 'MIDCPNIFTY-SYN',
+      'FINNIFTY', 'FINNIFTY-SYN', 'SENSEX', 'SENSEX-SYN',
+      'BANKEX', 'BANKEX-SYN',
+    ];
+    const other = ['TCS', 'RELIANCE', 'NIFTY100'];
+    const provider = new QNextProvider({
+      fetchImpl: jsonFetch({
+        '/api/v1/symbols/': {
+          symbols: [...other, ...core].reverse().map((ticker) => ({
+            instrument_id: ticker.startsWith('NIFTY-') && ticker.endsWith('SYN+')
+              ? 'QNEXT:NIFTY-SYN+' : `TEST:${ticker}`,
+            ticker,
+            description: ticker,
+            type: ticker === 'TCS' || ticker === 'RELIANCE' ? 'equity' : 'index',
+            prefix: ticker.endsWith('SYN+') || ticker.endsWith('SYN')
+              ? 'QNEXT' : 'NSE',
+            currency: 'INR', timezone: 'Asia/Kolkata',
+            calendar_id: 'NSE_EQ',
+            synthetic: ticker.endsWith('SYN+') || ticker.endsWith('SYN'),
+          })),
+        },
+      }),
+    });
+    const symbols = await provider.listSymbols();
+    expect(symbols.filter((item) => item.type === 'root').map((item) => item.ticker))
+      .toEqual(['QNEXT-CORE', 'QNEXT-NSE-1M']);
+    expect(symbols.filter((item) => item.group === 'QNEXT-CORE' && item.type !== 'root')
+      .map((item) => item.ticker)).toEqual(core);
+    expect(symbols.filter((item) => item.group === 'QNEXT-NSE-1M' && item.type !== 'root')
+      .map((item) => item.ticker)).toEqual(['NIFTY100', 'RELIANCE', 'TCS']);
+    expect(symbols.find((item) => item.ticker === 'RELIANCE')?.description)
+      .toContain('1m historical refresh');
+    expect(symbols.find((item) => item.ticker === 'NIFTY')?.default).toBe(true);
+    expect(symbols.find((item) => item.ticker === 'NIFTY100')?.default).toBe(true);
+    expect(symbols.every((item) => !item.ticker.startsWith('MISSING_'))).toBe(true);
+  });
+
+  it('does not invent an NSE 1m category when no extra instruments are enabled', async () => {
+    const provider = new QNextProvider({ fetchImpl: jsonFetch({
+      '/api/v1/symbols/': symbolsPayload,
+    }) });
+    const symbols = await provider.listSymbols();
+    expect(symbols.filter((symbol) => symbol.type === 'root').map((symbol) => symbol.ticker))
+      .toEqual(['QNEXT-CORE']);
   });
 
   it('prefixes public API requests with the configured QNext base path', async () => {
