@@ -120,7 +120,7 @@ function createFrame(plan: ScreenPlan, navigate: (route: ScreenRoute) => void): 
       <div class="ops-screen-headcopy">
         <span class="ops-screen-path">${textSafe(plan.group)}</span>
         <span class="ops-screen-index">${textSafe(plan.number)} / 12</span>
-        <h2 id="${section.id}-title">${textSafe(plan.title)}</h2>
+        <h2 id="${section.id}-title" tabindex="-1">${textSafe(plan.title)}</h2>
         <p>${textSafe(plan.summary)}</p>
       </div>
       <div class="ops-screen-aside">
