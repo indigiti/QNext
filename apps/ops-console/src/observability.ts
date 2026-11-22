@@ -147,12 +147,29 @@ function escapeLiveAudit(value: unknown): string {
     .replace(/'/g, '&#039;');
 }
 
+type FuturesRecovery = {
+  status?: string;
+  active_future?: string;
+  last_index_at_ms?: number;
+  last_future_at_ms?: number;
+  last_volume_at_ms?: number;
+  last_repair_at_ms?: number;
+  repair_attempts?: number;
+  last_repair_failed?: boolean;
+  auto_renew_enabled?: boolean;
+  last_renew_at_ms?: number;
+  renew_attempts?: number;
+  silent_reassertions?: number;
+  last_recovery_action?: string;
+};
+
 type FeedPayload = {
   live_integrity?: LiveIntegrityStatus;
   nifty_instrument_id?: string;
   synthetic_instrument_id?: string;
   telemetry?: {
     instruments?: Record<string, InstrumentTelemetry>;
+    volume_proxies?: Record<string, FuturesRecovery>;
     runtime?: {
       capture?: {
         enqueued?: number;
@@ -307,6 +324,8 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const telemetry = feed.telemetry ?? {};
   const runtime = telemetry.runtime ?? {};
   const capture = runtime.capture;
+  const futuresRecovery = Object.entries(telemetry.volume_proxies ?? {})
+    .sort(([a], [b]) => a.localeCompare(b));
   const liveAudit = feed.live_integrity;
   const auditCount = Object.values(liveAudit?.counts ?? {}).reduce((a, b) => a + b, 0);
   const auditIssues = auditCount > 0 || (liveAudit?.persist_errors ?? 0) > 0 ||
@@ -402,6 +421,36 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Consumer refs</span><strong>${demand?.total_refs ?? 0}</strong></div>
       <div class="feed-kv"><span>Idle grace</span><strong>${duration(demand?.idle_ttl_ms ?? null)}</strong></div>
       <div class="feed-kv"><span>Active IDs</span><strong>${activeIDs || 'none'}</strong></div>
+    </div>
+
+    <div class="feed-provider-card">
+      <div class="line"><strong>ENABLED SYMBOL VOLUME FEED</strong>${stateBadge(
+        futuresRecovery.every(([, value]) => !['FUTURES_FEED_SILENT', 'VOLUME_MISSING', 'NO_FUTURES_CONTRACT'].includes(value.status ?? '')),
+        futuresRecovery.length ? 'MONITORING' : 'NO ENABLED MARKETS'
+      )}</div>
+      ${futuresRecovery.map(([symbol, status]) => `
+        <div class="feed-kv">
+          <span>${escapeLiveAudit(symbol)} · ${escapeLiveAudit(status.status ?? 'UNKNOWN')}</span>
+          <strong>${status.auto_renew_enabled ? 'AUTO RECOVERY ON' : 'SOFT REPAIR ONLY'}</strong>
+        </div>
+        <div class="feed-kv">
+          <span>Active future</span>
+          <strong>${escapeLiveAudit(status.active_future ?? 'not discovered')}</strong>
+        </div>
+        <div class="feed-kv">
+          <span>Last future / volume age</span>
+          <strong>${duration(ageMS(status.last_future_at_ms))} / ${duration(ageMS(status.last_volume_at_ms))}</strong>
+        </div>
+        <div class="feed-kv">
+          <span>Soft repairs / targeted renewals</span>
+          <strong>${status.repair_attempts ?? 0} / ${status.renew_attempts ?? 0}</strong>
+        </div>
+        <div class="feed-kv">
+          <span>Last recovery</span>
+          <strong>${escapeLiveAudit(status.last_recovery_action ?? 'none')}${status.last_repair_failed ? ' · FAILED' : ''}</strong>
+        </div>
+      `).join('')}
+      <div class="muted">Only configured enabled indices · manual symbol off/on should not be required to repair silent futures subscriptions</div>
     </div>
 
     <div class="feed-provider-card">

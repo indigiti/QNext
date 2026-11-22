@@ -37,10 +37,19 @@ type FullModeRepairer interface {
 	ReassertFull(context.Context, []string) error
 }
 
+// FullModeRenewer is used only after an ordinary change_mode repair fails
+// to revive a truly silent active futures feed. The implementation must
+// preserve desired subscriptions and reject keys that are no longer enabled.
+type FullModeRenewer interface {
+	RenewFull(context.Context, []string) error
+}
+
 const (
 	silentFuturesAfter  = 2 * time.Minute
 	silentVolumeAfter   = 5 * time.Minute
 	proxyRepairCooldown = 5 * time.Minute
+	proxyRenewCooldown  = 15 * time.Minute
+	maxRenewPerSession  = 2
 	maxUnderlyingAge    = 45 * time.Second
 )
 
@@ -52,6 +61,9 @@ type Manager struct {
 	Registry    *symbol.Registry
 	Subscriber  Subscriber
 	Markets     []Market
+	// AutoRenew is explicitly opted in on staging. Routine soft reassertion
+	// remains active regardless of this stronger unsubscribe/subscribe gate.
+	AutoRenew bool
 
 	byInstrument      map[string]binding
 	targets           map[string]*targetState
@@ -80,13 +92,17 @@ type targetState struct {
 	next      liquidity
 	session   string
 
-	firstUnderlyingAt time.Time
-	lastUnderlyingAt  time.Time
-	lastActiveFeedAt  time.Time
-	lastVolumeAt      time.Time
-	lastRepairAt      time.Time
-	lastRepairFailed  bool
-	repairAttempts    uint64
+	firstUnderlyingAt  time.Time
+	lastUnderlyingAt   time.Time
+	lastActiveFeedAt   time.Time
+	lastVolumeAt       time.Time
+	lastRepairAt       time.Time
+	lastRepairFailed   bool
+	repairAttempts     uint64
+	silentReassertions uint64
+	lastRenewAt        time.Time
+	renewAttempts      uint64
+	lastRecoveryAction string
 }
 
 func (s *targetState) preserveLiveDuringRefresh(live *targetState) {
@@ -120,6 +136,10 @@ func (s *targetState) preserveLiveDuringRefresh(live *targetState) {
 		s.lastRepairAt = live.lastRepairAt
 		s.lastRepairFailed = live.lastRepairFailed
 		s.repairAttempts = live.repairAttempts
+		s.silentReassertions = live.silentReassertions
+		s.lastRenewAt = live.lastRenewAt
+		s.renewAttempts = live.renewAttempts
+		s.lastRecoveryAction = live.lastRecoveryAction
 	}
 }
 
@@ -298,9 +318,13 @@ func (m *Manager) Refresh(ctx context.Context, at time.Time) error {
 			state.lastRepairAt = previous.lastRepairAt
 			state.lastRepairFailed = previous.lastRepairFailed
 			state.repairAttempts = previous.repairAttempts
+			state.lastRenewAt = previous.lastRenewAt
+			state.renewAttempts = previous.renewAttempts
 			if state.activeID == previous.activeID {
 				state.lastActiveFeedAt = previous.lastActiveFeedAt
 				state.lastVolumeAt = previous.lastVolumeAt
+				state.silentReassertions = previous.silentReassertions
+				state.lastRecoveryAction = previous.lastRecoveryAction
 			}
 		}
 		nextTargets[market.TargetInstrumentID] = state
@@ -372,8 +396,11 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 		return errors.New("futures subscription does not support full-mode recovery")
 	}
 	type repair struct {
-		symbol string
-		keys   []string
+		symbol       string
+		targetID     string
+		keys         []string
+		renew        bool
+		sourceSilent bool
 	}
 	var repairs []repair
 	m.mu.Lock()
@@ -404,8 +431,22 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 		if !state.lastRepairAt.IsZero() && at.Sub(state.lastRepairAt) < cooldown {
 			continue
 		}
+		// Only escalate when the active futures feed itself is silent,
+		// not when a live but quiet feed reports no traded quantity.
+		// Never cycle keys outside the configured enabled market set.
+		sourceSilent := at.Sub(sourceSince) >= silentFuturesAfter
+		_, canRenew := m.Subscriber.(FullModeRenewer)
+		renew := m.AutoRenew && canRenew && sourceSilent &&
+			state.silentReassertions > 0 && state.renewAttempts < maxRenewPerSession &&
+			(state.lastRenewAt.IsZero() || at.Sub(state.lastRenewAt) >= proxyRenewCooldown)
 		var keys []string
 		for _, id := range []string{state.currentID, state.nextID} {
+			// Soft mode reassertion covers the current/next futures pair.
+			// Hard renewal touches *only the silent active contract* and
+			// leaves the healthy next contract's live subscription intact.
+			if renew && id != state.activeID {
+				continue
+			}
 			if route, ok := m.byInstrument[id]; ok && route.expiry >= at.In(indiaLocation).Format("2006-01-02") {
 				keys = append(keys, route.providerKey)
 			}
@@ -415,7 +456,12 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 		}
 		state.lastRepairAt = at
 		state.repairAttempts++
-		repairs = append(repairs, repair{symbol: market.Symbol, keys: keys})
+		if renew {
+			state.lastRenewAt = at
+			state.renewAttempts++
+		}
+		repairs = append(repairs, repair{symbol: market.Symbol, targetID: market.TargetInstrumentID,
+			keys: keys, renew: renew, sourceSilent: sourceSilent})
 	}
 	m.mu.Unlock()
 
@@ -427,24 +473,31 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 		// Do not block the watchdog indefinitely when the Upstox writer is
 		// disconnected and its bounded update queue is full.
 		repairCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		err := repairer.ReassertFull(repairCtx, repair.keys)
+		var err error
+		action := "change_mode"
+		if repair.renew {
+			action = "renew_subscription"
+			err = m.Subscriber.(FullModeRenewer).RenewFull(repairCtx, repair.keys)
+		} else {
+			err = repairer.ReassertFull(repairCtx, repair.keys)
+		}
 		cancel()
 		m.mu.Lock()
-		for _, market := range m.Markets {
-			if market.Symbol != repair.symbol {
-				continue
+		if state := m.targets[repair.targetID]; state != nil && state.lastRepairAt.Equal(at) {
+			state.lastRepairFailed = err != nil
+			state.lastRecoveryAction = action
+			if err == nil && repair.renew {
+				state.silentReassertions = 0
+			} else if err == nil && repair.sourceSilent {
+				state.silentReassertions++
 			}
-			if state := m.targets[market.TargetInstrumentID]; state != nil && state.lastRepairAt.Equal(at) {
-				state.lastRepairFailed = err != nil
-			}
-			break
 		}
 		m.mu.Unlock()
 		if err != nil {
-			result = errors.Join(result, fmt.Errorf("%s full-mode reassertion: %w", repair.symbol, err))
+			result = errors.Join(result, fmt.Errorf("%s futures %s recovery: %w", repair.symbol, action, err))
 			continue
 		}
-		log.Printf("index futures volume watchdog: reasserted full mode for %s", repair.symbol)
+		log.Printf("index futures volume watchdog: %s for %s (enabled subscription only)", action, repair.symbol)
 	}
 	return result
 }
@@ -505,14 +558,19 @@ func (m *Manager) Status() any {
 			}
 		}
 		result[market.Symbol] = map[string]any{
-			"status":             status,
-			"active_future":      state.activeID,
-			"last_index_at_ms":   timeMillis(state.lastUnderlyingAt),
-			"last_future_at_ms":  timeMillis(state.lastActiveFeedAt),
-			"last_volume_at_ms":  timeMillis(state.lastVolumeAt),
-			"last_repair_at_ms":  timeMillis(state.lastRepairAt),
-			"repair_attempts":    state.repairAttempts,
-			"last_repair_failed": state.lastRepairFailed,
+			"status":               status,
+			"active_future":        state.activeID,
+			"last_index_at_ms":     timeMillis(state.lastUnderlyingAt),
+			"last_future_at_ms":    timeMillis(state.lastActiveFeedAt),
+			"last_volume_at_ms":    timeMillis(state.lastVolumeAt),
+			"last_repair_at_ms":    timeMillis(state.lastRepairAt),
+			"repair_attempts":      state.repairAttempts,
+			"last_repair_failed":   state.lastRepairFailed,
+			"auto_renew_enabled":   m.AutoRenew,
+			"last_renew_at_ms":     timeMillis(state.lastRenewAt),
+			"renew_attempts":       state.renewAttempts,
+			"silent_reassertions":  state.silentReassertions,
+			"last_recovery_action": state.lastRecoveryAction,
 		}
 	}
 	return result
@@ -561,6 +619,10 @@ func (m *Manager) Route(tick domain.Tick) (domain.Tick, bool) {
 			state.lastVolumeAt = time.Time{}
 			state.lastRepairAt = time.Time{}
 			state.lastRepairFailed = false
+			state.silentReassertions = 0
+			state.lastRenewAt = time.Time{}
+			state.renewAttempts = 0
+			state.lastRecoveryAction = ""
 		}
 		if tick.EventTime.After(state.lastUnderlyingAt) {
 			state.lastUnderlyingAt = tick.EventTime
@@ -605,12 +667,17 @@ func (m *Manager) Route(tick domain.Tick) (domain.Tick, bool) {
 		state.lastVolumeAt = time.Time{}
 		state.lastRepairAt = time.Time{}
 		state.lastRepairFailed = false
+		state.silentReassertions = 0
+		state.lastRecoveryAction = ""
 	}
 	if tick.InstrumentID != state.activeID {
 		return domain.Tick{}, false
 	}
 	if tick.EventTime.After(state.lastActiveFeedAt) {
 		state.lastActiveFeedAt = tick.EventTime
+		// The active feed answered; a new future outage must again pass
+		// through soft reassertion before attempting a hard renewal.
+		state.silentReassertions = 0
 	}
 	if tick.Quantity <= 0 {
 		return domain.Tick{}, false
