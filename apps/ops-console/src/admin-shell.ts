@@ -324,7 +324,7 @@ function installShell(): void {
   commandButton.setAttribute('aria-label', 'Search admin sections');
   commandButton.setAttribute('aria-keyshortcuts', 'Control+K Meta+K');
   commandButton.setAttribute('title', 'Search sections (Ctrl/⌘ K)');
-  commandButton.innerHTML = '<span>Search sections</span><kbd>⌘/Ctrl K</kbd>';
+  commandButton.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.4 4.4"/></svg><span>Search sections</span><kbd>⌘/Ctrl K</kbd>';
   heading?.insertAdjacentElement('afterend', commandButton);
 
   installDashboard(grid);
@@ -418,7 +418,7 @@ function dashboardMarkup(): string {
   return `
     <section id="ops-dashboard-card" class="ops-dashboard ops-overview-v2" data-ops-view="dashboard">
       <div class="ops-overview-topline">
-        <span class="ops-breadcrumb"><span>QNeXT</span><span aria-hidden="true">/</span> Overview</span>
+        <span class="ops-overview-caption">Market operations</span>
         <span class="ops-session-date">${html(sessionDay)} · IST</span>
       </div>
 
