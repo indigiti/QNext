@@ -17,6 +17,19 @@ body.ops-shell-ready {
   --ops-screen-focus: #c3f052;
 }
 
+/* Keep the top navigation an actual breadcrumb; the content page has its
+ * own full-size heading. Clip duplicates for screen-reader/route focus use
+ * instead of display:none, which would break mobile focus restoration. */
+body.ops-shell-ready:not([data-ops-view="dashboard"]) .ops-page-heading h1,
+body.ops-shell-ready:not([data-ops-view="dashboard"]) .ops-page-heading .muted {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 /* Each specialist workspace has its own content hierarchy. It uses QNeXT's
  * existing route state and is never mistaken for a market-data KPI. */
 body.ops-shell-ready main.grid > .ops-screen-frame {
