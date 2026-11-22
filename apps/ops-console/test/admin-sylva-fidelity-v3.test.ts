@@ -57,6 +57,8 @@ describe('QNext sidebar and dashboard screenshot fidelity without copied CRM cod
     expect(shell).toContain('main.inert = visible');
     expect(shell).toContain('scrim.hidden = !visible');
     expect(shell).toContain("event.key === 'Tab'");
+    expect(shell).toContain("heading?.querySelector('h1')?.setAttribute('tabindex', '-1')");
+    expect(shell).toContain("document.querySelector<HTMLElement>('.ops-page-heading h1')?.focus({ preventScroll: true })");
     expect(shell).toContain("event.shiftKey ? last : first");
     expect(shell).toContain("mobileMedia.addEventListener('change', () => setMobileNavigation(false))");
     expect(styling).toContain('body.ops-nav-open::before { content: none !important; }');
