@@ -1,6 +1,7 @@
 import './admin-shell.css';
 import './admin-sylva.css';
 import './admin-sylva-v2.css';
+import './admin-sylva-v3.css';
 
 export {};
 
@@ -219,7 +220,7 @@ const opsAreas: Array<{ view: View; label: string; detail: string; glyph: string
 function areaMarkup(): string {
   return opsAreas.map((area) => `
     <button type="button" class="ops-area-item" data-ops-area="${area.view}"
-      aria-label="Open ${html(area.label)}" title="${html(area.detail)}">
+      aria-label="Open ${html(area.label)}" title="${html(area.detail)}" aria-pressed="false">
       <span class="ops-area-icon ops-area-${area.tone}" aria-hidden="true">${html(area.glyph)}</span>
       <span class="ops-area-copy"><strong>${html(area.label)}</strong><small>${html(area.detail)}</small></span>
     </button>
@@ -600,11 +601,13 @@ function applyView(view: View, updateHash: boolean): void {
     else button.removeAttribute('aria-current');
   });
 
+  // The area switcher represents navigation groups, not tenant selection.
+  const currentArea: View = ['market', 'candles', 'synthetic'].includes(view) ? 'market'
+    : ['indicators', 'intelligence', 'lab'].includes(view) ? 'indicators' : 'runtime';
   document.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
-    const selected = button.dataset.opsArea === view;
+    const selected = button.dataset.opsArea === currentArea;
     button.classList.toggle('active', selected);
-    if (selected) button.setAttribute('aria-current', 'page');
-    else button.removeAttribute('aria-current');
+    button.setAttribute('aria-pressed', String(selected));
   });
 
   const heading = document.querySelector<HTMLElement>('.ops-page-heading');
