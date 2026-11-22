@@ -296,6 +296,13 @@ function installShell(): void {
   const main = document.createElement('div');
   main.className = 'ops-main';
   shell.insertBefore(sidebar, shell.firstChild);
+  const scrim = document.createElement('button');
+  scrim.id = 'ops-nav-scrim';
+  scrim.type = 'button';
+  scrim.className = 'ops-nav-scrim';
+  scrim.setAttribute('aria-label', 'Close mobile navigation');
+  scrim.hidden = true;
+  shell.insertBefore(scrim, sidebar.nextSibling);
   main.append(topbar, grid);
   const toast = shell.querySelector('#toast');
   shell.insertBefore(main, toast ?? null);
@@ -580,9 +587,16 @@ function wireDashboardButtons(): void {
 function setMobileNavigation(open: boolean): void {
   const sidebar = document.querySelector<HTMLElement>('#ops-sidebar');
   const toggle = document.querySelector<HTMLButtonElement>('#ops-sidebar-toggle');
-  sidebar?.classList.toggle('open', open);
-  toggle?.setAttribute('aria-expanded', String(open));
-  document.body.classList.toggle('ops-nav-open', open);
+  const scrim = document.querySelector<HTMLButtonElement>('#ops-nav-scrim');
+  const main = document.querySelector<HTMLElement>('.ops-main');
+  const mobile = window.matchMedia('(max-width: 900px)').matches;
+  const visible = mobile && open;
+  sidebar?.classList.toggle('open', visible);
+  if (sidebar) sidebar.inert = mobile && !visible;
+  if (main) main.inert = visible;
+  if (scrim) scrim.hidden = !visible;
+  toggle?.setAttribute('aria-expanded', String(visible));
+  document.body.classList.toggle('ops-nav-open', visible);
 }
 
 function applyView(view: View, updateHash: boolean): void {
@@ -730,6 +744,14 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     const first = Array.from(sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-nav]')).find((button) => !button.hidden);
     first?.click();
   });
+
+   document.querySelector<HTMLButtonElement>('#ops-nav-scrim')?.addEventListener('click', () => {
+    setMobileNavigation(false);
+    mobileToggle?.focus();
+  });
+  const mobileMedia = window.matchMedia('(max-width: 900px)');
+  mobileMedia.addEventListener('change', () => setMobileNavigation(false));
+  setMobileNavigation(false);
 
   mobileToggle?.addEventListener('click', () => {
     const opening = !sidebar.classList.contains('open');
