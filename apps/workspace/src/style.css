@@ -316,3 +316,38 @@ html[data-qnext-theme='light'] .qnext-zoom-choice.is-selected {
   outline: 2px solid #94b8ff;
   outline-offset: 2px;
 }
+
+/* Vela-native chart script alert switch beside the built-in alert history.
+ * An ON/OFF chip is intentionally visible rather than silently hiding the
+ * bell or giving a notification permission toggle an ambiguous appearance. */
+#app [data-action-id="qnext.alerts.toggle"] {
+  position: relative;
+  min-width: 40px;
+  outline-offset: 3px;
+}
+#app [data-action-id="qnext.alerts.toggle"]::after {
+  position: absolute;
+  inset-inline-end: -3px;
+  inset-block-end: -4px;
+  padding: 1px 3px;
+  border-radius: 4px;
+  font: 800 8px/1.25 system-ui,sans-serif;
+  letter-spacing: .02em;
+  pointer-events: none;
+}
+#app[data-qnext-chart-alerts="on"] [data-action-id="qnext.alerts.toggle"]::after {
+  content: "ON";
+  color: #182312;
+  background: #c3f052;
+}
+#app[data-qnext-chart-alerts="off"] [data-action-id="qnext.alerts.toggle"] {
+  opacity: .75;
+}
+#app[data-qnext-chart-alerts="off"] [data-action-id="qnext.alerts.toggle"]::after {
+  content: "OFF";
+  color: #fff;
+  background: #a84a41;
+}
+#app [data-action-id="qnext.alerts.toggle"]:focus-visible {
+  outline: 2px solid currentColor;
+}
