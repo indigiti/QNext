@@ -21,9 +21,9 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/httpapi"
 	"github.com/indigiti/QNext/services/market-core/internal/integrity"
 	"github.com/indigiti/QNext/services/market-core/internal/liveaudit"
-	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/marketcalendar"
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 	"github.com/indigiti/QNext/services/market-core/internal/resilience"
@@ -184,7 +184,6 @@ func main() {
 		}
 		volumeAliases["QNEXT:"+strings.ToUpper(strings.TrimSpace(market.Symbol))+"-SYN+"] = market.Underlying.InstrumentID
 	}
-
 
 	// Opt-in, staging-first. No additional provider subscriptions and no
 	// mutation of the candle/volume pipeline. The monitor only inspects bars

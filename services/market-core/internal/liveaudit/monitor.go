@@ -18,7 +18,7 @@ import (
 
 const (
 	recentLimit = 40
-	checkDelay = 3 * time.Second
+	checkDelay  = 3 * time.Second
 )
 
 var india = time.FixedZone("IST", 5*60*60+30*60)
@@ -30,40 +30,40 @@ var auditedFrames = map[string]time.Duration{
 
 // Alert is evidence of a published inconsistency, not proof of a broker error.
 type Alert struct {
-	AtMS int64 `json:"at_ms"`
-	Kind string `json:"kind"`
-	InstrumentID string `json:"instrument_id"`
-	Timeframe string `json:"timeframe,omitempty"`
-	OpenTimeMS int64 `json:"open_time_ms,omitempty"`
-	SourceID string `json:"source_id,omitempty"`
+	AtMS           int64   `json:"at_ms"`
+	Kind           string  `json:"kind"`
+	InstrumentID   string  `json:"instrument_id"`
+	Timeframe      string  `json:"timeframe,omitempty"`
+	OpenTimeMS     int64   `json:"open_time_ms,omitempty"`
+	SourceID       string  `json:"source_id,omitempty"`
 	ExpectedVolume float64 `json:"expected_volume,omitempty"`
 	ObservedVolume float64 `json:"observed_volume,omitempty"`
-	Detail string `json:"detail"`
+	Detail         string  `json:"detail"`
 }
 
 type Snapshot struct {
-	Enabled bool `json:"enabled"`
-	State string `json:"state"`
-	ObservedEvents uint64 `json:"observed_events"`
-	LastEventAtMS int64 `json:"last_event_at_ms,omitempty"`
-	Counts map[string]uint64 `json:"counts"`
-	Recent []Alert `json:"recent"`
-	AuditDropped uint64 `json:"audit_dropped"`
-	RawCaptureEnabled bool `json:"raw_capture_enabled"`
-	RawCaptureDropped uint64 `json:"raw_capture_dropped"`
-	RawCaptureErrors uint64 `json:"raw_capture_errors"`
-	PersistErrors uint64 `json:"persist_errors"`
-	LastPersistError string `json:"last_persist_error,omitempty"`
+	Enabled           bool              `json:"enabled"`
+	State             string            `json:"state"`
+	ObservedEvents    uint64            `json:"observed_events"`
+	LastEventAtMS     int64             `json:"last_event_at_ms,omitempty"`
+	Counts            map[string]uint64 `json:"counts"`
+	Recent            []Alert           `json:"recent"`
+	AuditDropped      uint64            `json:"audit_dropped"`
+	RawCaptureEnabled bool              `json:"raw_capture_enabled"`
+	RawCaptureDropped uint64            `json:"raw_capture_dropped"`
+	RawCaptureErrors  uint64            `json:"raw_capture_errors"`
+	PersistErrors     uint64            `json:"persist_errors"`
+	LastPersistError  string            `json:"last_persist_error,omitempty"`
 }
 
 type observed struct {
 	bar domain.Bar
-	at time.Time
+	at  time.Time
 }
 
 type series struct {
-	seq uint64
-	current *observed
+	seq      uint64
+	current  *observed
 	previous *observed
 }
 
@@ -72,25 +72,25 @@ type series struct {
 type Diagnostics func() (bool, uint64, uint64, uint64)
 
 type Monitor struct {
-	mu sync.RWMutex
-	root string
-	aliases map[string]string
-	targets map[string]bool
-	events chan stream.BarEvent
-	series map[string]*series
-	raised map[string]bool
-	raisedDay string
-	counts map[string]uint64
-	recent []Alert
-	observed uint64
-	lastEventMS int64
-	auditDropped uint64
-	rawEnabled bool
-	rawDropped uint64
-	rawErrors uint64
-	persistErrors uint64
+	mu               sync.RWMutex
+	root             string
+	aliases          map[string]string
+	targets          map[string]bool
+	events           chan stream.BarEvent
+	series           map[string]*series
+	raised           map[string]bool
+	raisedDay        string
+	counts           map[string]uint64
+	recent           []Alert
+	observed         uint64
+	lastEventMS      int64
+	auditDropped     uint64
+	rawEnabled       bool
+	rawDropped       uint64
+	rawErrors        uint64
+	persistErrors    uint64
 	lastPersistError string
-	probe Diagnostics
+	probe            Diagnostics
 }
 
 // New accepts SYN/SYN+ -> underlying source associations already authorized
@@ -100,20 +100,22 @@ func New(storageRoot string, aliases map[string]string) *Monitor {
 	owned := make(map[string]string, len(aliases))
 	targets := make(map[string]bool, len(aliases)*2)
 	for syn, source := range aliases {
-		if syn == "" || source == "" { continue }
+		if syn == "" || source == "" {
+			continue
+		}
 		owned[syn] = source
 		targets[syn] = true
 		targets[source] = true
 	}
 	return &Monitor{
-		root: filepath.Join(storageRoot, "live-integrity"),
+		root:    filepath.Join(storageRoot, "live-integrity"),
 		aliases: owned,
 		targets: targets,
-		events: make(chan stream.BarEvent, 4096),
-		series: make(map[string]*series),
-		raised: make(map[string]bool),
-		counts: make(map[string]uint64),
-		recent: make([]Alert, 0, recentLimit),
+		events:  make(chan stream.BarEvent, 4096),
+		series:  make(map[string]*series),
+		raised:  make(map[string]bool),
+		counts:  make(map[string]uint64),
+		recent:  make([]Alert, 0, recentLimit),
 	}
 }
 
@@ -121,7 +123,9 @@ func (m *Monitor) Events() chan<- stream.BarEvent { return m.events }
 
 func (m *Monitor) Targets() []string {
 	result := make([]string, 0, len(m.targets))
-	for id := range m.targets { result = append(result, id) }
+	for id := range m.targets {
+		result = append(result, id)
+	}
 	return result
 }
 
@@ -154,19 +158,27 @@ func (m *Monitor) observe(event stream.BarEvent) {
 		return
 	}
 	at := event.PublishedAt.UTC()
-	if at.IsZero() { at = time.Now().UTC() }
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.observed++
-	if at.UnixMilli() > m.lastEventMS { m.lastEventMS = at.UnixMilli() }
+	if at.UnixMilli() > m.lastEventMS {
+		m.lastEventMS = at.UnixMilli()
+	}
 	key := bar.InstrumentID + "|" + bar.Timeframe
 	entry := m.series[key]
 	if entry == nil {
 		entry = &series{}
 		m.series[key] = entry
 	}
-	if event.Seq > 0 && event.Seq <= entry.seq { return }
-	if event.Seq > 0 { entry.seq = event.Seq }
+	if event.Seq > 0 && event.Seq <= entry.seq {
+		return
+	}
+	if event.Seq > 0 {
+		entry.seq = event.Seq
+	}
 
 	switch {
 	case entry.current == nil:
@@ -203,7 +215,7 @@ func (m *Monitor) checkRevision(old, next domain.Bar, at time.Time) {
 	case next.Revision < old.Revision:
 		base.Kind = "STALE_REVISION_PUBLISHED"
 		base.Detail = "older candle revision was published after a newer revision"
-	case next.Revision == old.Revision && next.Volume + 0.00001 < old.Volume:
+	case next.Revision == old.Revision && next.Volume+0.00001 < old.Volume:
 		base.Kind = "VOLUME_REGRESSION"
 		base.Detail = "cumulative candle volume decreased without a new revision"
 	case next.Revision == old.Revision && old.Final &&
@@ -219,9 +231,15 @@ func (m *Monitor) checkRevision(old, next domain.Bar, at time.Time) {
 
 func (m *Monitor) matching(instrumentID, timeframe string, open time.Time) *observed {
 	state := m.series[instrumentID+"|"+timeframe]
-	if state == nil { return nil }
-	if state.current != nil && state.current.bar.OpenTime.Equal(open) { return state.current }
-	if state.previous != nil && state.previous.bar.OpenTime.Equal(open) { return state.previous }
+	if state == nil {
+		return nil
+	}
+	if state.current != nil && state.current.bar.OpenTime.Equal(open) {
+		return state.current
+	}
+	if state.previous != nil && state.previous.bar.OpenTime.Equal(open) {
+		return state.previous
+	}
 	return nil
 }
 
@@ -234,7 +252,9 @@ func (m *Monitor) inspect(now time.Time) {
 	m.mu.RUnlock()
 	var captureOn bool
 	var rawDrops, rawErrors, auditDrops uint64
-	if probe != nil { captureOn, rawDrops, rawErrors, auditDrops = probe() }
+	if probe != nil {
+		captureOn, rawDrops, rawErrors, auditDrops = probe()
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -253,17 +273,23 @@ func (m *Monitor) inspect(now time.Time) {
 	for synthetic, sourceID := range m.aliases {
 		for timeframe := range auditedFrames {
 			state := m.series[synthetic+"|"+timeframe]
-			if state == nil { continue }
+			if state == nil {
+				continue
+			}
 			for _, syntheticBar := range []*observed{state.current, state.previous} {
-				if syntheticBar == nil { continue }
+				if syntheticBar == nil {
+					continue
+				}
 				source := m.matching(sourceID, timeframe, syntheticBar.bar.OpenTime)
 				if source == nil || source.bar.VolumeStatus != "OBSERVED" ||
 					source.bar.VolumeSource != "FUTURES_PROXY" || source.bar.Volume <= 0 ||
 					source.bar.Volume <= syntheticBar.bar.Volume+0.00001 ||
-					now.Sub(source.at) < checkDelay { continue }
+					now.Sub(source.at) < checkDelay {
+					continue
+				}
 				m.emit(now, Alert{Kind: "SYN_FUTURES_VOLUME_LAG", InstrumentID: synthetic,
 					SourceID: sourceID, Timeframe: timeframe,
-					OpenTimeMS: syntheticBar.bar.OpenTime.UnixMilli(),
+					OpenTimeMS:     syntheticBar.bar.OpenTime.UnixMilli(),
 					ExpectedVolume: source.bar.Volume, ObservedVolume: syntheticBar.bar.Volume,
 					Detail: "published synthetic candle trails an observed futures-proxy source; check subsequent revisions"})
 			}
@@ -280,12 +306,18 @@ func (m *Monitor) emit(at time.Time, alert Alert) {
 	id := fmt.Sprintf("%s|%s|%s|%d", alert.Kind, alert.InstrumentID, alert.Timeframe, alert.OpenTimeMS)
 	// Capture/audit loss is summarized once per monitoring day; counts still
 	// expose total drops, rather than repeating a high-volume warning every poll.
-	if m.raised[id] { return }
+	if m.raised[id] {
+		return
+	}
 	m.raised[id] = true
 	alert.AtMS = at.UnixMilli()
 	m.counts[alert.Kind]++
-	if len(m.recent) == recentLimit { copy(m.recent, m.recent[1:]); m.recent[len(m.recent)-1] = alert
-	} else { m.recent = append(m.recent, alert) }
+	if len(m.recent) == recentLimit {
+		copy(m.recent, m.recent[1:])
+		m.recent[len(m.recent)-1] = alert
+	} else {
+		m.recent = append(m.recent, alert)
+	}
 	data, err := json.Marshal(alert)
 	if err == nil {
 		path := filepath.Join(m.root, at.In(india).Format("2006-01"), at.In(india).Format("2006-01-02")+".jsonl")
@@ -295,7 +327,9 @@ func (m *Monitor) emit(at time.Time, alert Alert) {
 			if err == nil {
 				_, err = file.Write(append(data, '\n'))
 				closeErr := file.Close()
-				if err == nil { err = closeErr }
+				if err == nil {
+					err = closeErr
+				}
 			}
 		}
 	}
@@ -311,10 +345,14 @@ func (m *Monitor) Snapshot() Snapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	counts := make(map[string]uint64, len(m.counts))
-	for key, value := range m.counts { counts[key] = value }
+	for key, value := range m.counts {
+		counts[key] = value
+	}
 	recent := append([]Alert(nil), m.recent...)
 	state := "OBSERVING"
-	if len(recent) > 0 || m.persistErrors > 0 { state = "ALERTS_RECORDED" }
+	if len(recent) > 0 || m.persistErrors > 0 {
+		state = "ALERTS_RECORDED"
+	}
 	return Snapshot{
 		Enabled: true, State: state, ObservedEvents: m.observed, LastEventAtMS: m.lastEventMS,
 		Counts: counts, Recent: recent, AuditDropped: m.auditDropped,

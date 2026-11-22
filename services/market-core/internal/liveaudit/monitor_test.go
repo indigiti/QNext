@@ -35,22 +35,28 @@ func TestLiveIntegritySourceLagWaitsForCorrection(t *testing.T) {
 	empty.VolumeSource, empty.VolumeStatus = "", "UNKNOWN"
 	send(syn, 1, empty, published)
 	send(source, 1, testBar(source, "15s", at, 12, 1, false), published)
-	m.inspect(published.Add(checkDelay-time.Millisecond))
-	if got := m.Snapshot().Counts["SYN_FUTURES_VOLUME_LAG"]; got != 0 { t.Fatalf("premature lag alert: %d", got) }
+	m.inspect(published.Add(checkDelay - time.Millisecond))
+	if got := m.Snapshot().Counts["SYN_FUTURES_VOLUME_LAG"]; got != 0 {
+		t.Fatalf("premature lag alert: %d", got)
+	}
 	send(syn, 2, testBar(syn, "15s", at, 12, 1, false), published.Add(time.Millisecond))
-	m.inspect(published.Add(5*time.Second))
-	if got := m.Snapshot().Counts["SYN_FUTURES_VOLUME_LAG"]; got != 0 { t.Fatalf("corrected volume flagged: %d", got) }
+	m.inspect(published.Add(5 * time.Second))
+	if got := m.Snapshot().Counts["SYN_FUTURES_VOLUME_LAG"]; got != 0 {
+		t.Fatalf("corrected volume flagged: %d", got)
+	}
 
-	next := at.Add(15*time.Second)
+	next := at.Add(15 * time.Second)
 	send(syn, 3, testBar(syn, "15s", next, 0, 0, false), published.Add(time.Second))
 	send(source, 2, testBar(source, "15s", next, 30, 1, false), published.Add(time.Second))
-	m.inspect(published.Add(6*time.Second))
+	m.inspect(published.Add(6 * time.Second))
 	got := m.Snapshot()
 	if got.Counts["SYN_FUTURES_VOLUME_LAG"] != 1 || got.Recent[len(got.Recent)-1].ExpectedVolume != 30 {
 		t.Fatalf("expected one persistent source-lag alert: %+v", got)
 	}
-	m.inspect(published.Add(7*time.Second))
-	if m.Snapshot().Counts["SYN_FUTURES_VOLUME_LAG"] != 1 { t.Fatal("lag alert repeated for same candle") }
+	m.inspect(published.Add(7 * time.Second))
+	if m.Snapshot().Counts["SYN_FUTURES_VOLUME_LAG"] != 1 {
+		t.Fatal("lag alert repeated for same candle")
+	}
 	path := filepath.Join(m.root, published.In(india).Format("2006-01"), published.In(india).Format("2006-01-02")+".jsonl")
 	data, err := os.ReadFile(path)
 	if err != nil || !strings.Contains(string(data), "SYN_FUTURES_VOLUME_LAG") {
@@ -67,7 +73,7 @@ func TestLiveIntegrityDetectsUnrevisionedFinalAndGaps(t *testing.T) {
 	repeated.Volume = 11
 	m.observe(stream.BarEvent{Seq: 2, Bar: repeated, PublishedAt: at.Add(time.Second)})
 	next := testBar(first.InstrumentID, "15s", at.Add(45*time.Second), 15, 0, true)
-	m.observe(stream.BarEvent{Seq: 3, Bar: next, PublishedAt: at.Add(45*time.Second)})
+	m.observe(stream.BarEvent{Seq: 3, Bar: next, PublishedAt: at.Add(45 * time.Second)})
 	snap := m.Snapshot()
 	if snap.Counts["VOLUME_REGRESSION"] != 1 || snap.Counts["PUBLISHED_CANDLE_GAP"] != 1 {
 		t.Fatalf("unexpected regression/gap counts: %+v", snap.Counts)
@@ -91,7 +97,9 @@ func TestLiveIntegrityCaptureAndMonitorLossEvidence(t *testing.T) {
 		t.Fatalf("capture loss not surfaced: %+v", snap)
 	}
 	m.inspect(at.Add(time.Second))
-	if m.Snapshot().Counts["RAW_CAPTURE_LOSS"] != 1 { t.Fatal("repeated capture warning") }
+	if m.Snapshot().Counts["RAW_CAPTURE_LOSS"] != 1 {
+		t.Fatal("repeated capture warning")
+	}
 }
 
 func TestLiveIntegrityStopsOnContextCancellation(t *testing.T) {
@@ -102,6 +110,7 @@ func TestLiveIntegrityStopsOnContextCancellation(t *testing.T) {
 	go func() { m.Run(ctx); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(time.Second): t.Fatal("monitor did not stop")
+	case <-time.After(time.Second):
+		t.Fatal("monitor did not stop")
 	}
 }
