@@ -567,6 +567,10 @@ func runMarket(
 	if proxyErr != nil {
 		log.Printf("index futures volume proxy unavailable: %v", proxyErr)
 	} else {
+		proxyManager.AutoRenew = strings.TrimSpace(os.Getenv("QNEXT_FUTURES_AUTO_RENEW")) == "1"
+		if proxyManager.AutoRenew {
+			log.Printf("QNext enabled-futures auto-renew armed (staging opt-in, capped at two attempts per session)")
+		}
 		volumeRouter = proxyManager
 		feedTracker.SetVolumeStatus(proxyManager.Status)
 		go func() {
