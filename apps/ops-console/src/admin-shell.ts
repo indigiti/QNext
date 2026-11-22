@@ -763,6 +763,21 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     mobileToggle?.focus();
   });
   document.addEventListener('keydown', (event) => {
+    // When the mobile drawer is open, keep keyboard navigation inside it.
+    // Main content is inert and remains untouched by live API updates.
+    if (event.key === 'Tab' && sidebar.classList.contains('open')) {
+      const focusable = Array.from(sidebar.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), a[href], select:not([disabled])',
+      )).filter((element) => !element.closest('[hidden]') && element.getClientRects().length > 0);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (first && last && ((event.shiftKey && document.activeElement === first)
+        || (!event.shiftKey && document.activeElement === last))) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+    }
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
       if (event.key.toLowerCase() === 'k') {
         event.preventDefault();
