@@ -724,3 +724,94 @@ body.ops-shell-ready .ops-shortcut-grid small {
     transition: none !important;
   }
 }
+
+/* Consistent specialist pages: forms, data grids and details must feel part
+ * of the same product, but no chart/indicator canvas is restyled. */
+body.ops-shell-ready main.grid > .card .eyebrow {
+  color: var(--ops-muted);
+  font-size: .68rem;
+  font-weight: 750;
+  letter-spacing: .075em;
+}
+body.ops-shell-ready main.grid > .card .card-head {
+  margin-bottom: .85rem;
+  gap: .8rem;
+}
+body.ops-shell-ready main.grid > .card input:not([type='checkbox']):not([type='radio']),
+body.ops-shell-ready main.grid > .card select,
+body.ops-shell-ready main.grid > .card textarea {
+  min-height: 40px;
+  color: var(--ops-text);
+  background: var(--ops-panel-soft);
+  border: 1px solid var(--ops-border-strong);
+  border-radius: 11px;
+  line-height: 1.4;
+}
+body.ops-shell-ready main.grid > .card textarea {
+  min-height: 220px;
+  font-size: .83rem;
+}
+body.ops-shell-ready main.grid > .card input:focus-visible,
+body.ops-shell-ready main.grid > .card select:focus-visible,
+body.ops-shell-ready main.grid > .card textarea:focus-visible {
+  outline: 2px solid var(--ops-accent);
+  outline-offset: 2px;
+}
+body.ops-shell-ready main.grid > .card button:not(.danger):not(.indicator-icon-action):not(.qnext-health-symbol) {
+  border-radius: 11px;
+}
+body.ops-shell-ready main.grid > .card .badge {
+  border-radius: 999px;
+  font-size: .69rem;
+  line-height: 1.2;
+  padding: .28rem .55rem;
+  font-weight: 740;
+  letter-spacing: .015em;
+}
+body.ops-shell-ready .badge.good {
+  background: rgba(155,207,104,.15);
+  color: #bfe49b;
+}
+body.ops-shell-ready .badge.bad {
+  background: rgba(248,142,121,.17);
+  color: #ffb69d;
+}
+body.ops-shell-ready .storage-table th {
+  color: var(--ops-muted);
+  font-size: .69rem;
+  letter-spacing: .065em;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+body.ops-shell-ready .storage-table td {
+  font-variant-numeric: tabular-nums;
+  border-bottom-color: var(--ops-border);
+}
+body.ops-shell-ready .storage-table tbody tr:hover { background: rgba(192,237,80,.035); }
+body.ops-shell-ready .storage-table-wrap { border-radius: 12px; }
+body.ops-shell-ready .ops-kpi:focus-visible,
+body.ops-shell-ready .ops-shortcut-grid > button:focus-visible,
+body.ops-shell-ready .ops-platform-list > button:focus-visible,
+body.ops-shell-ready .ops-health-row:focus-visible {
+  outline: 3px solid var(--ops-accent);
+  outline-offset: 3px;
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .badge.good {
+  background: #e0f2d9;
+  color: #276e32;
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .badge.bad {
+  background: #ffe8dd;
+  color: #a4402c;
+}
+:root[data-qnext-theme='light'] body.ops-shell-ready .storage-table tbody tr:hover {
+  background: #f0f5ec;
+}
+@media (prefers-contrast: more) {
+  body.ops-shell-ready .ops-overview-v2 .ops-panel,
+  body.ops-shell-ready button.ops-kpi,
+  body.ops-shell-ready .ops-shortcut-grid > button,
+  body.ops-shell-ready button.ops-nav-item.active {
+    border-color: currentColor;
+  }
+}
