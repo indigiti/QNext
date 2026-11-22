@@ -437,7 +437,7 @@ function dashboardMarkup(): string {
       <div class="ops-dashboard-hero">
         <div class="ops-hero-copy">
           <span class="ops-overline"><span class="ops-overline-dot" aria-hidden="true"></span> OPERATIONS WORKSPACE</span>
-          <h2>Markets, <span>in focus.</span></h2>
+          <h2 tabindex="-1">Markets, <span>in focus.</span></h2>
           <p class="muted">One workspace for live market quality, SYN+ integrity, research, and infrastructure. Every figure comes from QNeXT telemetry.</p>
         </div>
         <div class="ops-hero-actions">
@@ -702,7 +702,10 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     const wasMobileOpen = sidebar.classList.contains('open');
     applyView(view, true);
     if (wasMobileOpen) {
-      document.querySelector<HTMLElement>('.ops-page-heading h1')?.focus({ preventScroll: true });
+      const title = view === 'dashboard'
+        ? document.querySelector<HTMLElement>('#ops-dashboard-card .ops-dashboard-hero h2')
+        : document.getElementById('ops-screen-' + view + '-title');
+      title?.focus({ preventScroll: true });
     }
   };
   sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
