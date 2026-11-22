@@ -424,6 +424,33 @@ func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 		}
 	}
 
+	// Historical NSE 1m symbols appear in QNext's normal symbol search, but
+	// do not enter the synthetic assembler, futures proxy, or Upstox live
+	// WebSocket subscription demand. Their minute bars are restored separately.
+	if config != nil {
+		for _, entry := range config.NSEOneMinute {
+			assetClass := "EQUITY"
+			if entry.IsIndex() {
+				assetClass = "INDEX"
+			}
+			if err := registry.Register(symbol.Instrument{
+				ID: entry.InstrumentID(),
+				Symbol: strings.ToUpper(strings.TrimSpace(entry.Symbol)),
+				Name: entry.Name,
+				AssetClass: assetClass,
+				Exchange: "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
+				CalendarID: "NSE_EQ", Visible: true,
+			}); err != nil {
+				return nil, err
+			}
+			if err := registry.RegisterProvider(symbol.ProviderInstrument{
+				Provider: upstox.ProviderName,
+				InstrumentID: entry.InstrumentID(), ProviderKey: entry.ProviderKey,
+			}); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return registry, nil
 }
 
