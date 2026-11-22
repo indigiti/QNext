@@ -88,3 +88,15 @@ func Current() Snapshot {
 	}
 	return snapshot
 }
+
+ // CaptureStats reads only the diagnostic capture source, avoiding the much
+ // larger broker/history snapshots during periodic integrity sampling.
+func CaptureStats() any {
+	mu.RLock()
+	source := captureSource
+	mu.RUnlock()
+	if source == nil {
+		return nil
+	}
+	return source()
+}
