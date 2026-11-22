@@ -20,8 +20,10 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 	"github.com/indigiti/QNext/services/market-core/internal/httpapi"
 	"github.com/indigiti/QNext/services/market-core/internal/integrity"
+	"github.com/indigiti/QNext/services/market-core/internal/liveaudit"
 	"github.com/indigiti/QNext/services/market-core/internal/marketcalendar"
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
+	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 	"github.com/indigiti/QNext/services/market-core/internal/resilience"
@@ -183,6 +185,24 @@ func main() {
 		volumeAliases["QNEXT:"+strings.ToUpper(strings.TrimSpace(market.Symbol))+"-SYN+"] = market.Underlying.InstrumentID
 	}
 
+	// Opt-in, staging-first. No additional provider subscriptions and no
+	// mutation of the candle/volume pipeline. The monitor only inspects bars
+	// already published to the existing WSS broker.
+	var liveMonitor *liveaudit.Monitor
+	if config != nil && strings.TrimSpace(os.Getenv("QNEXT_LIVE_INTEGRITY_MONITOR")) == "1" {
+		liveMonitor = liveaudit.New(storageRoot, volumeAliases)
+		liveMonitor.SetDiagnostics(func() (bool, uint64, uint64, uint64) {
+			stats, ok := observability.CaptureStats().(capture.FrameStoreStats)
+			if !ok {
+				return false, 0, 0, broker.AuditDrops()
+			}
+			return true, stats.Dropped, stats.Errors, broker.AuditDrops()
+		})
+		broker.SetAuditSink(liveMonitor.Events(), liveMonitor.Targets())
+		go liveMonitor.Run(ctx)
+		log.Printf("QNext read-only live integrity monitor enabled (raw capture requires QNEXT_RAW_CAPTURE=1)")
+	}
+
 	handler := httpapi.New(store, httpapi.Options{
 		Version:         version,
 		Commit:          commit,
@@ -219,6 +239,10 @@ func main() {
 		},
 		FeedStatus: func() any {
 			snapshot := feedTracker.Snapshot()
+			var integrityStatus any = map[string]any{"enabled": false}
+			if liveMonitor != nil {
+				integrityStatus = liveMonitor.Snapshot()
+			}
 			markets := marketconfig.DefaultMarkets()
 			if config != nil {
 				markets = config.EffectiveMarkets()
@@ -250,6 +274,7 @@ func main() {
 				"resilience":              resilienceMetrics.Snapshot(),
 				"gap_recovery":            gapRecoveryTracker.Snapshot(),
 				"raw_retention":           rawRetention.Snapshot(),
+				"live_integrity":          integrityStatus,
 			}
 		},
 	})

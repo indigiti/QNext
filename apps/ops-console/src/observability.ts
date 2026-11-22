@@ -115,7 +115,40 @@ type HistoryRuntime = {
   };
 };
 
+type LiveIntegrityStatus = {
+  enabled?: boolean;
+  state?: string;
+  observed_events?: number;
+  last_event_at_ms?: number;
+  counts?: Record<string, number>;
+  audit_dropped?: number;
+  raw_capture_enabled?: boolean;
+  raw_capture_dropped?: number;
+  raw_capture_errors?: number;
+  persist_errors?: number;
+  last_persist_error?: string;
+  recent?: Array<{
+    kind: string;
+    instrument_id?: string;
+    timeframe?: string;
+    open_time_ms?: number;
+    expected_volume?: number;
+    observed_volume?: number;
+    detail?: string;
+  }>;
+};
+
+function escapeLiveAudit(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 type FeedPayload = {
+  live_integrity?: LiveIntegrityStatus;
   nifty_instrument_id?: string;
   synthetic_instrument_id?: string;
   telemetry?: {
@@ -274,6 +307,11 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
   const telemetry = feed.telemetry ?? {};
   const runtime = telemetry.runtime ?? {};
   const capture = runtime.capture;
+  const liveAudit = feed.live_integrity;
+  const auditCount = Object.values(liveAudit?.counts ?? {}).reduce((a, b) => a + b, 0);
+  const auditIssues = auditCount > 0 || (liveAudit?.persist_errors ?? 0) > 0 ||
+    (liveAudit?.audit_dropped ?? 0) > 0 || (liveAudit?.raw_capture_dropped ?? 0) > 0;
+  const auditLatest = (liveAudit?.recent ?? []).slice(-4).reverse();
   const broker = runtime.broker;
   const demand = runtime.demand;
   const history = runtime.history;
@@ -364,6 +402,21 @@ function render(feed: FeedPayload, proxy: ProxyStatus): void {
       <div class="feed-kv"><span>Consumer refs</span><strong>${demand?.total_refs ?? 0}</strong></div>
       <div class="feed-kv"><span>Idle grace</span><strong>${duration(demand?.idle_ttl_ms ?? null)}</strong></div>
       <div class="feed-kv"><span>Active IDs</span><strong>${activeIDs || 'none'}</strong></div>
+    </div>
+
+    <div class="feed-provider-card">
+      <div class="line"><strong>LIVE INTEGRITY</strong>${stateBadge(!auditIssues, !liveAudit?.enabled ? 'OFF' : auditIssues ? 'ALERTS' : (liveAudit.observed_events ?? 0) > 0 ? 'OBSERVING' : 'WAITING')}</div>
+      <div class="feed-kv"><span>Published bars audited</span><strong>${liveAudit?.observed_events ?? 0}</strong></div>
+      <div class="feed-kv"><span>Recorded alerts</span><strong>${auditCount}</strong></div>
+      <div class="feed-kv"><span>Monitor queue losses</span><strong>${liveAudit?.audit_dropped ?? 0}</strong></div>
+      <div class="feed-kv"><span>Raw capture</span><strong>${liveAudit?.raw_capture_enabled ? 'ON' : 'OFF'}</strong></div>
+      <div class="feed-kv"><span>Alert journal failures</span><strong>${liveAudit?.persist_errors ?? 0}</strong></div>
+      ${auditLatest.length ? auditLatest.map((alert) => `
+        <div class="feed-kv">
+          <span>${escapeLiveAudit(alert.kind)} · ${escapeLiveAudit(alert.timeframe ?? 'capture')}</span>
+          <strong title="${escapeLiveAudit(alert.detail)}">${escapeLiveAudit(alert.instrument_id ?? 'Market recorder')}</strong>
+        </div>`).join('') : '<div class="feed-kv"><span>Recent alerts</span><strong>none</strong></div>'}
+      <div class="muted">Read-only staging monitor · 3-second checks · incident JSONL stored server-side</div>
     </div>
 
     <div class="feed-provider-card">
