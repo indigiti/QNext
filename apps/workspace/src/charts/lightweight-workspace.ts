@@ -1,6 +1,6 @@
 import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
 import { mountThemeControl } from '../theme';
-import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL } from '../symbol-sections';
+import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL, sectionOfTicker } from '../symbol-sections';
 import { mountScreenAwakeButton, type ScreenAwakeController } from '../screen-awake';
 import {
   QNextLightweightChart,
@@ -134,8 +134,12 @@ export class QNextLightweightWorkspace {
     this.timeframes = options.timeframes;
     this.fallback = {
       ticker: options.initialTicker,
-      timeframe: this.symbols.some((symbol) => symbol.ticker === options.initialTicker
-        && symbol.group === NSE_MINUTE_GROUP_ID) ? '1m' : options.initialTimeframe,
+      timeframe: sectionOfTicker(options.initialTicker, this.symbols.map((item) => ({
+        ticker: item.ticker,
+        prefix: item.prefix ?? 'QNEXT',
+        type: item.type ?? 'index',
+        synthetic: item.ticker.includes('-SYN'),
+      }))) === 'nse_1m' ? '1m' : options.initialTimeframe,
     };
     this.layout = options.initialLayout ?? 1;
     this.syncCharts = options.syncCharts ?? true;
