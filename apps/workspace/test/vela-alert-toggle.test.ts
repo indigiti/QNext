@@ -16,7 +16,7 @@ function memoryStorage(initial: string | null = null) {
 }
 
 function fakeEngine() {
-  let callbacks: ExecutionHandlers | null = null;
+  const latest: { callbacks: ExecutionHandlers | null } = { callbacks: null };
   const prepare = vi.fn(async () => ({
     language: 'pine', inputs: [], meta: { title: 'Buy/Sell Test', overlay: true },
     reactsToViewport: false, token: null,
@@ -28,7 +28,7 @@ function fakeEngine() {
     notifyBars: vi.fn(),
   };
   const execute = vi.fn((_req, handlers: ExecutionHandlers) => {
-    callbacks = handlers;
+    latest.callbacks = handlers;
     return session;
   });
   const engine: ScriptingEngine = {
@@ -39,12 +39,12 @@ function fakeEngine() {
   };
   return {
     engine, prepare, execute, session,
-    emitAlert: () => callbacks?.onAlert?.({
+    emitAlert: () => latest.callbacks?.onAlert?.({
       id: 'buy', message: 'Buy condition', title: 'Buy', time: 15000,
       barIndex: 0,
     }),
-    emitModel: (model: Parameters<ExecutionHandlers['onModel']>[0]) => callbacks?.onModel(model),
-    emitError: (error: Error) => callbacks?.onError?.(error),
+    emitModel: (model: Parameters<ExecutionHandlers['onModel']>[0]) => latest.callbacks?.onModel(model),
+    emitError: (error: Error) => latest.callbacks?.onError?.(error),
   };
 }
 
