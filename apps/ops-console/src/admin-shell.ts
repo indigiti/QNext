@@ -297,24 +297,52 @@ function summaryValue(containerSelector: string, labels: string[]): string {
   return '—';
 }
 
+function marketHealthSummary(): { symbols: string; gaps: string; message: string } {
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('.five-second-symbol-row'));
+  if (rows.length === 0) {
+    return { symbols: '—', gaps: '—', message: 'Awaiting market-day telemetry' };
+  }
+  let gaps = 0;
+  let incomplete = 0;
+  for (const row of rows) {
+    const missingText = Array.from(row.querySelectorAll<HTMLElement>('.five-second-symbol-kpis > span'))
+      .find((item) => item.textContent?.trim().startsWith('Missing'))
+      ?.querySelector('strong')?.textContent?.trim();
+    if (!missingText || !/^\\d[\\d,]*$/.test(missingText)) {
+      incomplete++;
+      continue;
+    }
+    gaps += Number(missingText.replaceAll(',', ''));
+  }
+  return {
+    symbols: String(rows.length),
+    gaps: incomplete === 0 ? gaps.toLocaleString('en-IN') : '—',
+    message: incomplete ? 'Some sources have not reported yet' : gaps > 0
+      ? 'Inspect missing 5s candles in Market Data' : 'No missing candles reported by current-day telemetry',
+  };
+}
+
 function miniFiveSecondRows(): string {
   const rows = Array.from(document.querySelectorAll<HTMLElement>('.five-second-symbol-row'));
   if (rows.length === 0) {
-    return '<div class="ops-empty-state">5s health is warming. The dashboard will populate from persisted current-day history.</div>';
+    return '<div class="ops-empty-state">Waiting for current-day candle health. Historical data is not counted as a live feed.</div>';
   }
 
   return rows.map((row) => {
-    const symbol = row.dataset.symbol ?? row.querySelector('.five-second-symbol-title strong')?.textContent ?? '—';
+    const symbol = row.dataset.symbol ?? row.querySelector('.five-second-symbol-title strong')?.textContent ?? 'Unknown';
     const kpis = Array.from(row.querySelectorAll<HTMLElement>('.five-second-symbol-kpis > span'));
-    const health = kpis.find((item) => item.textContent?.trim().startsWith('Health'))?.querySelector('strong')?.textContent ?? '—';
-    const missing = kpis.find((item) => item.textContent?.trim().startsWith('Missing'))?.querySelector('strong')?.textContent ?? '0';
-    const timeline = row.querySelector<HTMLElement>('.five-second-timeline')?.innerHTML ?? '';
-    const status = row.querySelector<HTMLElement>('.five-second-symbol-title .badge')?.textContent?.trim() ?? '—';
-    const bad = status === 'CHECK' || Number(missing) > 0;
+    const health = kpis.find((item) => item.textContent?.trim().startsWith('Health'))?.querySelector('strong')?.textContent?.trim() ?? '—';
+    const missing = kpis.find((item) => item.textContent?.trim().startsWith('Missing'))?.querySelector('strong')?.textContent?.trim() ?? '—';
+    const status = row.querySelector<HTMLElement>('.five-second-symbol-title .badge')?.textContent?.trim() ?? 'WAITING';
+    const needsAttention = status.toUpperCase() === 'CHECK' || (Number(missing.replaceAll(',', '')) > 0);
+    const percentage = /^\\d+(?:\\.\\d+)?%$/.test(health) ? Math.min(100, Math.max(0, Number(health.slice(0, -1)))) : null;
+    const meter = percentage === null
+      ? '<span class="ops-health-track ops-health-track-empty" aria-label="Health percentage unavailable"></span>'
+      : `<span class="ops-health-track" role="progressbar" aria-label="${html(symbol)} candle health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}"><span class="ops-health-fill" style="width: ${percentage}%"></span></span>`;
     return `
-      <button type="button" class="ops-health-row" data-dashboard-view="market" aria-label="Open ${html(symbol)} 5 second health">
-        <span class="ops-health-symbol"><strong>${html(symbol)}</strong><small class="${bad ? 'is-bad' : ''}">${html(status)}</small></span>
-        <span class="ops-health-timeline five-second-timeline">${timeline}</span>
+      <button type="button" class="ops-health-row" data-dashboard-view="market" aria-label="Open ${html(symbol)} current-day 5 second health">
+        <span class="ops-health-symbol"><strong>${html(symbol)}</strong><small class="${needsAttention ? 'is-bad' : ''}">${html(status)}</small></span>
+        <span class="ops-health-visual">${meter}<small>Current-day 5s completeness</small></span>
         <span class="ops-health-pct"><strong>${html(health)}</strong><small>${html(missing)} missing</small></span>
       </button>
     `;
@@ -326,55 +354,104 @@ function dashboardMarkup(): string {
   const feedState = textFrom('#observability-health', summaryValue('#feed-summary', ['status', 'authority']));
   const fiveSecondState = textFrom('#five-second-day-health-state', 'WARMING');
   const release = summaryValue('#release-status', ['active', 'current', 'release']);
-  const transport = textFrom('#browser-transport-status', 'Probing…').replace(/^Browser transport:\s*/i, '');
+  const transport = textFrom('#browser-transport-status', 'Probing…').replace(/^Browser transport:\\s*/i, '');
+  const sessionDay = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'short',
+  }).format(new Date());
+  const market = marketHealthSummary();
 
   return `
-    <section id="ops-dashboard-card" class="ops-dashboard" data-ops-view="dashboard">
+    <section id="ops-dashboard-card" class="ops-dashboard ops-overview-v2" data-ops-view="dashboard">
+      <div class="ops-overview-topline">
+        <span class="ops-breadcrumb"><span>QNeXT</span><span aria-hidden="true">/</span> Overview</span>
+        <span class="ops-session-date">${html(sessionDay)} · IST</span>
+      </div>
+
       <div class="ops-dashboard-hero">
-        <div>
-          <p class="eyebrow">QNeXT Operations</p>
-          <h2>System overview</h2>
-          <p class="muted">A compact operational view. Open a section from the sidebar for full controls and diagnostics.</p>
+        <div class="ops-hero-copy">
+          <span class="ops-overline"><span class="ops-overline-dot" aria-hidden="true"></span> OPERATIONS WORKSPACE</span>
+          <h2>Markets, <span>in focus.</span></h2>
+          <p class="muted">One workspace for live market quality, SYN+ integrity, research, and infrastructure. Every figure comes from QNeXT telemetry.</p>
         </div>
-        <button type="button" class="secondary" data-dashboard-view="market">Open market health</button>
+        <div class="ops-hero-actions">
+          <button type="button" class="ops-primary-action" data-dashboard-view="market">View market health <span aria-hidden="true">↗</span></button>
+          <button type="button" class="ops-ghost-action" data-dashboard-view="diagnostics">Diagnostics</button>
+        </div>
+      </div>
+
+      <div class="ops-section-heading">
+        <div><p class="eyebrow">At a glance</p><h3>System pulse</h3></div>
+        <p>Live status · No simulated values</p>
       </div>
 
       <div class="ops-kpi-grid">
-        <button type="button" class="ops-kpi" data-dashboard-view="runtime">
-          <span>Market Core</span><strong data-ops-stat="runtime">${html(runtimeState)}</strong><small>Runtime & services</small>
+        <button type="button" class="ops-kpi ops-kpi-blue" data-dashboard-view="runtime">
+          <span class="ops-kpi-top"><span>Market Core</span><span class="ops-kpi-symbol" aria-hidden="true">↗</span></span>
+          <strong data-ops-stat="runtime">${html(runtimeState)}</strong>
+          <small>Runtime & services <span aria-hidden="true">→</span></small>
         </button>
-        <button type="button" class="ops-kpi" data-dashboard-view="market">
-          <span>Market data</span><strong data-ops-stat="feed">${html(feedState)}</strong><small data-ops-stat="transport">${html(transport)}</small>
+        <button type="button" class="ops-kpi ops-kpi-green" data-dashboard-view="market">
+          <span class="ops-kpi-top"><span>Feed authority</span><span class="ops-kpi-symbol" aria-hidden="true">◉</span></span>
+          <strong data-ops-stat="feed">${html(feedState)}</strong>
+          <small data-ops-stat="transport">${html(transport)}</small>
         </button>
-        <button type="button" class="ops-kpi" data-dashboard-view="market">
-          <span>Canonical 5s</span><strong data-ops-stat="five-second">${html(fiveSecondState)}</strong><small>Current-day integrity</small>
+        <button type="button" class="ops-kpi ops-kpi-warm" data-dashboard-view="market">
+          <span class="ops-kpi-top"><span>Canonical 5s</span><span class="ops-kpi-symbol" aria-hidden="true">▥</span></span>
+          <strong data-ops-stat="five-second">${html(fiveSecondState)}</strong>
+          <small>Current-day integrity <span aria-hidden="true">→</span></small>
         </button>
-        <button type="button" class="ops-kpi" data-dashboard-view="releases">
-          <span>Release</span><strong data-ops-stat="release">${html(release)}</strong><small>Deploy / rollback</small>
+        <button type="button" class="ops-kpi ops-kpi-ink" data-dashboard-view="releases">
+          <span class="ops-kpi-top"><span>Installed release</span><span class="ops-kpi-symbol" aria-hidden="true">↗</span></span>
+          <strong data-ops-stat="release">${html(release)}</strong>
+          <small>Deployment & rollback <span aria-hidden="true">→</span></small>
         </button>
       </div>
 
       <div class="ops-dashboard-grid">
-        <section class="ops-panel ops-panel-wide">
+        <section class="ops-panel ops-market-board" aria-labelledby="ops-market-board-heading">
           <div class="ops-panel-head">
-            <div><span class="eyebrow">Current day</span><h3>5s candle health</h3></div>
-            <button type="button" class="secondary compact" data-dashboard-view="market">View details</button>
+            <div>
+              <p class="eyebrow">Market data quality</p>
+              <h3 id="ops-market-board-heading">5-second candle health</h3>
+              <p class="ops-panel-subtitle">Current-day completeness by configured symbol</p>
+            </div>
+            <button type="button" class="ops-ghost-action compact" data-dashboard-view="market">Open feed details <span aria-hidden="true">↗</span></button>
+          </div>
+          <div class="ops-market-board-meta">
+            <span><i aria-hidden="true"></i><strong data-ops-stat="tracked">${html(market.symbols)}</strong> symbols reporting</span>
+            <span class="ops-market-board-gaps"><strong data-ops-stat="gaps">${html(market.gaps)}</strong> missing 5s candles</span>
           </div>
           <div class="ops-health-list">${miniFiveSecondRows()}</div>
+          <p class="ops-panel-footnote" data-ops-stat="market-note">${html(market.message)}</p>
         </section>
 
-        <section class="ops-panel">
-          <div class="ops-panel-head"><div><span class="eyebrow">Quick access</span><h3>Operations</h3></div></div>
-          <div class="ops-quick-grid">
-            <button type="button" data-dashboard-view="candles"><span>▥</span><strong>Candles</strong><small>Formation & recovery</small></button>
-            <button type="button" data-dashboard-view="synthetic"><span>◇</span><strong>SYN+</strong><small>Research synthetic</small></button>
-            <button type="button" data-dashboard-view="intelligence"><span>◫</span><strong>Intelligence</strong><small>Models & promotion gates</small></button>
-            <button type="button" data-dashboard-view="lab"><span>◈</span><strong>Lab</strong><small>Experiments & ML challengers</small></button>
-            <button type="button" data-dashboard-view="diagnostics"><span>▤</span><strong>Diagnostics</strong><small>Logs & runtime</small></button>
-            <button type="button" data-dashboard-view="storage"><span>▤</span><strong>Storage</strong><small>Capacity & files</small></button>
+        <section class="ops-panel ops-platform-board" aria-labelledby="ops-platform-heading">
+          <div class="ops-panel-head">
+            <div><p class="eyebrow">Services</p><h3 id="ops-platform-heading">Operational snapshot</h3>
+              <p class="ops-panel-subtitle">Current signals from QNeXT's existing services</p>
+            </div>
           </div>
+          <div class="ops-platform-list">
+            <button type="button" data-dashboard-view="runtime"><span class="ops-platform-icon" aria-hidden="true">◈</span><span><strong>Market Core</strong><small>Runtime status</small></span><em data-ops-stat="runtime">${html(runtimeState)}</em></button>
+            <button type="button" data-dashboard-view="market"><span class="ops-platform-icon" aria-hidden="true">◉</span><span><strong>Market transport</strong><small>Browser stream</small></span><em data-ops-stat="transport">${html(transport)}</em></button>
+            <button type="button" data-dashboard-view="market"><span class="ops-platform-icon" aria-hidden="true">▥</span><span><strong>5s integrity</strong><small>Current-day overview</small></span><em data-ops-stat="five-second">${html(fiveSecondState)}</em></button>
+            <button type="button" data-dashboard-view="releases"><span class="ops-platform-icon" aria-hidden="true">↗</span><span><strong>Release</strong><small>Current deployment</small></span><em data-ops-stat="release">${html(release)}</em></button>
+          </div>
+          <div class="ops-platform-note">Live telemetry can be unavailable outside market hours. Unknown is not treated as healthy.</div>
         </section>
       </div>
+
+      <section class="ops-shortcuts" aria-labelledby="ops-shortcuts-heading">
+        <div class="ops-section-heading"><div><p class="eyebrow">Workspace</p><h3 id="ops-shortcuts-heading">Your tools</h3></div><p>Jump into a specialist view</p></div>
+        <div class="ops-shortcut-grid">
+          <button type="button" data-dashboard-view="candles"><span aria-hidden="true">▥</span><strong>Candles & history</strong><small>Formation and replay</small></button>
+          <button type="button" data-dashboard-view="synthetic"><span aria-hidden="true">◇</span><strong>SYN+ research</strong><small>Volume and synthetic quality</small></button>
+          <button type="button" data-dashboard-view="indicators"><span aria-hidden="true">⌁</span><strong>Indicators & Pine</strong><small>Catalog and editor</small></button>
+          <button type="button" data-dashboard-view="lab"><span aria-hidden="true">◈</span><strong>Intelligence Lab</strong><small>Experiments and tests</small></button>
+          <button type="button" data-dashboard-view="storage"><span aria-hidden="true">▤</span><strong>Storage</strong><small>Capacity and retention</small></button>
+          <button type="button" data-dashboard-view="diagnostics"><span aria-hidden="true">≡</span><strong>Diagnostics</strong><small>Service events and logs</small></button>
+        </div>
+      </section>
     </section>
   `;
 }
@@ -394,10 +471,14 @@ function renderDashboard(): void {
     'five-second': textFrom('#five-second-day-health-state', 'WARMING'),
     transport: textFrom('#browser-transport-status', 'Probing…').replace(/^Browser transport:\s*/i, ''),
     release: summaryValue('#release-status', ['active', 'current', 'release']),
+    tracked: marketHealthSummary().symbols,
+    gaps: marketHealthSummary().gaps,
+    'market-note': marketHealthSummary().message,
   };
   for (const [name, value] of Object.entries(stats)) {
-    const element = dashboard.querySelector<HTMLElement>(`[data-ops-stat="${name}"]`);
-    if (element && element.textContent !== value) element.textContent = value;
+    dashboard.querySelectorAll<HTMLElement>(`[data-ops-stat="${name}"]`).forEach((element) => {
+      if (element.textContent !== value) element.textContent = value;
+    });
   }
 
   const list = dashboard.querySelector<HTMLElement>('.ops-health-list');
