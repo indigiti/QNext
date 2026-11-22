@@ -416,7 +416,7 @@ function queueDashboardRender(): void {
   dashboardRenderQueued = true;
   window.setTimeout(() => {
     dashboardRenderQueued = false;
-    renderDashboard();
+    if (document.body.dataset.opsView === 'dashboard') renderDashboard();
   }, 120);
 }
 
@@ -472,6 +472,9 @@ function applyView(view: View, updateHash: boolean): void {
   }
 
   setMobileNavigation(false);
+  // Observe noisy telemetry DOM only while the dashboard is visible.
+  // Market / Indicators editors no longer pay a global subtree observer cost.
+  setDashboardSummaryMonitoring(view === 'dashboard');
   if (updateHash) history.replaceState(null, '', `#${view}`);
   if (view === 'dashboard') renderDashboard();
 
@@ -509,6 +512,15 @@ function setDockCollapsed(collapsed: boolean, remember = true): void {
   button?.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
   button?.setAttribute('title', collapsed ? 'Expand navigation (Ctrl/⌘ B)' : 'Collapse navigation (Ctrl/⌘ B)');
   if (button) button.textContent = collapsed ? '›' : '‹';
+  // Do not leave the dock showing an accidentally filtered subset of icons.
+  // Search is a temporary navigation aid, not a persistent route setting.
+  if (collapsed) {
+    const search = document.querySelector<HTMLInputElement>('#ops-nav-search');
+    if (search && search.value) {
+      search.value = '';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
   if (remember) {
     try { window.sessionStorage.setItem(DOCK_PREF_KEY, collapsed ? 'collapsed' : 'expanded'); }
     catch { /* Navigation remains usable when storage is blocked. */ }
@@ -641,6 +653,20 @@ function isDashboardSourceMutation(mutation: MutationRecord): boolean {
   ));
 }
 
+let dashboardSummaryObserver: MutationObserver | null = null;
+let summaryMonitoringActive = false;
+
+function setDashboardSummaryMonitoring(active: boolean): void {
+  const grid = document.querySelector<HTMLElement>('#ops-content-grid');
+  if (!dashboardSummaryObserver || !grid || active === summaryMonitoringActive) return;
+  if (active) {
+    dashboardSummaryObserver.observe(grid, { childList: true, subtree: true, characterData: true });
+  } else {
+    dashboardSummaryObserver.disconnect();
+  }
+  summaryMonitoringActive = active;
+}
+
 function installMutationSync(grid: HTMLElement): void {
   // Only changes to the list of top-level cards require route classification.
   // Inner text updates (telemetry, indicator catalog, editor state) do not.
@@ -665,13 +691,13 @@ function installMutationSync(grid: HTMLElement): void {
 
   // Refresh only dashboard summaries from the specific source panels.
   // Crucially, this observer NEVER changes route visibility or scroll position.
-  const summaryObserver = new MutationObserver((mutations) => {
+  dashboardSummaryObserver = new MutationObserver((mutations) => {
     if (document.body.dataset.opsView === 'dashboard'
       && mutations.some(isDashboardSourceMutation)) {
       queueDashboardRender();
     }
   });
-  summaryObserver.observe(grid, { childList: true, subtree: true, characterData: true });
+  setDashboardSummaryMonitoring(document.body.dataset.opsView === 'dashboard');
 }
 
 installShell();
