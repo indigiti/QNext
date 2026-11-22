@@ -208,6 +208,24 @@ function navIcon(view: View): string {
     focusable="false" aria-hidden="true">${navIconPaths[view]}</svg>`;
 }
 
+const opsAreas: Array<{ view: View; label: string; detail: string; glyph: string; tone: string }> = [
+  { view: 'market', label: 'Market Data', detail: 'Live feeds & candles', glyph: '◉', tone: 'sky' },
+  { view: 'indicators', label: 'Research', detail: 'Pine & intelligence', glyph: '⌁', tone: 'lime' },
+  { view: 'runtime', label: 'Operations', detail: 'Services & releases', glyph: '↗', tone: 'coral' },
+];
+
+// These are navigation shortcuts, not separate accounts/workspaces.
+// Selecting an area never changes the enabled-symbol or broker feed state.
+function areaMarkup(): string {
+  return opsAreas.map((area) => `
+    <button type="button" class="ops-area-item" data-ops-area="${area.view}"
+      aria-label="Open ${html(area.label)}" title="${html(area.detail)}">
+      <span class="ops-area-icon ops-area-${area.tone}" aria-hidden="true">${html(area.glyph)}</span>
+      <span class="ops-area-copy"><strong>${html(area.label)}</strong><small>${html(area.detail)}</small></span>
+    </button>
+  `).join('');
+}
+
 function navMarkup(): string {
   return navGroups.map((group) => `
     <div class="ops-nav-group">
@@ -250,6 +268,10 @@ function installShell(): void {
       <button type="button" id="ops-dock-toggle" class="ops-dock-toggle" aria-label="Collapse navigation" aria-expanded="true" aria-controls="ops-nav-region" title="Collapse navigation (Ctrl/⌘ B)">‹</button>
       <button type="button" id="ops-sidebar-close" class="ops-sidebar-close" aria-label="Close navigation">×</button>
     </div>
+    <div class="ops-area-switcher" aria-label="QNeXT areas">
+      <p class="ops-area-label">AREAS</p>
+      ${areaMarkup()}
+    </div>
     <label class="ops-search" for="ops-nav-search">
       <span aria-hidden="true">⌕</span>
       <input id="ops-nav-search" type="search" autocomplete="off" placeholder="Quick navigation" />
@@ -259,8 +281,14 @@ function installShell(): void {
       ${navMarkup()}
     </nav>
     <div class="ops-sidebar-foot">
-      <div class="ops-sidebar-health"><span class="ops-live-dot"></span><span>QNext control plane</span></div>
-      <span class="muted">File-backed · session protected</span>
+      <div class="ops-theme-row">
+        <span>Appearance</span>
+        <div id="ops-theme-host"></div>
+      </div>
+      <div class="ops-session-profile">
+        <span class="ops-session-avatar" aria-hidden="true">QN</span>
+        <span class="ops-session-copy"><strong>QNeXT Admin</strong><small>Session protected</small></span>
+      </div>
     </div>
   `;
 
@@ -275,7 +303,7 @@ function installShell(): void {
   heading?.classList.add('ops-page-heading');
   if (heading) {
     const eyebrow = heading.querySelector<HTMLElement>('.eyebrow');
-    if (eyebrow) eyebrow.textContent = 'QNeXT Admin';
+    if (eyebrow) eyebrow.textContent = 'QNeXT / Overview';
   }
 
   const mobileButton = document.createElement('button');
@@ -572,8 +600,17 @@ function applyView(view: View, updateHash: boolean): void {
     else button.removeAttribute('aria-current');
   });
 
+  document.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
+    const selected = button.dataset.opsArea === view;
+    button.classList.toggle('active', selected);
+    if (selected) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
+  });
+
   const heading = document.querySelector<HTMLElement>('.ops-page-heading');
   if (heading) {
+    const eyebrow = heading.querySelector<HTMLElement>('.eyebrow');
+    if (eyebrow) eyebrow.textContent = 'QNeXT / ' + meta.title;
     const h1 = heading.querySelector('h1');
     const description = heading.querySelector('.muted');
     if (h1) h1.textContent = meta.title;
@@ -637,6 +674,12 @@ function setDockCollapsed(collapsed: boolean, remember = true): void {
 }
 
 function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTMLElement): void {
+  sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const view = button.dataset.opsArea as View;
+      if (views[view]) applyView(view, true);
+    });
+  });
   sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-nav]').forEach((button) => {
     button.addEventListener('click', () => {
       const view = button.dataset.opsNav as View;
