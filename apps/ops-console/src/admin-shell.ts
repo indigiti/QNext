@@ -228,6 +228,7 @@ function installShell(): void {
       <span aria-hidden="true">⌕</span>
       <input id="ops-nav-search" type="search" autocomplete="off" placeholder="Quick navigation" />
     </label>
+    <p id="ops-nav-search-feedback" class="ops-search-feedback" role="status" aria-live="polite" hidden></p>
     <nav id="ops-nav-region" class="ops-nav" aria-label="QNext Admin navigation">
       ${navMarkup()}
     </nav>
@@ -268,7 +269,7 @@ function installShell(): void {
   commandButton.setAttribute('aria-label', 'Search admin sections');
   commandButton.setAttribute('aria-keyshortcuts', 'Control+K Meta+K');
   commandButton.setAttribute('title', 'Search sections (Ctrl/⌘ K)');
-  commandButton.innerHTML = '<span>Search sections</span><kbd>⌘ K</kbd>';
+  commandButton.innerHTML = '<span>Search sections</span><kbd>⌘/Ctrl K</kbd>';
   heading?.insertAdjacentElement('afterend', commandButton);
 
   installDashboard(grid);
@@ -555,13 +556,20 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
   commandButton?.addEventListener('click', focusSearch);
   search?.addEventListener('input', () => {
     const query = search.value.trim().toLowerCase();
+    let visible = 0;
     sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-nav]').forEach((button) => {
       button.hidden = Boolean(query) && !(button.dataset.search ?? '').includes(query);
+      if (!button.hidden) visible++;
     });
     sidebar.querySelectorAll<HTMLElement>('.ops-nav-group').forEach((group) => {
       const anyVisible = Array.from(group.querySelectorAll<HTMLButtonElement>('[data-ops-nav]')).some((item) => !item.hidden);
       group.hidden = !anyVisible;
     });
+    const feedback = sidebar.querySelector<HTMLElement>('#ops-nav-search-feedback');
+    if (feedback) {
+      feedback.hidden = !query || visible !== 0;
+      feedback.textContent = query && visible === 0 ? 'No matching admin sections' : '';
+    }
   });
   search?.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
