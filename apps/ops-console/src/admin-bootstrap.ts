@@ -238,8 +238,11 @@ async function loadAdmin(): Promise<void> {
   await import('./intelligence-panel.mts');
   await import('./intelligence-lab-panel.mts');
   await import('./admin-ready');
-  const adminTopbar = document.querySelector<HTMLElement>('.ops-main .topbar, .topbar');
-  if (adminTopbar) mountThemeControl({ container: adminTopbar });
+  // The theme trigger belongs to the authenticated sidebar footer, as in
+  // a modern workspace shell. Keep a topbar fallback for smaller embeds.
+  const appearanceHost = document.querySelector<HTMLElement>('#ops-theme-host')
+    ?? document.querySelector<HTMLElement>('.ops-main .topbar, .topbar');
+  if (appearanceHost) mountThemeControl({ container: appearanceHost });
 
   document.querySelector<HTMLButtonElement>('#admin-logout')?.addEventListener('click', async () => {
     try {

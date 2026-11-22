@@ -1,6 +1,7 @@
 import './admin-shell.css';
 import './admin-sylva.css';
 import './admin-sylva-v2.css';
+import './admin-sylva-v3.css';
 
 export {};
 
@@ -208,6 +209,24 @@ function navIcon(view: View): string {
     focusable="false" aria-hidden="true">${navIconPaths[view]}</svg>`;
 }
 
+const opsAreas: Array<{ view: View; label: string; detail: string; glyph: string; tone: string }> = [
+  { view: 'market', label: 'Market Data', detail: 'Live feeds & candles', glyph: '◉', tone: 'sky' },
+  { view: 'indicators', label: 'Research', detail: 'Pine & intelligence', glyph: '⌁', tone: 'lime' },
+  { view: 'runtime', label: 'Operations', detail: 'Services & releases', glyph: '↗', tone: 'coral' },
+];
+
+// These are navigation shortcuts, not separate accounts/workspaces.
+// Selecting an area never changes the enabled-symbol or broker feed state.
+function areaMarkup(): string {
+  return opsAreas.map((area) => `
+    <button type="button" class="ops-area-item" data-ops-area="${area.view}"
+      aria-label="Open ${html(area.label)}" title="${html(area.detail)}" aria-pressed="false">
+      <span class="ops-area-icon ops-area-${area.tone}" aria-hidden="true">${html(area.glyph)}</span>
+      <span class="ops-area-copy"><strong>${html(area.label)}</strong><small>${html(area.detail)}</small></span>
+    </button>
+  `).join('');
+}
+
 function navMarkup(): string {
   return navGroups.map((group) => `
     <div class="ops-nav-group">
@@ -250,6 +269,10 @@ function installShell(): void {
       <button type="button" id="ops-dock-toggle" class="ops-dock-toggle" aria-label="Collapse navigation" aria-expanded="true" aria-controls="ops-nav-region" title="Collapse navigation (Ctrl/⌘ B)">‹</button>
       <button type="button" id="ops-sidebar-close" class="ops-sidebar-close" aria-label="Close navigation">×</button>
     </div>
+    <div class="ops-area-switcher" aria-label="QNeXT areas">
+      <p class="ops-area-label">AREAS</p>
+      ${areaMarkup()}
+    </div>
     <label class="ops-search" for="ops-nav-search">
       <span aria-hidden="true">⌕</span>
       <input id="ops-nav-search" type="search" autocomplete="off" placeholder="Quick navigation" />
@@ -259,23 +282,37 @@ function installShell(): void {
       ${navMarkup()}
     </nav>
     <div class="ops-sidebar-foot">
-      <div class="ops-sidebar-health"><span class="ops-live-dot"></span><span>QNext control plane</span></div>
-      <span class="muted">File-backed · session protected</span>
+      <div class="ops-theme-row">
+        <span>Appearance</span>
+        <div id="ops-theme-host"></div>
+      </div>
+      <div class="ops-session-profile">
+        <span class="ops-session-avatar" aria-hidden="true">QN</span>
+        <span class="ops-session-copy"><strong>QNeXT Admin</strong><small>Session protected</small></span>
+      </div>
     </div>
   `;
 
   const main = document.createElement('div');
   main.className = 'ops-main';
   shell.insertBefore(sidebar, shell.firstChild);
+  const scrim = document.createElement('button');
+  scrim.id = 'ops-nav-scrim';
+  scrim.type = 'button';
+  scrim.className = 'ops-nav-scrim';
+  scrim.setAttribute('aria-label', 'Close mobile navigation');
+  scrim.hidden = true;
+  shell.insertBefore(scrim, sidebar.nextSibling);
   main.append(topbar, grid);
   const toast = shell.querySelector('#toast');
   shell.insertBefore(main, toast ?? null);
 
   const heading = topbar.firstElementChild as HTMLElement | null;
   heading?.classList.add('ops-page-heading');
+  heading?.querySelector('h1')?.setAttribute('tabindex', '-1');
   if (heading) {
     const eyebrow = heading.querySelector<HTMLElement>('.eyebrow');
-    if (eyebrow) eyebrow.textContent = 'QNeXT Admin';
+    if (eyebrow) eyebrow.textContent = 'QNeXT / Overview';
   }
 
   const mobileButton = document.createElement('button');
@@ -295,7 +332,7 @@ function installShell(): void {
   commandButton.setAttribute('aria-label', 'Search admin sections');
   commandButton.setAttribute('aria-keyshortcuts', 'Control+K Meta+K');
   commandButton.setAttribute('title', 'Search sections (Ctrl/⌘ K)');
-  commandButton.innerHTML = '<span>Search sections</span><kbd>⌘/Ctrl K</kbd>';
+  commandButton.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.4 4.4"/></svg><span>Search sections</span><kbd>⌘/Ctrl K</kbd>';
   heading?.insertAdjacentElement('afterend', commandButton);
 
   installDashboard(grid);
@@ -389,7 +426,7 @@ function dashboardMarkup(): string {
   return `
     <section id="ops-dashboard-card" class="ops-dashboard ops-overview-v2" data-ops-view="dashboard">
       <div class="ops-overview-topline">
-        <span class="ops-breadcrumb"><span>QNeXT</span><span aria-hidden="true">/</span> Overview</span>
+        <span class="ops-overview-caption">Market operations</span>
         <span class="ops-session-date">${html(sessionDay)} · IST</span>
       </div>
 
@@ -551,9 +588,16 @@ function wireDashboardButtons(): void {
 function setMobileNavigation(open: boolean): void {
   const sidebar = document.querySelector<HTMLElement>('#ops-sidebar');
   const toggle = document.querySelector<HTMLButtonElement>('#ops-sidebar-toggle');
-  sidebar?.classList.toggle('open', open);
-  toggle?.setAttribute('aria-expanded', String(open));
-  document.body.classList.toggle('ops-nav-open', open);
+  const scrim = document.querySelector<HTMLButtonElement>('#ops-nav-scrim');
+  const main = document.querySelector<HTMLElement>('.ops-main');
+  const mobile = window.matchMedia('(max-width: 900px)').matches;
+  const visible = mobile && open;
+  sidebar?.classList.toggle('open', visible);
+  if (sidebar) sidebar.inert = mobile && !visible;
+  if (main) main.inert = visible;
+  if (scrim) scrim.hidden = !visible;
+  toggle?.setAttribute('aria-expanded', String(visible));
+  document.body.classList.toggle('ops-nav-open', visible);
 }
 
 function applyView(view: View, updateHash: boolean): void {
@@ -572,8 +616,19 @@ function applyView(view: View, updateHash: boolean): void {
     else button.removeAttribute('aria-current');
   });
 
+  // The area switcher represents navigation groups, not tenant selection.
+  const currentArea: View = ['market', 'candles', 'synthetic'].includes(view) ? 'market'
+    : ['indicators', 'intelligence', 'lab'].includes(view) ? 'indicators' : 'runtime';
+  document.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
+    const selected = button.dataset.opsArea === currentArea;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
+
   const heading = document.querySelector<HTMLElement>('.ops-page-heading');
   if (heading) {
+    const eyebrow = heading.querySelector<HTMLElement>('.eyebrow');
+    if (eyebrow) eyebrow.textContent = 'QNeXT / ' + meta.title;
     const h1 = heading.querySelector('h1');
     const description = heading.querySelector('.muted');
     if (h1) h1.textContent = meta.title;
@@ -637,10 +692,23 @@ function setDockCollapsed(collapsed: boolean, remember = true): void {
 }
 
 function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTMLElement): void {
+  const activateFromSidebar = (view: View): void => {
+    const wasMobileOpen = sidebar.classList.contains('open');
+    applyView(view, true);
+    if (wasMobileOpen) {
+      document.querySelector<HTMLElement>('.ops-page-heading h1')?.focus({ preventScroll: true });
+    }
+  };
+  sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const view = button.dataset.opsArea as View;
+      if (views[view]) activateFromSidebar(view);
+    });
+  });
   sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-nav]').forEach((button) => {
     button.addEventListener('click', () => {
       const view = button.dataset.opsNav as View;
-      applyView(view, true);
+      activateFromSidebar(view);
     });
   });
 
@@ -685,6 +753,14 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     first?.click();
   });
 
+   document.querySelector<HTMLButtonElement>('#ops-nav-scrim')?.addEventListener('click', () => {
+    setMobileNavigation(false);
+    mobileToggle?.focus();
+  });
+  const mobileMedia = window.matchMedia('(max-width: 900px)');
+  mobileMedia.addEventListener('change', () => setMobileNavigation(false));
+  setMobileNavigation(false);
+
   mobileToggle?.addEventListener('click', () => {
     const opening = !sidebar.classList.contains('open');
     setMobileNavigation(opening);
@@ -695,6 +771,21 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     mobileToggle?.focus();
   });
   document.addEventListener('keydown', (event) => {
+    // When the mobile drawer is open, keep keyboard navigation inside it.
+    // Main content is inert and remains untouched by live API updates.
+    if (event.key === 'Tab' && sidebar.classList.contains('open')) {
+      const focusable = Array.from(sidebar.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), a[href], select:not([disabled])',
+      )).filter((element) => !element.closest('[hidden]') && element.getClientRects().length > 0);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (first && last && ((event.shiftKey && document.activeElement === first)
+        || (!event.shiftKey && document.activeElement === last))) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+    }
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
       if (event.key.toLowerCase() === 'k') {
         event.preventDefault();
