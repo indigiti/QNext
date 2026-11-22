@@ -31,12 +31,32 @@ type Config struct {
 	Timeframes      []string       `json:"timeframes"`
 	ChartTimeframes []string       `json:"chart_timeframes,omitempty"`
 	Markets         []MarketConfig `json:"markets,omitempty"`
+	// NSEOneMinute enables a small, explicitly selected stock/index history
+	// watchlist. These entries never activate SYN/SYN+, derivatives or live
+	// broker subscriptions; candles are sourced from Upstox 1m history.
+	NSEOneMinute   []NSEMinuteSymbol `json:"nse_1m_symbols,omitempty"`
 	ActiveMarkets   []string       `json:"active_markets,omitempty"`
 
 	// Legacy single-market fields are retained for backwards compatibility
 	// with already-deployed q1-market.json files.
 	Nifty     Instrument      `json:"nifty,omitempty"`
 	Synthetic SyntheticConfig `json:"synthetic,omitempty"`
+}
+
+// NSEMinuteSymbol uses the real Upstox instrument key from the daily
+// instrument master. QNext does not guess an ISIN from a stock ticker.
+type NSEMinuteSymbol struct {
+	Symbol      string `json:"symbol"`
+	Name        string `json:"name"`
+	ProviderKey string `json:"provider_key"`
+}
+
+func (s NSEMinuteSymbol) InstrumentID() string {
+	return "NSE:" + strings.ToUpper(strings.TrimSpace(s.Symbol))
+}
+
+func (s NSEMinuteSymbol) IsIndex() bool {
+	return strings.HasPrefix(s.ProviderKey, "NSE_INDEX|")
 }
 
 type MarketConfig struct {
@@ -210,6 +230,46 @@ func (c Config) Validate() error {
 			return errors.New("synthetic instrument IDs must be unique")
 		}
 		syntheticIDs[market.Synthetic.InstrumentID] = true
+	}
+	if err := c.validateNSEMinuteSymbols(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Keep historical-only NSE selections isolated from the derivatives-backed
+// market list and block ambiguous duplicate IDs/provider keys.
+func (c Config) validateNSEMinuteSymbols() error {
+	if len(c.NSEOneMinute) > 12 {
+		return errors.New("nse_1m_symbols is limited to 12 selected NSE instruments")
+	}
+	seenID := make(map[string]bool)
+	seenKey := make(map[string]bool)
+	for _, market := range c.configuredMarkets() {
+		seenID[strings.ToUpper(market.Underlying.InstrumentID)] = true
+		seenKey[market.Underlying.ProviderKey] = true
+	}
+	for _, item := range c.NSEOneMinute {
+		symbol := strings.ToUpper(strings.TrimSpace(item.Symbol))
+		key := strings.TrimSpace(item.ProviderKey)
+		if symbol == "" || len(symbol) > 32 || strings.TrimSpace(item.Name) == "" || len(item.Name) > 120 {
+			return errors.New("nse_1m_symbols requires a short symbol and display name")
+		}
+		for _, ch := range symbol {
+			if !(ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_' || ch == '.' || ch == '&') {
+				return errors.New("nse_1m_symbols contains an invalid stock ticker")
+			}
+		}
+		if !(strings.HasPrefix(key, "NSE_EQ|") || strings.HasPrefix(key, "NSE_INDEX|")) ||
+			len(strings.TrimSpace(strings.SplitN(key, "|", 2)[1])) == 0 {
+			return errors.New("nse_1m_symbols accepts only genuine NSE_EQ/NSE_INDEX Upstox instrument keys")
+		}
+		id := item.InstrumentID()
+		if seenID[id] || seenKey[key] {
+			return errors.New("nse_1m_symbols contains a duplicate configured instrument ID or provider key")
+		}
+		seenID[id] = true
+		seenKey[key] = true
 	}
 	return nil
 }
