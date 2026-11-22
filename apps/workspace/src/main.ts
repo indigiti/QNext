@@ -229,6 +229,7 @@ async function bootstrapLightweight(
       description: initialTicker,
       type: 'index',
       prefix: 'NSE',
+      group: 'QNEXT-CORE',
     }];
   }
 
