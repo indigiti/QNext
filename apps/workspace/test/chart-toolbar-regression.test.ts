@@ -10,8 +10,8 @@ describe('public chart toolbar integration', () => {
     expect(workspaceSource).toContain("'symbol', 'timeframes', 'style', 'indicators', 'undo-redo'");
   });
 
-  it('places Screen Awake immediately beside Alerts using Vela native topbar actions', () => {
-    expect(workspaceSource).toContain("'alerts', 'qnext.screen-awake.toggle', 'qnext.zoom.open'");
+  it('places chart alert On/Off next to the native Alerts bell, ahead of Screen Awake', () => {
+    expect(workspaceSource).toContain("'alerts', 'qnext.alerts.toggle', 'qnext.screen-awake.toggle', 'qnext.zoom.open'");
   });
 
   it('does not mount the floating Lab widget, but retains background Shadow processing', () => {
