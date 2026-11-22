@@ -431,15 +431,6 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 		if !state.lastRepairAt.IsZero() && at.Sub(state.lastRepairAt) < cooldown {
 			continue
 		}
-		var keys []string
-		for _, id := range []string{state.currentID, state.nextID} {
-			if route, ok := m.byInstrument[id]; ok && route.expiry >= at.In(indiaLocation).Format("2006-01-02") {
-				keys = append(keys, route.providerKey)
-			}
-		}
-		if len(keys) == 0 {
-			continue
-		}
 		// Only escalate when the active futures feed itself is silent,
 		// not when a live but quiet feed reports no traded quantity.
 		// Never cycle keys outside the configured enabled market set.
@@ -448,6 +439,21 @@ func (m *Manager) RepairSilent(ctx context.Context, at time.Time) error {
 		renew := m.AutoRenew && canRenew && sourceSilent &&
 			state.silentReassertions > 0 && state.renewAttempts < maxRenewPerSession &&
 			(state.lastRenewAt.IsZero() || at.Sub(state.lastRenewAt) >= proxyRenewCooldown)
+		var keys []string
+		for _, id := range []string{state.currentID, state.nextID} {
+			// Soft mode reassertion covers the current/next futures pair.
+			// Hard renewal touches *only the silent active contract* and
+			// leaves the healthy next contract's live subscription intact.
+			if renew && id != state.activeID {
+				continue
+			}
+			if route, ok := m.byInstrument[id]; ok && route.expiry >= at.In(indiaLocation).Format("2006-01-02") {
+				keys = append(keys, route.providerKey)
+			}
+		}
+		if len(keys) == 0 {
+			continue
+		}
 		state.lastRepairAt = at
 		state.repairAttempts++
 		if renew {
