@@ -161,6 +161,36 @@ root.innerHTML = `
         </div>
       </section>
 
+      <section class="card span-3" id="symbol-universes-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Symbol directory</p>
+            <h2>Two separate chart symbol sections</h2>
+            <p class="muted">Core index/SYN instruments retain their existing live engine. Additional NSE symbols use completed Upstox 1-minute historical candles only.</p>
+          </div>
+          <button id="refresh-symbol-universes" class="secondary" type="button">Refresh</button>
+        </div>
+        <div class="qnext-symbol-universes">
+          <section class="qnext-symbol-universe" aria-labelledby="qnext-core-universe-title">
+            <div class="qnext-symbol-universe-heading">
+              <span class="qnext-symbol-universe-label">SECTION 01</span>
+              <h3 id="qnext-core-universe-title">Indices &amp; SYN / SYN+</h3>
+              <p>Requested catalog order. Visibility and feed activity depend on Market Core configuration; this list is not a feed-health claim.</p>
+            </div>
+            <ol id="qnext-core-universe-list" class="qnext-symbol-universe-list"></ol>
+          </section>
+          <section class="qnext-symbol-universe" aria-labelledby="qnext-nse-minute-universe-title">
+            <div class="qnext-symbol-universe-heading">
+              <span class="qnext-symbol-universe-label">SECTION 02</span>
+              <h3 id="qnext-nse-minute-universe-title">Other NSE Symbols · 1m</h3>
+              <p>Only explicitly enabled NSE stocks and additional indices. Historical updates every five minutes when the collector is enabled—no live tick subscriptions.</p>
+            </div>
+            <div id="qnext-nse-minute-universe-status" class="muted" role="status">Waiting for Market Core status.</div>
+            <ul id="qnext-nse-minute-universe-list" class="qnext-symbol-universe-list"></ul>
+          </section>
+        </div>
+      </section>
+
       <section class="card span-3" id="candle-timeframes-card">
         <div class="card-head">
           <div>
@@ -423,6 +453,67 @@ function formatPrice(value?: number) {
   return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+const requestedCoreSymbolOrder = [
+  'NIFTY', 'NIFTY-SYN', 'NIFTY-SYN+',
+  'BANKNIFTY', 'BANKNIFTY-SYN',
+  'MIDCPNIFTY', 'MIDCPNIFTY-SYN',
+  'FINNIFTY', 'FINNIFTY-SYN',
+  'SENSEX', 'SENSEX-SYN', 'BANKEX', 'BANKEX-SYN',
+] as const;
+
+function renderCoreSymbolUniverse(): void {
+  const list = document.querySelector<HTMLOListElement>('#qnext-core-universe-list');
+  if (!list || list.childElementCount > 0) return;
+  for (const ticker of requestedCoreSymbolOrder) {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = ticker;
+    item.append(label);
+    list.append(item);
+  }
+}
+
+function renderNSEMinuteUniverse(feed?: FeedStatusResponse['body']): void {
+  const status = document.querySelector<HTMLElement>('#qnext-nse-minute-universe-status');
+  const list = document.querySelector<HTMLUListElement>('#qnext-nse-minute-universe-list');
+  if (!status || !list) return;
+  list.replaceChildren();
+  const watchlist = feed?.nse_1m;
+  if (!watchlist?.enabled) {
+    status.textContent = 'Collector disabled or unavailable. Configure nse_1m_symbols and QNEXT_NSE_1M_SYNC=1 in Market Core staging.';
+    return;
+  }
+  const entries = watchlist.symbols ?? [];
+  status.textContent = `${entries.length} configured · Historical 1m · ${watchlist.refresh_interval_seconds ?? 300}s refresh (not live ticks)`;
+  if (entries.length === 0) {
+    status.textContent = 'Collector enabled, but no NSE 1m symbols are configured.';
+    return;
+  }
+  const istTime = (timestamp?: number): string => timestamp
+    ? new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short',
+    }).format(timestamp) + ' IST'
+    : 'Awaiting first sync';
+  for (const entry of entries) {
+    const row = document.createElement('li');
+    row.className = 'qnext-nse-minute-row';
+    const title = document.createElement('span');
+    title.className = 'qnext-nse-minute-name';
+    title.textContent = entry.symbol;
+    const meta = document.createElement('span');
+    meta.className = 'qnext-nse-minute-meta';
+    meta.textContent = `${entry.asset_class === 'index' ? 'Index · price only' : 'Equity · traded volume'} · Latest successful check: ${istTime(entry.last_success_ms)}`;
+    const note = document.createElement('small');
+    note.className = 'qnext-nse-minute-status';
+    note.textContent = entry.last_error
+      ? `Provider error: ${entry.last_error}`
+      : entry.last_success_ms ? `Scanned ${entry.scanned} · Added ${entry.missing} · Corrected ${entry.corrected}` : 'Awaiting data';
+    if (entry.last_error) row.classList.add('qnext-nse-minute-error');
+    row.append(title, meta, note);
+    list.append(row);
+  }
+}
+
 function renderFeedStatus(response: FeedStatusResponse) {
   const summary = document.querySelector<HTMLDivElement>('#feed-summary')!;
   const providers = document.querySelector<HTMLDivElement>('#feed-providers')!;
@@ -433,10 +524,12 @@ function renderFeedStatus(response: FeedStatusResponse) {
       <div><span>Reason</span><strong>${response.error ?? 'Market Core feed status unavailable'}</strong></div>
     `;
     providers.innerHTML = '';
+    renderNSEMinuteUniverse();
     return;
   }
 
   const body = response.body;
+  renderNSEMinuteUniverse(body);
   const telemetry = body.telemetry ?? { providers: {}, instruments: {} };
   const providerTelemetry = telemetry.providers ?? {};
   const resilienceProviders = body.resilience?.providers ?? {};
@@ -1259,6 +1352,8 @@ document.querySelector<HTMLFormElement>('#custom-indicator-form')!.addEventListe
 
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
 document.querySelector('#refresh-feed')!.addEventListener('click', () => void loadFeedStatus());
+document.querySelector('#refresh-symbol-universes')!.addEventListener('click', () => void loadFeedStatus());
+renderCoreSymbolUniverse();
 document.querySelector('#probe-stream')!.addEventListener('click', () => void probeBrowserStream());
 document.querySelector('#verify-dhan')!.addEventListener('click', async () => {
   const resultEl = document.querySelector<HTMLSpanElement>('#dhan-standby-result')!;

@@ -1,5 +1,6 @@
 import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
 import { mountThemeControl } from '../theme';
+import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL, sectionOfTicker } from '../symbol-sections';
 import { mountScreenAwakeButton, type ScreenAwakeController } from '../screen-awake';
 import {
   QNextLightweightChart,
@@ -27,6 +28,8 @@ export interface LightweightSymbol {
   description?: string;
   type?: string;
   prefix?: string;
+  group?: string;
+  default?: boolean;
 }
 
 export interface LightweightPaneConfig {
@@ -122,13 +125,21 @@ export class QNextLightweightWorkspace {
     this.screenAwake = options.screenAwake;
     this.markerClient = new QNextPaperMarkerClient({ apiBase: options.apiBase });
     this.markerPollIntervalMs = options.markerPollIntervalMs ?? 2_000;
-    this.symbols = options.symbols.length > 0
-      ? options.symbols
-      : [{ ticker: options.initialTicker }];
+    // Group headings are native Vela picker descriptors, not tradeable
+    // instruments. Never offer a heading as a lightweight chart ticker.
+    const tradable = options.symbols.filter((item) => item.type !== 'root');
+    this.symbols = tradable.length > 0
+      ? tradable
+      : [{ ticker: options.initialTicker, group: CORE_GROUP_ID }];
     this.timeframes = options.timeframes;
     this.fallback = {
       ticker: options.initialTicker,
-      timeframe: options.initialTimeframe,
+      timeframe: sectionOfTicker(options.initialTicker, this.symbols.map((item) => ({
+        ticker: item.ticker,
+        prefix: item.prefix ?? 'QNEXT',
+        type: item.type ?? 'index',
+        synthetic: item.ticker.includes('-SYN'),
+      }))) === 'nse_1m' ? '1m' : options.initialTimeframe,
     };
     this.layout = options.initialLayout ?? 1;
     this.syncCharts = options.syncCharts ?? true;
@@ -188,18 +199,37 @@ export class QNextLightweightWorkspace {
     const symbolSelect = document.createElement('select');
     symbolSelect.className = 'qnext-lightweight-select qnext-symbol-select';
     symbolSelect.setAttribute('aria-label', 'Active chart symbol');
-    for (const symbol of this.symbols) {
-      const option = document.createElement('option');
-      option.value = symbol.ticker;
-      option.textContent = symbol.description
-        ? `${symbol.ticker} — ${symbol.description}`
-        : symbol.ticker;
-      symbolSelect.append(option);
+    const groups = [
+      { id: CORE_GROUP_ID, label: CORE_GROUP_LABEL },
+      { id: NSE_MINUTE_GROUP_ID, label: NSE_MINUTE_GROUP_LABEL },
+    ];
+    for (const group of groups) {
+      const items = this.symbols.filter((symbol) =>
+        (symbol.group ?? CORE_GROUP_ID) === group.id);
+      if (items.length === 0) continue;
+      const container = document.createElement('optgroup');
+      container.label = group.label;
+      for (const symbol of items) {
+        const option = document.createElement('option');
+        option.value = symbol.ticker;
+        option.textContent = symbol.description
+          ? `${symbol.ticker} — ${symbol.description}`
+          : symbol.ticker;
+        container.append(option);
+      }
+      symbolSelect.append(container);
     }
     symbolSelect.addEventListener('change', () => {
       const config = this.paneConfigs[this.activePane];
       if (!config || config.ticker === symbolSelect.value) return;
       config.ticker = symbolSelect.value;
+      if (this.symbols.some((symbol) => symbol.ticker === config.ticker
+        && symbol.group === NSE_MINUTE_GROUP_ID)) {
+        // NSE watchlist candles are historical-only 1m; a 15s/5m chart
+        // would otherwise show a misleading empty plot.
+        config.timeframe = '1m';
+        timeframeSelect.value = '1m';
+      }
       void this.rebuildPane(this.activePane);
     });
 
@@ -215,6 +245,12 @@ export class QNextLightweightWorkspace {
     timeframeSelect.addEventListener('change', () => {
       const config = this.paneConfigs[this.activePane];
       if (!config || config.timeframe === timeframeSelect.value) return;
+      const isNSEMinute = this.symbols.some((symbol) => symbol.ticker === config.ticker
+        && symbol.group === NSE_MINUTE_GROUP_ID);
+      if (isNSEMinute && timeframeSelect.value !== '1m') {
+        timeframeSelect.value = '1m';
+        return;
+      }
       config.timeframe = timeframeSelect.value;
       void this.rebuildPane(this.activePane);
     });

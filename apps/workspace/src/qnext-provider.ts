@@ -1,5 +1,10 @@
 import { liveWSSDispatchLatency } from './live-latency';
 
+import {
+  CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID,
+  NSE_MINUTE_GROUP_LABEL, orderVisibleSymbols, symbolSection,
+} from './symbol-sections';
+
 export interface QNextProviderOptions {
   apiBase?: string;
   streamUrl?: string;
@@ -151,39 +156,40 @@ export class QNextProvider {
   }
 
   async listSymbols() {
-    const symbols = await this.loadSymbols();
-    const order = new Map(
-      [
-        'NIFTY',
-        'NIFTY-SYN',
-        'BANKNIFTY',
-        'BANKNIFTY-SYN',
-        'MIDCPNIFTY',
-        'MIDCPNIFTY-SYN',
-        'FINNIFTY',
-        'FINNIFTY-SYN',
-        'SENSEX',
-        'SENSEX-SYN',
-        'BANKEX',
-        'BANKEX-SYN',
-      ].map((ticker, index) => [ticker, index]),
-    );
+    const available = orderVisibleSymbols(await this.loadSymbols());
+    // Vela's native picker folds members beneath a root descriptor
+    // (ticker === group). These roots are UI labels, not broker instruments:
+    // resolveInstrument always resolves against the original API catalog.
+    const result: Array<{
+      ticker: string; description: string; type: string; prefix: string;
+      group: string; default?: boolean;
+    }> = [];
 
-    return [...symbols]
-      .sort((a, b) => {
-        const aRank = order.get(a.ticker.toUpperCase()) ?? Number.MAX_SAFE_INTEGER;
-        const bRank = order.get(b.ticker.toUpperCase()) ?? Number.MAX_SAFE_INTEGER;
-        if (aRank !== bRank) {
-          return aRank - bRank;
-        }
-        return a.ticker.localeCompare(b.ticker);
-      })
-      .map((symbol) => ({
-        ticker: symbol.ticker,
-        description: symbol.description,
-        type: symbol.type,
-        prefix: symbol.prefix,
-      }));
+    for (const section of ['core', 'nse_1m'] as const) {
+      const matches = available.filter((item) => symbolSection(item) === section);
+      if (matches.length === 0) continue;
+      const group = section === 'core' ? CORE_GROUP_ID : NSE_MINUTE_GROUP_ID;
+      const label = section === 'core' ? CORE_GROUP_LABEL : NSE_MINUTE_GROUP_LABEL;
+      result.push({
+        ticker: group,
+        description: label,
+        type: 'root',
+        prefix: 'QNEXT',
+        group,
+      });
+      for (const [index, item] of matches.entries()) {
+        result.push({
+          ticker: item.ticker,
+          description: section === 'nse_1m'
+            ? `${item.description} · 1m historical refresh` : item.description,
+          type: item.type,
+          prefix: item.prefix,
+          group,
+          ...(index === 0 ? { default: true } : {}),
+        });
+      }
+    }
+    return result;
   }
 
   async getBars(

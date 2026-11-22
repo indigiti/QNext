@@ -726,3 +726,122 @@ body.ops-shell-ready #chart-timeframes-card .actions {
     transition: none !important;
   }
 }
+
+/* Separate the original index/SYN universe from historical-only NSE
+ * 1-minute symbols. Do not style both as live feed subscriptions. */
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universes {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 1.15rem;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe {
+  min-width: 0;
+  padding: clamp(1.1rem,1.6vw,1.5rem);
+  border: 1px solid rgba(233,249,226,.13);
+  border-radius: 19px;
+  background: #222e2b;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-heading {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(231,245,224,.12);
+}
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-label {
+  color: #c3f052;
+  font-size: .68rem;
+  font-weight: 790;
+  letter-spacing: .09em;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe h3 {
+  margin: .55rem 0 .5rem;
+  color: #f2f7ed;
+  font-size: clamp(1.1rem,1.45vw,1.35rem);
+  font-weight: 800;
+  letter-spacing: -.04em;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe p,
+body.ops-shell-ready #symbol-universes-card #qnext-nse-minute-universe-status {
+  margin: 0;
+  color: #b9cbbb;
+  font-size: .76rem;
+  line-height: 1.6;
+}
+body.ops-shell-ready #symbol-universes-card #qnext-nse-minute-universe-status {
+  padding: .9rem .1rem 0;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-list {
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: .55rem;
+  padding: .95rem 0 0;
+  margin: 0;
+  list-style: none;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-list > li {
+  min-width: 0;
+  padding: .7rem .8rem;
+  border: 1px solid rgba(235,247,230,.11);
+  border-radius: 12px;
+  background: rgba(11,19,17,.34);
+  color: #eff6ea;
+  font-size: .76rem;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+body.ops-shell-ready #symbol-universes-card #qnext-nse-minute-universe-list {
+  grid-template-columns: minmax(0,1fr);
+}
+body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-row {
+  display: flex;
+  flex-direction: column;
+  gap: .28rem;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-name { font-size: .86rem; }
+body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-meta,
+body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-status {
+  color: #c5d3c8;
+  font-size: .68rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-error {
+  border-color: rgba(251,155,133,.38) !important;
+}
+body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-error .qnext-nse-minute-status {
+  color: #ffb2a5;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe {
+  background: #f2f7f0;
+  border-color: #d3e1d2;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-heading {
+  border-color: #d3e1d2;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-label {
+  color: #417b31;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe h3 {
+  color: #2c4530;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe p,
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card #qnext-nse-minute-universe-status {
+  color: #516f56;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-list > li {
+  background: #fff;
+  color: #2a4230;
+  border-color: #d2dfd1;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-meta,
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-status {
+  color: #527159;
+}
+:root[data-qnext-theme="light"] body.ops-shell-ready #symbol-universes-card .qnext-nse-minute-error .qnext-nse-minute-status {
+  color: #a13f31;
+}
+@media (max-width: 1100px) {
+  body.ops-shell-ready #symbol-universes-card .qnext-symbol-universes { grid-template-columns: 1fr; }
+}
+@media (max-width: 450px) {
+  body.ops-shell-ready #symbol-universes-card .qnext-symbol-universe-list { grid-template-columns: 1fr; }
+}
