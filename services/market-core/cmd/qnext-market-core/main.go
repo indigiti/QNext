@@ -134,6 +134,20 @@ func main() {
 	go broker.RunMaintenance(ctx, 5*time.Minute, 45*time.Minute)
 	feedTracker := feedstatus.New()
 
+	// Explicit NSE one-minute symbols use historical polling rather than
+	// joining index options/futures subscriptions. Disabled by default.
+	var nseMinuteSync *upstox.NSEMinuteSync
+	if config != nil && len(config.NSEOneMinute) > 0 && strings.TrimSpace(os.Getenv("QNEXT_NSE_1M_SYNC")) == "1" {
+		nseMinuteSync = &upstox.NSEMinuteSync{
+			Client:  upstox.HistoricalRangeClient{Intraday: upstox.IntradayClient{}, MarketTimezone: "Asia/Kolkata"},
+			History: store, Resync: broker,
+			AccessToken: accessToken,
+			Symbols:     append([]marketconfig.NSEMinuteSymbol(nil), config.NSEOneMinute...),
+			Interval:    5 * time.Minute,
+		}
+		log.Printf("NSE 1m historical watchlist enabled: %d instruments, 5m refresh, no live equity WS subscriptions", len(config.NSEOneMinute))
+	}
+
 	var historicalRepairer *upstox.HistoricalRepairer
 	if config != nil {
 		historicalRepairer = &upstox.HistoricalRepairer{
@@ -275,6 +289,7 @@ func main() {
 				"gap_recovery":            gapRecoveryTracker.Snapshot(),
 				"raw_retention":           rawRetention.Snapshot(),
 				"live_integrity":          integrityStatus,
+				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
 			}
 		},
 	})
@@ -293,6 +308,20 @@ func main() {
 		}
 	}()
 
+	if nseMinuteSync != nil {
+		go func() {
+			// Stagger the historical stock refresh from the existing index
+			// startup repair to reduce burst requests to the provider.
+			timer := time.NewTimer(12 * time.Second)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			}
+			nseMinuteSync.Run(ctx)
+		}()
+	}
 	if historicalRepairer != nil {
 		go func() {
 			timer := time.NewTimer(3 * time.Second)
@@ -351,6 +380,13 @@ func main() {
 	if err := history.CloseAsyncWriters(shutdownCtx); err != nil {
 		log.Printf("history shutdown flush error: %v", err)
 	}
+}
+
+func nseMinuteStatus(syncer *upstox.NSEMinuteSync) any {
+	if syncer == nil {
+		return map[string]any{"enabled": false, "mode": "historical_polling_not_live_ticks", "timeframe": "1m"}
+	}
+	return syncer.Snapshot()
 }
 
 func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
@@ -424,6 +460,33 @@ func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 		}
 	}
 
+	// Historical NSE 1m symbols appear in QNext's normal symbol search, but
+	// do not enter the synthetic assembler, futures proxy, or Upstox live
+	// WebSocket subscription demand. Their minute bars are restored separately.
+	if config != nil && strings.TrimSpace(os.Getenv("QNEXT_NSE_1M_SYNC")) == "1" {
+		for _, entry := range config.NSEOneMinute {
+			assetClass := "EQUITY"
+			if entry.IsIndex() {
+				assetClass = "INDEX"
+			}
+			if err := registry.Register(symbol.Instrument{
+				ID:         entry.InstrumentID(),
+				Symbol:     strings.ToUpper(strings.TrimSpace(entry.Symbol)),
+				Name:       entry.Name,
+				AssetClass: assetClass,
+				Exchange:   "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
+				CalendarID: "NSE_EQ", Visible: true,
+			}); err != nil {
+				return nil, err
+			}
+			if err := registry.RegisterProvider(symbol.ProviderInstrument{
+				Provider:     upstox.ProviderName,
+				InstrumentID: entry.InstrumentID(), ProviderKey: entry.ProviderKey,
+			}); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return registry, nil
 }
 
