@@ -10,6 +10,7 @@ import (
 
 type SubscriptionState struct {
 	mu      sync.RWMutex
+	emitMu  sync.Mutex // serializes desired-key changes and their outbound updates
 	guid    string
 	mode    SubscriptionMode
 	keys    map[string]bool
@@ -75,6 +76,8 @@ func (s *SubscriptionState) Updates() <-chan SubscriptionRequest {
 }
 
 func (s *SubscriptionState) Subscribe(ctx context.Context, keys []string) error {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
 	byMode := make(map[SubscriptionMode][]string)
 
 	s.mu.Lock()
@@ -115,6 +118,8 @@ func (s *SubscriptionState) Subscribe(ctx context.Context, keys []string) error 
 // supports change_mode for existing keys; do not subscribe them a second time,
 // expand feed demand or modify the desired reconnect snapshot.
 func (s *SubscriptionState) ReassertFull(ctx context.Context, keys []string) error {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
 	s.mu.RLock()
 	known := make(map[string]bool, len(keys))
 	for _, key := range keys {
@@ -137,7 +142,50 @@ func (s *SubscriptionState) ReassertFull(ctx context.Context, keys []string) err
 	})
 }
 
+// RenewFull is a guarded second-stage recovery for *existing* Full-mode
+// futures subscriptions. It emits unsubscribe then subscribe as a reserved
+// pair without changing the desired set (a reconnect still restores the key).
+// No pair is queued unless both messages fit: a lone unsubscribe could leave
+// an otherwise healthy contract offline when the outgoing writer is congested.
+func (s *SubscriptionState) RenewFull(ctx context.Context, keys []string) error {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.RLock()
+	selected := make(map[string]bool, len(keys))
+	for _, raw := range keys {
+		key := strings.TrimSpace(raw)
+		if !derivativeProviderKey(key) || !s.keys[key] || s.keyMode[key] != ModeFull {
+			s.mu.RUnlock()
+			return errors.New("cannot renew an absent or non-full futures subscription")
+		}
+		selected[key] = true
+	}
+	s.mu.RUnlock()
+	if len(selected) == 0 {
+		return errors.New("no enabled futures subscriptions to renew")
+	}
+	if cap(s.updates)-len(s.updates) < 2 {
+		return errors.New("futures recovery queue requires two free slots")
+	}
+	ordered := sortedSubscriptionKeys(selected)
+	s.updates <- SubscriptionRequest{
+		GUID: s.guid, Method: MethodUnsubscribe,
+		Data: SubscriptionData{InstrumentKeys: ordered},
+	}
+	s.updates <- SubscriptionRequest{
+		GUID: s.guid, Method: MethodSubscribe,
+		Data: SubscriptionData{Mode: ModeFull, InstrumentKeys: ordered},
+	}
+	return nil
+}
+
 func (s *SubscriptionState) Unsubscribe(ctx context.Context, keys []string) error {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
 	s.mu.Lock()
 	var removed []string
 	for _, raw := range keys {
