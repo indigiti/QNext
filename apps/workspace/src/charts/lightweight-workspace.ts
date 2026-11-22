@@ -1,5 +1,6 @@
 import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
 import { mountThemeControl } from '../theme';
+import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL } from '../symbol-sections';
 import { mountScreenAwakeButton, type ScreenAwakeController } from '../screen-awake';
 import {
   QNextLightweightChart,
@@ -21,8 +22,6 @@ export function transportModeLabel(mode: QNextTransportSnapshot['mode']): string
     default: return 'Idle';
   }
 }
-
-import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL } from '../symbol-sections';
 
 export interface LightweightSymbol {
   ticker: string;
