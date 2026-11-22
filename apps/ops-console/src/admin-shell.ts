@@ -2,6 +2,8 @@ import './admin-shell.css';
 import './admin-sylva.css';
 import './admin-sylva-v2.css';
 import './admin-sylva-v3.css';
+import './admin-all-screens.css';
+import { installScreenPages, syncScreenPageSections } from './admin-screens';
 
 export {};
 
@@ -336,7 +338,9 @@ function installShell(): void {
   heading?.insertAdjacentElement('afterend', commandButton);
 
   installDashboard(grid);
+  installScreenPages(grid, (view) => applyView(view, true));
   installNavigation(sidebar, topbar, grid);
+  syncScreenPageSections(grid);
   installMutationSync(grid);
 }
 
@@ -433,7 +437,7 @@ function dashboardMarkup(): string {
       <div class="ops-dashboard-hero">
         <div class="ops-hero-copy">
           <span class="ops-overline"><span class="ops-overline-dot" aria-hidden="true"></span> OPERATIONS WORKSPACE</span>
-          <h2>Markets, <span>in focus.</span></h2>
+          <h2 tabindex="-1">Markets, <span>in focus.</span></h2>
           <p class="muted">One workspace for live market quality, SYN+ integrity, research, and infrastructure. Every figure comes from QNeXT telemetry.</p>
         </div>
         <div class="ops-hero-actions">
@@ -602,6 +606,8 @@ function setMobileNavigation(open: boolean): void {
 
 function applyView(view: View, updateHash: boolean): void {
   const meta = views[view];
+  const grid = document.querySelector<HTMLElement>('#ops-content-grid');
+  if (grid) syncScreenPageSections(grid);
   const changed = document.body.dataset.opsView !== view;
   document.body.dataset.opsView = view;
 
@@ -696,7 +702,10 @@ function installNavigation(sidebar: HTMLElement, topbar: HTMLElement, grid: HTML
     const wasMobileOpen = sidebar.classList.contains('open');
     applyView(view, true);
     if (wasMobileOpen) {
-      document.querySelector<HTMLElement>('.ops-page-heading h1')?.focus({ preventScroll: true });
+      const title = view === 'dashboard'
+        ? document.querySelector<HTMLElement>('#ops-dashboard-card .ops-dashboard-hero h2')
+        : document.getElementById('ops-screen-' + view + '-title');
+      title?.focus({ preventScroll: true });
     }
   };
   sidebar.querySelectorAll<HTMLButtonElement>('[data-ops-area]').forEach((button) => {
@@ -886,6 +895,7 @@ function installMutationSync(grid: HTMLElement): void {
     if (!addedCard) return;
 
     classifyCards();
+    syncScreenPageSections(grid);
     const active = (document.body.dataset.opsView as View) || viewFromHash();
     grid.querySelectorAll<HTMLElement>(':scope > .card').forEach((card) => {
       card.classList.add('ops-managed-card');
