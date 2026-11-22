@@ -77,7 +77,7 @@ describe('core index and additional NSE 1m separation', () => {
     expect(admin).toContain('id="symbol-universes-card"');
     expect(admin).toContain('id="qnext-core-universe-list"');
     expect(admin).toContain('id="qnext-nse-minute-universe-list"');
-    expect(admin).toContain('body.nse_1m');
+    expect(admin).toContain('feed?.nse_1m');
     expect(admin).toContain('renderNSEMinuteUniverse(body)');
     expect(admin).toContain('Collector disabled or unavailable');
     expect(shell).toContain("setCardView(document.querySelector<HTMLElement>('#symbol-universes-card'), 'market')");
