@@ -150,6 +150,7 @@ function classifyCards(): void {
 
   setCardView(document.querySelector<HTMLElement>('#feed-status-card'), 'market');
   setCardView(document.querySelector<HTMLElement>('#active-markets-card'), 'market');
+  setCardView(document.querySelector<HTMLElement>('#symbol-universes-card'), 'market');
 
   setCardView(document.querySelector<HTMLElement>('#candle-timeframes-card'), 'candles');
   setCardView(document.querySelector<HTMLElement>('#chart-timeframes-card'), 'candles');
