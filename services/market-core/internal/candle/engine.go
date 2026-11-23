@@ -62,6 +62,10 @@ func DerivativesSessionBounds(at time.Time) (time.Time, time.Time) {
 }
 
 func InstrumentSessionBounds(instrumentID string, at time.Time) (time.Time, time.Time) {
+	if strings.HasPrefix(strings.ToUpper(instrumentID), "OKX:") {
+		start := at.UTC().Truncate(24 * time.Hour)
+		return start, start.Add(24 * time.Hour)
+	}
 	if SyntheticDerivative(instrumentID) {
 		return DerivativesSessionBounds(at)
 	}
@@ -79,6 +83,9 @@ func InInstrumentSession(instrumentID string, at time.Time) bool {
 // BucketForInstrument uses the real trading session for each price authority.
 // Weekly, monthly and daily calendar-bucket identity remains unchanged.
 func BucketForInstrument(instrumentID string, at time.Time, timeframe string) (time.Time, time.Time, error) {
+	if strings.HasPrefix(strings.ToUpper(instrumentID), "OKX:") {
+		return cryptoBucketUTC(at, timeframe)
+	}
 	if !SyntheticDerivative(instrumentID) {
 		return Bucket(at, timeframe)
 	}
@@ -426,4 +433,36 @@ func worstQuality(a, b domain.Quality) domain.Quality {
 		return b
 	}
 	return a
+}
+
+
+// cryptoBucketUTC is independent of NSE/BSE market sessions. Crypto derivatives
+// trade on weekends and across midnight; intraday buckets are UTC anchored.
+func cryptoBucketUTC(at time.Time, timeframe string) (time.Time, time.Time, error) {
+	spec, err := parseTimeframe(timeframe)
+	if err != nil { return time.Time{}, time.Time{}, err }
+	at = at.UTC()
+	switch spec.unit {
+	case 's', 'm', 'h':
+		var duration time.Duration
+		switch spec.unit {
+		case 's': duration = time.Duration(spec.value)*time.Second
+		case 'm': duration = time.Duration(spec.value)*time.Minute
+		case 'h': duration = time.Duration(spec.value)*time.Hour
+		}
+		start := at.Truncate(duration)
+		return start, start.Add(duration), nil
+	case 'D':
+		start := at.Truncate(24*time.Hour)
+		return start, start.AddDate(0,0,1), nil
+	case 'W':
+		start := at.Truncate(24*time.Hour)
+		start = start.AddDate(0,0,-(int(start.Weekday())+6)%7)
+		return start, start.AddDate(0,0,7), nil
+	case 'M':
+		startMonth := ((int(at.Month())-1)/spec.value)*spec.value + 1
+		start := time.Date(at.Year(),time.Month(startMonth),1,0,0,0,0,time.UTC)
+		return start,start.AddDate(0,spec.value,0),nil
+	}
+	return time.Time{},time.Time{},fmt.Errorf("unsupported crypto timeframe %q",timeframe)
 }
