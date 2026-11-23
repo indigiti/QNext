@@ -10,7 +10,6 @@ import (
 
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
-	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
@@ -111,7 +110,7 @@ func runOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, h
 	sink := &qruntime.MarketSink{
 		Pipeline: clock, Publisher: broker,
 		DirectInstruments: map[string]bool{okx.InstrumentID: true},
-		Observer: onTrade,
+		Observer:          onTrade,
 		ClockDone:         ctx.Done(),
 	}
 	// Start with 24 hours of 1m candle context; the 1s endpoint repairs only
