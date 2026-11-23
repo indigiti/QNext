@@ -10,6 +10,7 @@ import (
 
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
+	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
@@ -98,7 +99,7 @@ func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract
 
 // runOKXGold is an independent provider path; existing NSE/BSE feed
 // supervision, synthetic volume routing and trading calendars are untouched.
-func runOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, history *history.Store, broker *stream.Broker) error {
+func runOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, history *history.Store, broker *stream.Broker, onTrade func(domain.Tick)) error {
 	if history == nil || broker == nil {
 		return errors.New("OKX history/broker missing")
 	}
@@ -110,6 +111,7 @@ func runOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, h
 	sink := &qruntime.MarketSink{
 		Pipeline: clock, Publisher: broker,
 		DirectInstruments: map[string]bool{okx.InstrumentID: true},
+		Observer: onTrade,
 		ClockDone:         ctx.Done(),
 	}
 	// Start with 24 hours of 1m candle context; the 1s endpoint repairs only
