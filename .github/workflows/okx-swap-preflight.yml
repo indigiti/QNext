@@ -12,7 +12,7 @@ permissions:
 jobs:
   metadata:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     defaults:
       run:
         working-directory: services/market-core
@@ -25,4 +25,4 @@ jobs:
       - name: Test real OKX XAU-USDT-SWAP contract
         env:
           QNEXT_OKX_SWAP_SMOKE: "1"
-        run: go test ./internal/provider/okx -run '^TestLiveOKXSwapMetadata$' -count=1 -v -timeout=45s
+        run: go test ./internal/provider/okx -run '^TestLiveOKXSwap' -count=1 -v -timeout=100s
