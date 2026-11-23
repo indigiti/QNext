@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,6 @@ func okxGoldRequested(marketConfigPath string) (bool, error) {
 	}
 	if setting.Enabled == nil { return false, errors.New("OKX gold config requires boolean enabled") }
 	var trailing any
-	if decoder.Decode(&trailing) == nil {return false, errors.New("OKX gold config must contain one JSON object")}
+	if err := decoder.Decode(&trailing); err != io.EOF { return false, errors.New("OKX gold config must contain exactly one JSON object") }
 	return *setting.Enabled,nil
 }
