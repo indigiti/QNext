@@ -5,6 +5,7 @@ on:
       - feature/okx-xau-usdt-swap-20261123
     paths:
       - ".github/workflows/okx-swap-format.yml"
+      - "services/market-core/cmd/qnext-market-core/okx_swap_registration_test.go"
 permissions:
   contents: write
 jobs:
@@ -23,6 +24,7 @@ jobs:
             services/market-core/cmd/qnext-market-core/okx_xauusd.go \
             services/market-core/cmd/qnext-market-core/okx_admin_config.go \
             services/market-core/cmd/qnext-market-core/okx_admin_config_test.go \
+            services/market-core/cmd/qnext-market-core/okx_swap_registration_test.go \
             services/market-core/cmd/qnext-market-core/main.go
       - name: Commit formatting on feature branch
         shell: bash
