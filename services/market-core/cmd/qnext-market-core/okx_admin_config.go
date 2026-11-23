@@ -14,11 +14,19 @@ import (
 // without writing secrets, editing systemd units, or changing index config.
 // When the admin file exists it takes precedence over the legacy env flag.
 func okxGoldRequested(marketConfigPath string) (bool, error) {
-	fallback := strings.TrimSpace(os.Getenv("QNEXT_OKX_XAUUSD")) == "1"
+	return okxMarketRequested(marketConfigPath, "okx-xauusd.json", "QNEXT_OKX_XAUUSD")
+}
+
+func okxSwapRequested(marketConfigPath string) (bool, error) {
+	return okxMarketRequested(marketConfigPath, "okx-xauusdt.json", "QNEXT_OKX_XAUUSDT")
+}
+
+func okxMarketRequested(marketConfigPath string, filename string, envFlag string) (bool, error) {
+	fallback := strings.TrimSpace(os.Getenv(envFlag)) == "1"
 	if strings.TrimSpace(marketConfigPath) == "" {
 		return fallback, nil
 	}
-	path := filepath.Join(filepath.Dir(marketConfigPath), "okx-xauusd.json")
+	path := filepath.Join(filepath.Dir(marketConfigPath), filename)
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return fallback, nil

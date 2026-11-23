@@ -187,6 +187,32 @@ root.innerHTML = `
         </div>
       </section>
 
+      <section class="card span-3" id="okx-swap-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Gold &amp; Commodities · OKX</p>
+            <h2>XAU-USDT-SWAP perpetual feed</h2>
+            <p class="muted">USDT-settled gold perpetual (0.001 XAU per contract at verification). Distinct prices and exchange volume from XAUUSD X-Perp.</p>
+          </div>
+          <button id="refresh-okx-swap" class="secondary" type="button">Refresh</button>
+        </div>
+        <div class="okx-swap-admin">
+          <label class="market-toggle">
+            <input id="okx-swap-enabled" type="checkbox" disabled />
+            <span><strong>OKX XAU-USDT-SWAP</strong><small id="okx-swap-setting-label">Checking release support…</small></span>
+          </label>
+          <div class="okx-swap-detail">
+            <div id="okx-swap-runtime-status" role="status" aria-live="polite">Loading Market Core status…</div>
+            <div id="okx-swap-last-trade" class="muted">Last trade: —</div>
+            <div id="okx-swap-message" class="muted">A supported Market Core build is required.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="save-okx-swap" type="button" disabled>Save &amp; restart Market Core</button>
+          <span class="muted">This briefly reconnects existing NSE/BSE feeds. OFF is the default. No trading API key is needed.</span>
+        </div>
+      </section>
+
       <section class="card span-3" id="symbol-universes-card">
         <div class="card-head">
           <div>
@@ -686,6 +712,42 @@ async function loadOKXGold(): Promise<void> {
       : 'Disabled — no live OKX subscription';
     last.textContent = state.last_trade_ms
       ? `Last OKX trade: ${new Date(state.last_trade_ms).toLocaleString()} · Price: ${formatPrice(state.last_price ?? undefined)} USD`
+      : 'Last OKX trade: —';
+    message.textContent = state.message;
+  } catch (error) {
+    checkbox.disabled = true;
+    save.disabled = true;
+    label.textContent = 'UNAVAILABLE';
+    status.textContent = 'Cannot verify installed adapter';
+    last.textContent = 'Last OKX trade: —';
+    message.textContent = (error as Error).message;
+  }
+}
+
+async function loadOKXSwap(): Promise<void> {
+  const checkbox = document.querySelector<HTMLInputElement>('#okx-swap-enabled')!;
+  const save = document.querySelector<HTMLButtonElement>('#save-okx-swap')!;
+  const label = document.querySelector<HTMLElement>('#okx-swap-setting-label')!;
+  const status = document.querySelector<HTMLElement>('#okx-swap-runtime-status')!;
+  const last = document.querySelector<HTMLElement>('#okx-swap-last-trade')!;
+  const message = document.querySelector<HTMLElement>('#okx-swap-message')!;
+  checkbox.disabled = true;
+  save.disabled = true;
+  try {
+    const state = await api.okxSwap();
+    checkbox.checked = state.configured;
+    checkbox.disabled = !(state.supported && state.can_restart);
+    save.disabled = checkbox.disabled;
+    label.textContent = state.supported
+      ? (state.configured ? 'CONFIGURED ON' : 'CONFIGURED OFF')
+      : 'UNAVAILABLE IN DEPLOYED RELEASE';
+    status.textContent = !state.supported ? 'Adapter not deployed'
+      : state.restart_required ? 'Configuration change awaiting restart'
+      : state.live ? 'LIVE — recent individual trades received'
+      : state.running_enabled ? 'Enabled — awaiting trades or stale'
+      : 'Disabled — no live OKX subscription';
+    last.textContent = state.last_trade_ms
+      ? `Last OKX trade: ${new Date(state.last_trade_ms).toLocaleString()} · Price: ${formatPrice(state.last_price ?? undefined)} USDT`
       : 'Last OKX trade: —';
     message.textContent = state.message;
   } catch (error) {
@@ -1439,6 +1501,30 @@ document.querySelector('#save-okx-gold')!.addEventListener('click', async () => 
   }
 });
 
+document.querySelector('#refresh-okx-swap')!.addEventListener('click', () => void loadOKXSwap());
+document.querySelector('#save-okx-swap')!.addEventListener('click', async () => {
+  const checkbox = document.querySelector<HTMLInputElement>('#okx-swap-enabled')!;
+  const button = document.querySelector<HTMLButtonElement>('#save-okx-swap')!;
+  const enabled = checkbox.checked;
+  if (!window.confirm(`Save OKX XAU-USDT-SWAP as ${enabled ? 'ON' : 'OFF'} and restart Market Core? Existing NSE/BSE feeds will briefly reconnect.`)) {
+    await loadOKXSwap();
+    return;
+  }
+  button.disabled = true;
+  checkbox.disabled = true;
+  try {
+    const result = await api.saveOKXSwap(enabled);
+    toast(result.changed
+      ? `OKX XAU-USDT-SWAP saved ${enabled ? 'ON' : 'OFF'}. Market Core restart ${result.restart_queued ? 'queued' : 'requested'}; check live status after reconnect.`
+      : 'OKX XAU-USDT-SWAP configuration is already up to date.');
+    await loadOKXSwap();
+    await loadFeedStatus();
+  } catch (error) {
+    toast((error as Error).message, true);
+    await loadOKXSwap();
+  }
+});
+
 renderCoreSymbolUniverse();
 document.querySelector('#probe-stream')!.addEventListener('click', () => void probeBrowserStream());
 document.querySelector('#verify-dhan')!.addEventListener('click', async () => {
@@ -1714,6 +1800,8 @@ async function bootstrapAuthenticatedAdmin() {
   await loadStorageDays();
   await loadConfig();
   await loadActiveMarkets();
+  await loadOKXGold();
+  await loadOKXSwap();
   await loadCandleTimeframes();
   await loadChartTimeframes();
   await loadHistoricalRepairStatus();

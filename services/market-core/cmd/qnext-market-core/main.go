@@ -123,6 +123,26 @@ func main() {
 		}
 	}
 
+	// Separate opt-in: the USDT swap never replaces the existing USD X-Perp.
+	swapRequested, swapSettingErr := okxSwapRequested(marketConfigPath)
+	swapConfigError := ""
+	if swapSettingErr != nil {
+		swapConfigError = swapSettingErr.Error()
+		log.Printf("OKX XAU-USDT-SWAP setting rejected (feed OFF): %v", swapSettingErr)
+	}
+	var okxSwap *okx.Contract
+	if swapRequested {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, 15*time.Second)
+		contract, discoveryErr := discoverOKXSwap(discoveryCtx, registry)
+		cancelDiscovery()
+		if discoveryErr != nil {
+			log.Printf("OKX XAU-USDT-SWAP discovery unavailable: %v", discoveryErr)
+		} else {
+			okxSwap = contract
+			log.Printf("OKX XAU-USDT-SWAP discovered live instrument %s", contract.InstID)
+		}
+	}
+
 	resilienceMetrics := resilience.NewMetrics()
 	var resilienceConfig *resilience.Config
 	var dhanClientID string
@@ -319,6 +339,7 @@ func main() {
 				"live_integrity":          integrityStatus,
 				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
 				"okx_xauusd":              map[string]any{"available": true, "requested": okxRequested, "enabled": okxGold != nil, "config_error": okxConfigError, "instrument_id": okx.InstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
+				"okx_xauusdt":             map[string]any{"available": true, "requested": swapRequested, "enabled": okxSwap != nil, "config_error": swapConfigError, "instrument_id": okx.SwapInstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
 			}
 		},
 	})
@@ -342,6 +363,14 @@ func main() {
 		go func() {
 			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker, feedTracker.Observe); err != nil && ctx.Err() == nil {
 				log.Printf("OKX XAUUSD ingestion stopped: %v", err)
+			}
+		}()
+	}
+	if okxSwap != nil {
+		contract := *okxSwap
+		go func() {
+			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker, feedTracker.Observe); err != nil && ctx.Err() == nil {
+				log.Printf("OKX XAU-USDT-SWAP ingestion stopped: %v", err)
 			}
 		}()
 	}

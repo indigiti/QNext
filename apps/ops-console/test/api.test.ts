@@ -325,3 +325,26 @@ describe('OKX XAUUSD admin setting', () => {
     ]);
   });
 });
+
+
+describe('OKX gold USDT swap independent admin toggle', () => {
+  it('reads and writes the dedicated authenticated swap endpoint only', async () => {
+    const paths: string[] = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      paths.push(String(input));
+      const body = init?.method === 'PUT' ? String(init.body) : null;
+      if (body) expect(JSON.parse(body)).toEqual({ enabled: true });
+      return new Response(JSON.stringify(init?.method === 'PUT'
+        ? { saved: true, changed: true, restart_queued: true, configured: true }
+        : { supported: true, configured: false, running_enabled: false, live: false, can_restart: true }),
+        { status: 200 });
+    };
+    const api = new OpsAPI({ fetcher });
+    expect((await api.okxSwap()).supported).toBe(true);
+    expect((await api.saveOKXSwap(true)).restart_queued).toBe(true);
+    expect(paths).toEqual([
+      '/qnext/admin/api/index.php?route=%2Fokx-xauusdt',
+      '/qnext/admin/api/index.php?route=%2Fokx-xauusdt',
+    ]);
+  });
+});
