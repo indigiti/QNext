@@ -25,8 +25,8 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
-	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
+	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 	"github.com/indigiti/QNext/services/market-core/internal/resilience"
 	qruntime "github.com/indigiti/QNext/services/market-core/internal/runtime"
 	"github.com/indigiti/QNext/services/market-core/internal/stream"
@@ -311,7 +311,7 @@ func main() {
 				"raw_retention":           rawRetention.Snapshot(),
 				"live_integrity":          integrityStatus,
 				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
-				"okx_xauusd":              map[string]any{"enabled":okxGold!=nil,"mode":"trades-all plus 1m and 1s REST repair"},
+				"okx_xauusd":              map[string]any{"enabled": okxGold != nil, "mode": "trades-all plus 1m and 1s REST repair"},
 			}
 		},
 	})

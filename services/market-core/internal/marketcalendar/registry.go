@@ -135,11 +135,17 @@ func (r *Registry) Windows(id string, from, to time.Time, session Session) ([]Wi
 			start := cursor.UTC()
 			end := start.AddDate(0, 0, 1)
 			if end.After(from) && start.Before(to) {
-				if start.Before(from) { start = from }
-				if end.After(to) { end = to }
-				if start.Before(end) {windows=append(windows,Window{Start:start.UTC(),End:end.UTC()})}
+				if start.Before(from) {
+					start = from
+				}
+				if end.After(to) {
+					end = to
+				}
+				if start.Before(end) {
+					windows = append(windows, Window{Start: start.UTC(), End: end.UTC()})
+				}
 			}
-			cursor=cursor.AddDate(0,0,1)
+			cursor = cursor.AddDate(0, 0, 1)
 			continue
 		}
 		weekday := cursor.Weekday()
@@ -277,14 +283,13 @@ func BSEDerivatives2026() Definition {
 	return definition
 }
 
-
 // OKXCrypto24x7 represents continuous UTC exchange trading rather than an
 // NSE/BSE trading session. Windows() handles the full-day close as next midnight.
 func OKXCrypto24x7() Definition {
 	return Definition{
-		ID:"OKX_CRYPTO_24_7",Version:"okx-crypto-utc-v1",Timezone:"UTC",
-		RegularOpen:Clock{0,0},RegularClose:Clock{23,59},
-		ExtendedOpen:Clock{0,0},ExtendedClose:Clock{23,59},
-		SupportedFrom:"2025-01-01",SupportedTo:"2031-01-01",
+		ID: "OKX_CRYPTO_24_7", Version: "okx-crypto-utc-v1", Timezone: "UTC",
+		RegularOpen: Clock{0, 0}, RegularClose: Clock{23, 59},
+		ExtendedOpen: Clock{0, 0}, ExtendedClose: Clock{23, 59},
+		SupportedFrom: "2025-01-01", SupportedTo: "2031-01-01",
 	}
 }
