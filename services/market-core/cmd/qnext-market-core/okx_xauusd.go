@@ -38,6 +38,7 @@ func registerOKXGold(registry *symbol.Registry, contract okx.Contract) error {
 // repairOKXGold stores only exchange-confirmed final bars. All historical 5s
 // buckets must have five contiguous 1s sources or stay explicitly missing.
 func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, history *history.Store, broker *stream.Broker, from, to time.Time) error {
+	if contract.InstrumentID == "" { return errors.New("OKX canonical instrument ID missing") }
 	if history == nil || broker == nil {
 		return errors.New("history and broker required")
 	}
@@ -56,7 +57,7 @@ func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract
 		if err != nil {
 			return fmt.Errorf("OKX %s backfill: %w", tf, err)
 		}
-		previous, err := history.LoadRange(okx.InstrumentID, tf, start, to)
+		previous, err := history.LoadRange(contract.InstrumentID, tf, start, to)
 		if err != nil {
 			return fmt.Errorf("OKX read %s prior bars: %w", tf, err)
 		}
@@ -90,7 +91,7 @@ func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract
 		// Historical bars are retrieved through REST. Do not inject an older
 		// recovered bar into the monotonic live WebSocket bar stream.
 		if changed {
-			broker.PublishResync(okx.InstrumentID, tf, "okx_history_repair")
+			broker.PublishResync(contract.InstrumentID, tf, "okx_history_repair")
 		}
 	}
 	return nil
@@ -99,6 +100,7 @@ func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract
 // runOKXGold is an independent provider path; existing NSE/BSE feed
 // supervision, synthetic volume routing and trading calendars are untouched.
 func runOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, history *history.Store, broker *stream.Broker, onTrade func(domain.Tick)) error {
+	if contract.InstrumentID == "" { return errors.New("OKX canonical instrument ID missing") }
 	if history == nil || broker == nil {
 		return errors.New("OKX history/broker missing")
 	}
@@ -109,7 +111,7 @@ func runOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, h
 	}
 	sink := &qruntime.MarketSink{
 		Pipeline: clock, Publisher: broker,
-		DirectInstruments: map[string]bool{okx.InstrumentID: true},
+		DirectInstruments: map[string]bool{contract.InstrumentID: true},
 		Observer:          onTrade,
 		ClockDone:         ctx.Done(),
 	}
@@ -141,4 +143,30 @@ func discoverOKXGold(ctx context.Context, registry *symbol.Registry) (*okx.Contr
 		return nil, err
 	}
 	return &contract, nil
+}
+
+// The USDT-settled swap is intentionally distinct from XAUUSD X-Perp.
+// Neither can silently replace the other in a candle or symbol catalog.
+func registerOKXSwap(registry *symbol.Registry, contract okx.Contract) error {
+	if contract.InstrumentID != okx.SwapInstrumentID ||
+		contract.InstID != okx.SwapProviderID || contract.ContractValue <= 0 {
+		return errors.New("validated live OKX XAU-USDT-SWAP required")
+	}
+	if err := registry.Register(symbol.Instrument{
+		ID: okx.SwapInstrumentID, Symbol: "XAU-USDT-SWAP",
+		Name: "OKX Gold/USDT Perpetual Swap",
+		AssetClass: "FUTURES", Exchange: "OKX", Currency: "USDT", Timezone: "UTC",
+		CalendarID: "OKX_CRYPTO_24_7", Visible: true,
+		Aliases: []string{"XAUUSDT-SWAP", "OKX GOLD USDT"},
+	}); err != nil {return err}
+	return registry.RegisterProvider(symbol.ProviderInstrument{
+		Provider: okx.ProviderName, InstrumentID: okx.SwapInstrumentID, ProviderKey: contract.InstID,
+	})
+}
+
+func discoverOKXSwap(ctx context.Context, registry *symbol.Registry) (*okx.Contract,error) {
+	contract, err := (okx.Client{}).DiscoverXAUSwap(ctx)
+	if err != nil {return nil,err}
+	if err := registerOKXSwap(registry, contract); err != nil {return nil,err}
+	return &contract,nil
 }
