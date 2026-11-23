@@ -41,3 +41,20 @@ func TestOKXGoldAdminSettingOverridesEnvironmentAndFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestOKXSwapAdminFlagIndependentOfXPerp(t *testing.T) {
+ dir:=filepath.Join(t.TempDir(),"config")
+ if err:=os.MkdirAll(dir,0750);err!=nil{t.Fatal(err)}
+ path:=filepath.Join(dir,"q1-market.json")
+ t.Setenv("QNEXT_OKX_XAUUSD","1")
+ t.Setenv("QNEXT_OKX_XAUUSDT","0")
+ if err:=os.WriteFile(filepath.Join(dir,"okx-xauusd.json"),[]byte(`{"enabled":true}`),0640);err!=nil{t.Fatal(err)}
+ enabled,err:=okxSwapRequested(path)
+ if err!=nil||enabled {t.Fatalf("XPerp setting must not enable USDT swap: %v, %v",enabled,err)}
+ if err:=os.WriteFile(filepath.Join(dir,"okx-xauusdt.json"),[]byte(`{"enabled":true}`),0640);err!=nil{t.Fatal(err)}
+ enabled,err=okxSwapRequested(path)
+ if err!=nil||!enabled{t.Fatalf("swap must enable independently: %v, %v",enabled,err)}
+ if err:=os.WriteFile(filepath.Join(dir,"okx-xauusdt.json"),[]byte(`{"enabled":"true"}`),0640);err!=nil{t.Fatal(err)}
+ enabled,err=okxSwapRequested(path)
+ if err==nil||enabled{t.Fatalf("invalid swap setting must fail closed: %v %v",enabled,err)}
+}
