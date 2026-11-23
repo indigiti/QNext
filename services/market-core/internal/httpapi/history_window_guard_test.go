@@ -11,7 +11,9 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/domain"
 )
 
-type boundedHistoryProbe struct { calls int }
+type boundedHistoryProbe struct {
+	calls int
+}
 
 func (p *boundedHistoryProbe) LoadRange(_ string, _ string, _, _ time.Time) ([]domain.Bar, error) {
 	p.calls++
@@ -47,7 +49,9 @@ func TestBarsRejectOversizedPublicHistoryBeforeStore(t *testing.T) {
 				Error   string `json:"error"`
 				MaxDays int    `json:"max_days"`
 			}
-			if err := json.Unmarshal(rejected.Body.Bytes(), &body); err != nil { t.Fatal(err) }
+			if err := json.Unmarshal(rejected.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
 			if body.Error != "history_range_too_large" || body.MaxDays != tc.maxDays {
 				t.Fatalf("unexpected range response: %+v", body)
 			}
