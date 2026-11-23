@@ -161,11 +161,37 @@ root.innerHTML = `
         </div>
       </section>
 
+      <section class="card span-3" id="okx-gold-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Gold &amp; Commodities · OKX</p>
+            <h2>XAUUSD X-Perpetual feed</h2>
+            <p class="muted">USD-denominated gold derivative. Actual exchange trade volume; this is not an OTC spot/MT5 XAUUSD quote.</p>
+          </div>
+          <button id="refresh-okx-gold" class="secondary" type="button">Refresh</button>
+        </div>
+        <div class="okx-gold-admin">
+          <label class="market-toggle">
+            <input id="okx-gold-enabled" type="checkbox" disabled />
+            <span><strong>OKX XAUUSD</strong><small id="okx-gold-setting-label">Checking release support…</small></span>
+          </label>
+          <div class="okx-gold-detail">
+            <div id="okx-gold-runtime-status" role="status" aria-live="polite">Loading Market Core status…</div>
+            <div id="okx-gold-last-trade" class="muted">Last trade: —</div>
+            <div id="okx-gold-message" class="muted">A supported Market Core build is required.</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="save-okx-gold" type="button" disabled>Save &amp; restart Market Core</button>
+          <span class="muted">This briefly reconnects existing NSE/BSE feeds. OFF is the default. No trading API key is needed.</span>
+        </div>
+      </section>
+
       <section class="card span-3" id="symbol-universes-card">
         <div class="card-head">
           <div>
             <p class="eyebrow">Symbol directory</p>
-            <h2>Two separate chart symbol sections</h2>
+            <h2>Market symbol sections</h2>
             <p class="muted">Core index/SYN instruments retain their existing live engine. Additional NSE symbols use completed Upstox 1-minute historical candles only.</p>
           </div>
           <button id="refresh-symbol-universes" class="secondary" type="button">Refresh</button>
@@ -634,6 +660,42 @@ async function probeBrowserStream() {
       }
     };
   });
+}
+
+async function loadOKXGold(): Promise<void> {
+  const checkbox = document.querySelector<HTMLInputElement>('#okx-gold-enabled')!;
+  const save = document.querySelector<HTMLButtonElement>('#save-okx-gold')!;
+  const label = document.querySelector<HTMLElement>('#okx-gold-setting-label')!;
+  const status = document.querySelector<HTMLElement>('#okx-gold-runtime-status')!;
+  const last = document.querySelector<HTMLElement>('#okx-gold-last-trade')!;
+  const message = document.querySelector<HTMLElement>('#okx-gold-message')!;
+  checkbox.disabled = true;
+  save.disabled = true;
+  try {
+    const state = await api.okxGold();
+    checkbox.checked = state.configured;
+    checkbox.disabled = !(state.supported && state.can_restart);
+    save.disabled = checkbox.disabled;
+    label.textContent = state.supported
+      ? (state.configured ? 'CONFIGURED ON' : 'CONFIGURED OFF')
+      : 'UNAVAILABLE IN DEPLOYED RELEASE';
+    status.textContent = !state.supported ? 'Adapter not deployed'
+      : state.restart_required ? 'Configuration change awaiting restart'
+      : state.live ? 'LIVE — recent individual trades received'
+      : state.running_enabled ? 'Enabled — awaiting trades or stale'
+      : 'Disabled — no live OKX subscription';
+    last.textContent = state.last_trade_ms
+      ? `Last OKX trade: ${new Date(state.last_trade_ms).toLocaleString()} · Price: ${formatPrice(state.last_price ?? undefined)} USD`
+      : 'Last OKX trade: —';
+    message.textContent = state.message;
+  } catch (error) {
+    checkbox.disabled = true;
+    save.disabled = true;
+    label.textContent = 'UNAVAILABLE';
+    status.textContent = 'Cannot verify installed adapter';
+    last.textContent = 'Last OKX trade: —';
+    message.textContent = (error as Error).message;
+  }
 }
 
 async function loadFeedStatus() {
@@ -1353,6 +1415,30 @@ document.querySelector<HTMLFormElement>('#custom-indicator-form')!.addEventListe
 document.querySelector('#refresh')!.addEventListener('click', () => void refresh());
 document.querySelector('#refresh-feed')!.addEventListener('click', () => void loadFeedStatus());
 document.querySelector('#refresh-symbol-universes')!.addEventListener('click', () => void loadFeedStatus());
+document.querySelector('#refresh-okx-gold')!.addEventListener('click', () => void loadOKXGold());
+document.querySelector('#save-okx-gold')!.addEventListener('click', async () => {
+  const checkbox = document.querySelector<HTMLInputElement>('#okx-gold-enabled')!;
+  const button = document.querySelector<HTMLButtonElement>('#save-okx-gold')!;
+  const enabled = checkbox.checked;
+  if (!window.confirm(`Save OKX XAUUSD as ${enabled ? 'ON' : 'OFF'} and restart Market Core? Existing NSE/BSE feeds will briefly reconnect.`)) {
+    await loadOKXGold();
+    return;
+  }
+  button.disabled = true;
+  checkbox.disabled = true;
+  try {
+    const result = await api.saveOKXGold(enabled);
+    toast(result.changed
+      ? `OKX XAUUSD saved ${enabled ? 'ON' : 'OFF'}. Market Core restart ${result.restart_queued ? 'queued' : 'requested'}; check live status after reconnect.`
+      : 'OKX XAUUSD configuration is already up to date.');
+    await loadOKXGold();
+    await loadFeedStatus();
+  } catch (error) {
+    toast((error as Error).message, true);
+    await loadOKXGold();
+  }
+});
+
 renderCoreSymbolUniverse();
 document.querySelector('#probe-stream')!.addEventListener('click', () => void probeBrowserStream());
 document.querySelector('#verify-dhan')!.addEventListener('click', async () => {
@@ -1513,6 +1599,7 @@ document.querySelector('#save-active-markets')!.addEventListener('click', async 
       `Active markets saved: ${saved.active.join(', ')}. Restart ${queued ? 'queued' : 'completed'}.`,
     );
     await loadActiveMarkets();
+  await loadOKXGold();
     await refresh();
   } catch (error) {
     toast((error as Error).message, true);
