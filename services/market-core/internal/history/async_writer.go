@@ -92,6 +92,31 @@ func (s *Store) FlushAsync(ctx context.Context) error {
 	return writer.Flush(ctx)
 }
 
+// PersistenceReadiness checks existing async writers without instantiating one.
+func (s *Store) PersistenceReadiness() (bool, []string) {
+	if s == nil || s.root == "" {
+		return false, []string{"history_storage_unavailable"}
+	}
+	asyncRegistry.Lock()
+	writer := asyncRegistry.writers[s]
+	asyncRegistry.Unlock()
+	if writer == nil {
+		return true, nil
+	}
+	stats := writer.Stats()
+	var reasons []string
+	if stats.Pending > 0 && stats.LastError != "" {
+		reasons = append(reasons, "history_persistence_error")
+	}
+	if stats.Pending > 0 && stats.FlushLagMS >= 30000 {
+		reasons = append(reasons, "history_flush_lag")
+	}
+	if stats.Capacity > 0 && stats.Queued >= (stats.Capacity*9+9)/10 {
+		reasons = append(reasons, "history_queue_pressure")
+	}
+	return len(reasons) == 0, reasons
+}
+
 func asyncWriterFor(store *Store) *AsyncWriter {
 	asyncRegistry.Lock()
 	defer asyncRegistry.Unlock()

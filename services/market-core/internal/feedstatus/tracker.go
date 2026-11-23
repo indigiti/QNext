@@ -211,6 +211,22 @@ func (t *Tracker) Snapshot() Snapshot {
 	}
 }
 
+// MostRecentProcessedMS is a low-cost ingestion readiness signal.
+func (t *Tracker) MostRecentProcessedMS() int64 {
+	if t == nil {
+		return 0
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	var latest int64
+	for _, provider := range t.providers {
+		if provider.LastProcessedTimeMS > latest {
+			latest = provider.LastProcessedTimeMS
+		}
+	}
+	return latest
+}
+
 func AgeMS(atMS int64, now time.Time) int64 {
 	if atMS <= 0 {
 		return -1
