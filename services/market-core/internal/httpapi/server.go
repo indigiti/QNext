@@ -221,6 +221,25 @@ func (s *Server) historyRepair(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// maxInteractiveBarsDays protects the public chart/history endpoint, not
+// background recovery jobs. Users can page older histories in multiple
+// windows without capping QNext's canonical retention. Match the existing
+// display resolution classes and keep unknown intervals conservatively bounded.
+func maxInteractiveBarsDays(timeframe string) int {
+	switch {
+	case strings.HasSuffix(timeframe, "s"):
+		return 31
+	case strings.HasSuffix(timeframe, "m"):
+		return 400
+	case strings.HasSuffix(timeframe, "h"):
+		return 1826
+	case timeframe == "1D" || timeframe == "1W" || timeframe == "1M":
+		return 7305
+	default:
+		return 400
+	}
+}
+
 func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 	if !requireGET(w, r) {
 		return
@@ -237,6 +256,19 @@ func (s *Server) bars(w http.ResponseWriter, r *http.Request) {
 	toMS, toOK := parseMilliseconds(query.Get("to_ms"))
 	if instrumentID == "" || timeframe == "" || !fromOK || !toOK || fromMS >= toMS {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_query"})
+		return
+	}
+	// Public browser requests must not trigger unbounded on-disk JSONL
+	// scans. The response limit caps output, not the time span LoadRange
+	// reads, so enforce a timeframe-aware window before touching storage.
+	fromTime := time.UnixMilli(fromMS).UTC()
+	toTime := time.UnixMilli(toMS).UTC()
+	maxDays := maxInteractiveBarsDays(timeframe)
+	if toTime.After(fromTime.AddDate(0, 0, maxDays)) {
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+			"error":    "history_range_too_large",
+			"max_days": maxDays,
+		})
 		return
 	}
 	limit := 0
