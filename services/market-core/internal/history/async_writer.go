@@ -92,6 +92,45 @@ func (s *Store) FlushAsync(ctx context.Context) error {
 	return writer.Flush(ctx)
 }
 
+// PersistenceStats reports an existing writer without starting a new one.
+// A newly started, idle Market Core is ready even before its first final bar.
+func (s *Store) PersistenceStats() (PersistenceStats, bool) {
+	if s == nil {
+		return PersistenceStats{}, false
+	}
+	asyncRegistry.Lock()
+	writer := asyncRegistry.writers[s]
+	asyncRegistry.Unlock()
+	if writer == nil {
+		return PersistenceStats{}, false
+	}
+	return writer.Stats(), true
+}
+
+// PersistenceReadiness never drops a finalized candle. Instead, it returns
+// machine-readable failure reasons when disk I/O or queue pressure threatens
+// the canonical ingestion path. The HTTP readiness probe can then fail early.
+func (s *Store) PersistenceReadiness() (bool, []string) {
+	if s == nil || s.root == "" {
+		return false, []string{"history_storage_unavailable"}
+	}
+	stats, started := s.PersistenceStats()
+	if !started {
+		return true, nil
+	}
+	var reasons []string
+	if stats.Pending > 0 && stats.LastError != "" {
+		reasons = append(reasons, "history_persistence_error")
+	}
+	if stats.Pending > 0 && stats.FlushLagMS >= 30_000 {
+		reasons = append(reasons, "history_flush_lag")
+	}
+	if stats.Capacity > 0 && stats.Queued >= (stats.Capacity*9+9)/10 {
+		reasons = append(reasons, "history_queue_pressure")
+	}
+	return len(reasons) == 0, reasons
+}
+
 func asyncWriterFor(store *Store) *AsyncWriter {
 	asyncRegistry.Lock()
 	defer asyncRegistry.Unlock()

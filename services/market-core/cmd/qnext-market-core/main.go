@@ -221,6 +221,7 @@ func main() {
 		Version:         version,
 		Commit:          commit,
 		StartedAt:       started,
+		Readiness:       store.PersistenceReadiness,
 		StreamHandler:   stream.NewWebSocketHandler(broker),
 		ChartTimeframes: chartTimeframes,
 		LiveBars:        broker,
