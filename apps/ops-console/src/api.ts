@@ -442,6 +442,17 @@ export class OpsAPI {
     });
   }
 
+  okxSwap(): Promise<OKXGoldState> {
+    return this.request<OKXGoldState>('/okx-xauusdt');
+  }
+
+  saveOKXSwap(enabled: boolean): Promise<OKXGoldSaveResult> {
+    return this.request<OKXGoldSaveResult>('/okx-xauusdt', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
   getConfig(): Promise<Record<string, unknown>> {
     return this.request<Record<string, unknown>>('/config');
   }
