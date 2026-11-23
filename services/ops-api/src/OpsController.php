@@ -690,6 +690,97 @@ final class OpsController
         ];
     }
 
+    /**
+     * Read-only state for Admin → Market Data. Actual feed health is sourced
+     * from Market Core, never inferred merely from a saved checkbox.
+     */
+    public function okxGoldState(): array
+    {
+        $feed = $this->feedStatus();
+        $body = ($feed['ok'] ?? false) && is_array($feed['body'] ?? null)
+            ? $feed['body'] : [];
+        $runtime = is_array($body['okx_xauusd'] ?? null) ? $body['okx_xauusd'] : [];
+        $supported = ($runtime['available'] ?? false) === true;
+        $running = ($runtime['enabled'] ?? false) === true;
+        $desired = $supported ? (($runtime['requested'] ?? false) === true) : false;
+        $path = $this->config->okxGoldConfigPath();
+        if (is_file($path)) {
+            $raw = file_get_contents($path);
+            if ($raw === false) {
+                throw new RuntimeException('cannot read OKX gold configuration');
+            }
+            try {
+                $stored = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            } catch (JsonException $error) {
+                throw new RuntimeException('stored OKX gold configuration is invalid JSON', 0, $error);
+            }
+            if (!is_array($stored) || !is_bool($stored['enabled'] ?? null)) {
+                throw new RuntimeException('stored OKX gold configuration requires boolean enabled');
+            }
+            $desired = $stored['enabled'];
+        }
+        $instrument = $body['telemetry']['instruments']['OKX:XAUUSD-XPERP'] ?? null;
+        $instrument = is_array($instrument) ? $instrument : [];
+        $lastMS = (int) ($instrument['last_event_time_ms'] ?? 0);
+        $lastReceivedMS = (int) ($instrument['last_received_time_ms'] ?? 0);
+        $fresh = $running && $lastReceivedMS > 0 &&
+            (((int) floor(microtime(true) * 1000)) - $lastReceivedMS) <= 30000;
+        $controlAvailable = $this->service->controlMode() !== 'setup';
+        return [
+            'supported' => $supported,
+            'configured' => $desired,
+            'running_enabled' => $running,
+            'live' => $fresh,
+            'restart_required' => $supported && ($desired !== $running),
+            'can_restart' => $controlAvailable,
+            'last_trade_ms' => $lastMS > 0 ? $lastMS : null,
+            'last_price' => isset($instrument['price']) && is_numeric($instrument['price'])
+                ? (float) $instrument['price'] : null,
+            'instrument_id' => 'OKX:XAUUSD-XPERP',
+            'message' => !$supported
+                ? 'Deploy a Market Core release containing the OKX gold adapter before enabling this feed.'
+                : (($runtime['config_error'] ?? '') !== ''
+                    ? 'Market Core rejected the OKX configuration: ' . $runtime['config_error']
+                    : ($fresh ? 'Live trades received recently.' : ($running
+                        ? 'Enabled; waiting for recent trades or feed is stale.'
+                        : 'Gold feed is disabled.'))),
+        ];
+    }
+
+    /**
+     * Admin mutation is boolean-only, authenticated at the Ops API route,
+     * persisted in the private market config directory, then restarted using
+     * the existing direct/cron supervisor. No broker secrets are modified.
+     */
+    public function setOKXGold(bool $enabled): array
+    {
+        $state = $this->okxGoldState();
+        if (!$state['supported']) {
+            throw new RuntimeException('OKX XAUUSD is not supported by the running Market Core release. Deploy PR #171 first.');
+        }
+        if (!$state['can_restart']) {
+            throw new RuntimeException('Market Core restart control is unavailable; no setting was changed.');
+        }
+        if ($state['configured'] === $enabled && !$state['restart_required']) {
+            return ['saved' => true, 'changed' => false, 'restart_queued' => false, 'state' => $state];
+        }
+        AtomicFile::writeJson($this->config->okxGoldConfigPath(), ['enabled' => $enabled]);
+        try {
+            $restart = $this->serviceAction('restart');
+        } catch (RuntimeException $error) {
+            // The desired setting stays persistent for a later operator retry.
+            throw new RuntimeException('OKX setting saved, but restart failed: ' . $error->getMessage(), 0, $error);
+        }
+        return [
+            'saved' => true,
+            'changed' => true,
+            'restart_queued' => str_contains(strtolower((string) $restart['output']), 'queued'),
+            'restart_output' => $restart['output'],
+            'configured' => $enabled,
+            'verified_live' => false,
+        ];
+    }
+
     public function serviceAction(string $action): array
     {
         if (!in_array($action, ['start', 'stop', 'restart'], true)) {
