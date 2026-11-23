@@ -1,7 +1,7 @@
 import { liveWSSDispatchLatency } from './live-latency';
 
 import {
-  CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID,
+  CORE_GROUP_ID, CORE_GROUP_LABEL, OKX_GOLD_GROUP_ID, OKX_GOLD_GROUP_LABEL, NSE_MINUTE_GROUP_ID,
   NSE_MINUTE_GROUP_LABEL, orderVisibleSymbols, symbolSection,
 } from './symbol-sections';
 
@@ -165,11 +165,11 @@ export class QNextProvider {
       group: string; default?: boolean;
     }> = [];
 
-    for (const section of ['core', 'nse_1m'] as const) {
+    for (const section of ['core', 'nse_1m', 'okx_gold'] as const) {
       const matches = available.filter((item) => symbolSection(item) === section);
       if (matches.length === 0) continue;
-      const group = section === 'core' ? CORE_GROUP_ID : NSE_MINUTE_GROUP_ID;
-      const label = section === 'core' ? CORE_GROUP_LABEL : NSE_MINUTE_GROUP_LABEL;
+      const group = section === 'core' ? CORE_GROUP_ID : section === 'nse_1m' ? NSE_MINUTE_GROUP_ID : OKX_GOLD_GROUP_ID;
+      const label = section === 'core' ? CORE_GROUP_LABEL : section === 'nse_1m' ? NSE_MINUTE_GROUP_LABEL : OKX_GOLD_GROUP_LABEL;
       result.push({
         ticker: group,
         description: label,
