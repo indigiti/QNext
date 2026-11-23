@@ -26,6 +26,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
+	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
 	"github.com/indigiti/QNext/services/market-core/internal/resilience"
 	qruntime "github.com/indigiti/QNext/services/market-core/internal/runtime"
 	"github.com/indigiti/QNext/services/market-core/internal/stream"
@@ -102,6 +103,18 @@ func main() {
 		log.Fatalf("build symbol registry: %v", err)
 	}
 	calendars := marketcalendar.DefaultRegistry()
+	var okxGold *okx.Contract
+	if strings.TrimSpace(os.Getenv("QNEXT_OKX_XAUUSD")) == "1" {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, 15*time.Second)
+		contract, discoveryErr := discoverOKXGold(discoveryCtx, registry)
+		cancelDiscovery()
+		if discoveryErr != nil {
+			log.Printf("OKX XAUUSD discovery unavailable; disabled without affecting NSE/BSE: %v", discoveryErr)
+		} else {
+			okxGold = contract
+			log.Printf("OKX XAUUSD discovered live X-Perp contract %s", contract.InstID)
+		}
+	}
 
 	resilienceMetrics := resilience.NewMetrics()
 	var resilienceConfig *resilience.Config
@@ -298,6 +311,7 @@ func main() {
 				"raw_retention":           rawRetention.Snapshot(),
 				"live_integrity":          integrityStatus,
 				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
+				"okx_xauusd":              map[string]any{"enabled":okxGold!=nil,"mode":"trades-all plus 1m and 1s REST repair"},
 			}
 		},
 	})
@@ -316,6 +330,14 @@ func main() {
 		}
 	}()
 
+	if okxGold != nil {
+		contract := *okxGold
+		go func() {
+			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker); err != nil && ctx.Err() == nil {
+				log.Printf("OKX XAUUSD ingestion stopped: %v", err)
+			}
+		}()
+	}
 	if nseMinuteSync != nil {
 		go func() {
 			// Stagger the historical stock refresh from the existing index
