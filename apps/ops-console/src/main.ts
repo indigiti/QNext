@@ -1800,6 +1800,8 @@ async function bootstrapAuthenticatedAdmin() {
   await loadStorageDays();
   await loadConfig();
   await loadActiveMarkets();
+  await loadOKXGold();
+  await loadOKXSwap();
   await loadCandleTimeframes();
   await loadChartTimeframes();
   await loadHistoricalRepairStatus();
