@@ -42,3 +42,23 @@ This prevents new OKX subscriptions without altering NSE/BSE processing or store
 ## Evidence
 - PR: https://github.com/indigiti/QNext/pull/171
 - Live API preflight (success): https://github.com/indigiti/QNext/actions/runs/45219206988
+
+## Admin dashboard feature switch (included in this release candidate)
+- Navigate to **Admin → Market Data → OKX XAUUSD X-Perpetual feed**.
+- The switch displays the *configured* ON/OFF state separately from actual Market Core status
+  (LIVE, WAITING/STALE, disabled, or unsupported release).
+- Toggle ON/OFF, click **Save & restart Market Core**, and accept the restart warning.
+  The authenticated `GET/PUT /qnext/admin/api/index.php?route=/okx-xauusd` endpoints
+  validate a boolean and inherit the existing session/CSRF protections.
+- The Ops API stores `{"enabled":true|false}` at the private `config/okx-xauusd.json`
+  path, then requests a supervised direct/Cloudways-cron restart. This changes *no secrets*
+  and never registers a broker trading account.
+- Market Core loads this file at startup beside `QNEXT_MARKET_CONFIG`; when the file exists
+  it takes priority over legacy `QNEXT_OKX_XAUUSD`. If absent, the environment flag remains
+  backward compatible.
+- The switch fails closed on an old Market Core that does not report `okx_xauusd.available`.
+  On release #141 (`fd86a1c192c5`) a config change alone cannot install OKX support.
+- Because the controller restarts Market Core, existing NSE/BSE streams briefly reconnect.
+  Verify NIFTY/SYN+ integrity and OKX trade activity after using the control.
+- The status comes from received OKX ticks (not merely configuration): successful restart
+  or a checked box is never presented as proof of live data.
