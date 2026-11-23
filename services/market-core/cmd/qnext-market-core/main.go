@@ -221,7 +221,7 @@ func main() {
 		Version:         version,
 		Commit:          commit,
 		StartedAt:       started,
-		Readiness: func() (bool, []string) {
+		Readiness:       func() (bool, []string) {
 			persistOK, persistReasons := store.PersistenceReadiness()
 			return evaluateMarketReadiness(
 				time.Now().UTC(), started, config != nil, ctx.Err() != nil,
