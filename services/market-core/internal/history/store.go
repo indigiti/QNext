@@ -193,7 +193,19 @@ func (s *Store) dayPath(instrumentID, timeframe string, at time.Time) string {
 
 func safeComponent(value string) string {
 	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_")
-	return replacer.Replace(value)
+	component := replacer.Replace(value)
+	// filepath.Join interprets "." and ".." as navigation rather than
+	// literal instrument/timeframe directory names. Keep even malformed
+	// public history queries confined to the canonical market subtree.
+	// Existing NSE:/QNEXT: instrument paths are unchanged.
+	switch component {
+	case ".":
+		return "__qnext_dot__"
+	case "..":
+		return "__qnext_dotdot__"
+	default:
+		return component
+	}
 }
 
 func fromBar(bar domain.Bar) barRecord {
