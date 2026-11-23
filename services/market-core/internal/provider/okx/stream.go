@@ -228,8 +228,10 @@ func (s Stream) once(ctx context.Context, contract Contract, sink func(string, d
 				return errors.New("invalid OKX trade values")
 			}
 			now := time.Now().UTC()
+			canonicalID := contract.InstrumentID
+			if canonicalID == "" {canonicalID = InstrumentID} // backwards compatible X-Perp
 			tick := domain.Tick{
-				InstrumentID: InstrumentID, Provider: ProviderName,
+				InstrumentID: canonicalID, Provider: ProviderName,
 				Price: price, Quantity: size * contract.ContractValue,
 				EventTime: time.UnixMilli(ms).UTC(), TradeTime: time.UnixMilli(ms).UTC(),
 				ReceivedTime: now, Quality: domain.QualityGood,
