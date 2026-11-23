@@ -1,0 +1,32 @@
+name: OKX XAUUSD live feed preflight
+
+on:
+  push:
+    branches:
+      - feature/okx-xauusd-marketdata-20261123
+    paths:
+      - "services/market-core/internal/provider/okx/**"
+      - ".github/workflows/okx-xauusd-live-preflight.yml"
+      - "docs/operations/okx-xauusd-release-gate.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  okx-live-preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: services/market-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache-dependency-path: services/market-core/go.mod
+      - name: Verify actual OKX public instrument, history, and trades-all feed
+        env:
+          QNEXT_OKX_LIVE_SMOKE: "1"
+        run: go test ./internal/provider/okx -run '^TestLiveOKXGoldExternalSmoke$' -count=1 -v -timeout=120s

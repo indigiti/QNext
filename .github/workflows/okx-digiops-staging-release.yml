@@ -1,0 +1,19 @@
+name: OKX XAUUSD DigiOps staging release
+
+# Build deployable artifacts for this isolated candidate without merging to main,
+# staging files on a host, or activating a release.
+on:
+  push:
+    branches:
+      - feature/okx-xauusd-marketdata-20261123
+    paths:
+      - .github/workflows/okx-digiops-staging-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-release:
+    name: Build exact DigiOps staging artifact
+    uses: ./.github/workflows/qnext-release.yml

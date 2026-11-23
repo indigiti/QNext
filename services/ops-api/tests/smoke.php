@@ -136,6 +136,20 @@ expect(
     'active cron heartbeat should take precedence over direct process control'
 );
 $flatController = new OpsController($flatConfig);
+$unsupportedGold = $flatController->okxGoldState();
+expect(($unsupportedGold['supported'] ?? true) === false, 'old Market Core must not claim OKX support');
+expect(($unsupportedGold['running_enabled'] ?? true) === false, 'old Market Core must not show gold live');
+try {
+    $flatController->setOKXGold(true);
+    expect(false, 'admin must not enable gold on an unsupported Market Core release');
+} catch (RuntimeException) {
+}
+expect(!is_file($flatConfig->okxGoldConfigPath()), 'unsupported gold action must not persist any configuration');
+AtomicFile::writeJson($flatConfig->okxGoldConfigPath(), ['enabled' => true]);
+$persistedGold = $flatController->okxGoldState();
+expect(($persistedGold['configured'] ?? false) === true, 'private gold control should retain desired state');
+expect(($persistedGold['supported'] ?? true) === false, 'desired state must not imply deployed feed support');
+
 
 $labControl = new IntelligenceLabControl($flatConfig);
 $labStatus = $labControl->status();

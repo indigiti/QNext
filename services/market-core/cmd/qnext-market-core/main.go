@@ -25,6 +25,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
+	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 	"github.com/indigiti/QNext/services/market-core/internal/resilience"
 	qruntime "github.com/indigiti/QNext/services/market-core/internal/runtime"
@@ -75,7 +76,8 @@ func main() {
 
 	var config *marketconfig.Config
 	var accessToken string
-	if configPath := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG")); configPath != "" {
+	marketConfigPath := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG"))
+	if configPath := marketConfigPath; configPath != "" {
 		loaded, err := marketconfig.Load(configPath)
 		if err != nil {
 			log.Fatalf("load QNext market config: %v", err)
@@ -102,6 +104,24 @@ func main() {
 		log.Fatalf("build symbol registry: %v", err)
 	}
 	calendars := marketcalendar.DefaultRegistry()
+	okxRequested, okxSettingErr := okxGoldRequested(marketConfigPath)
+	okxConfigError := ""
+	if okxSettingErr != nil {
+		okxConfigError = okxSettingErr.Error()
+		log.Printf("OKX XAUUSD setting rejected (feed remains OFF): %v", okxSettingErr)
+	}
+	var okxGold *okx.Contract
+	if okxRequested {
+		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, 15*time.Second)
+		contract, discoveryErr := discoverOKXGold(discoveryCtx, registry)
+		cancelDiscovery()
+		if discoveryErr != nil {
+			log.Printf("OKX XAUUSD discovery unavailable; disabled without affecting NSE/BSE: %v", discoveryErr)
+		} else {
+			okxGold = contract
+			log.Printf("OKX XAUUSD discovered live X-Perp contract %s", contract.InstID)
+		}
+	}
 
 	resilienceMetrics := resilience.NewMetrics()
 	var resilienceConfig *resilience.Config
@@ -298,6 +318,7 @@ func main() {
 				"raw_retention":           rawRetention.Snapshot(),
 				"live_integrity":          integrityStatus,
 				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
+				"okx_xauusd":              map[string]any{"available": true, "requested": okxRequested, "enabled": okxGold != nil, "config_error": okxConfigError, "instrument_id": okx.InstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
 			}
 		},
 	})
@@ -316,6 +337,14 @@ func main() {
 		}
 	}()
 
+	if okxGold != nil {
+		contract := *okxGold
+		go func() {
+			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker, feedTracker.Observe); err != nil && ctx.Err() == nil {
+				log.Printf("OKX XAUUSD ingestion stopped: %v", err)
+			}
+		}()
+	}
 	if nseMinuteSync != nil {
 		go func() {
 			// Stagger the historical stock refresh from the existing index

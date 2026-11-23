@@ -70,6 +70,11 @@ final class OpsConfig
         ];
     }
 
+    public function okxGoldConfigPath(): string
+    {
+        return $this->privateRoot . '/config/okx-xauusd.json';
+    }
+
     public function secretsPath(): string
     {
         return $this->privateRoot . '/secrets/qnext.env';

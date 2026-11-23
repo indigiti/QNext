@@ -299,6 +299,16 @@ try {
     if ($method === 'GET' && $path === '/feed-status') {
         respond(200, $controller->feedStatus());
     }
+    if ($method === 'GET' && $path === '/okx-xauusd') {
+        respond(200, $controller->okxGoldState());
+    }
+    if ($method === 'PUT' && $path === '/okx-xauusd') {
+        $body = request_body();
+        if (!array_key_exists('enabled', $body) || !is_bool($body['enabled'])) {
+            respond(400, ['error' => 'enabled must be a JSON boolean']);
+        }
+        respond(200, $controller->setOKXGold($body['enabled']));
+    }
     // Routes below this point inherit the existing admin token/session gate.
     // POST performs one rate-limited, read-only backend telemetry snapshot.
     if ($method === 'GET' && $path === '/performance-report') {
