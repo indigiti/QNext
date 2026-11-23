@@ -38,7 +38,9 @@ func registerOKXGold(registry *symbol.Registry, contract okx.Contract) error {
 // repairOKXGold stores only exchange-confirmed final bars. All historical 5s
 // buckets must have five contiguous 1s sources or stay explicitly missing.
 func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, history *history.Store, broker *stream.Broker, from, to time.Time) error {
-	if contract.InstrumentID == "" { return errors.New("OKX canonical instrument ID missing") }
+	if contract.InstrumentID == "" {
+		return errors.New("OKX canonical instrument ID missing")
+	}
 	if history == nil || broker == nil {
 		return errors.New("history and broker required")
 	}
@@ -100,7 +102,9 @@ func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract
 // runOKXGold is an independent provider path; existing NSE/BSE feed
 // supervision, synthetic volume routing and trading calendars are untouched.
 func runOKXGold(ctx context.Context, client okx.Client, contract okx.Contract, history *history.Store, broker *stream.Broker, onTrade func(domain.Tick)) error {
-	if contract.InstrumentID == "" { return errors.New("OKX canonical instrument ID missing") }
+	if contract.InstrumentID == "" {
+		return errors.New("OKX canonical instrument ID missing")
+	}
 	if history == nil || broker == nil {
 		return errors.New("OKX history/broker missing")
 	}
@@ -154,19 +158,25 @@ func registerOKXSwap(registry *symbol.Registry, contract okx.Contract) error {
 	}
 	if err := registry.Register(symbol.Instrument{
 		ID: okx.SwapInstrumentID, Symbol: "XAU-USDT-SWAP",
-		Name: "OKX Gold/USDT Perpetual Swap",
+		Name:       "OKX Gold/USDT Perpetual Swap",
 		AssetClass: "FUTURES", Exchange: "OKX", Currency: "USDT", Timezone: "UTC",
 		CalendarID: "OKX_CRYPTO_24_7", Visible: true,
 		Aliases: []string{"XAUUSDT-SWAP", "OKX GOLD USDT"},
-	}); err != nil {return err}
+	}); err != nil {
+		return err
+	}
 	return registry.RegisterProvider(symbol.ProviderInstrument{
 		Provider: okx.ProviderName, InstrumentID: okx.SwapInstrumentID, ProviderKey: contract.InstID,
 	})
 }
 
-func discoverOKXSwap(ctx context.Context, registry *symbol.Registry) (*okx.Contract,error) {
+func discoverOKXSwap(ctx context.Context, registry *symbol.Registry) (*okx.Contract, error) {
 	contract, err := (okx.Client{}).DiscoverXAUSwap(ctx)
-	if err != nil {return nil,err}
-	if err := registerOKXSwap(registry, contract); err != nil {return nil,err}
-	return &contract,nil
+	if err != nil {
+		return nil, err
+	}
+	if err := registerOKXSwap(registry, contract); err != nil {
+		return nil, err
+	}
+	return &contract, nil
 }

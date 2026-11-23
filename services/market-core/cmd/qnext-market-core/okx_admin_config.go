@@ -17,11 +17,11 @@ func okxGoldRequested(marketConfigPath string) (bool, error) {
 	return okxMarketRequested(marketConfigPath, "okx-xauusd.json", "QNEXT_OKX_XAUUSD")
 }
 
-func okxSwapRequested(marketConfigPath string) (bool,error) {
+func okxSwapRequested(marketConfigPath string) (bool, error) {
 	return okxMarketRequested(marketConfigPath, "okx-xauusdt.json", "QNEXT_OKX_XAUUSDT")
 }
 
-func okxMarketRequested(marketConfigPath string, filename string, envFlag string) (bool,error) {
+func okxMarketRequested(marketConfigPath string, filename string, envFlag string) (bool, error) {
 	fallback := strings.TrimSpace(os.Getenv(envFlag)) == "1"
 	if strings.TrimSpace(marketConfigPath) == "" {
 		return fallback, nil

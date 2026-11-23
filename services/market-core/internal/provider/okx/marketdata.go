@@ -16,17 +16,17 @@ import (
 )
 
 const (
-	ProviderName = "okx"
-	InstrumentID = "OKX:XAUUSD-XPERP"
+	ProviderName     = "okx"
+	InstrumentID     = "OKX:XAUUSD-XPERP"
 	SwapInstrumentID = "OKX:XAU-USDT-SWAP"
-	defaultREST  = "https://www.okx.com"
-	defaultWS    = "wss://ws.okx.com/ws/v5/business"
+	defaultREST      = "https://www.okx.com"
+	defaultWS        = "wss://ws.okx.com/ws/v5/business"
 )
 
 // Contract is discovered from the *live* OKX FUTURES instrument catalogue.
 // Display labels and expired monthly futures are never treated as API IDs.
 type Contract struct {
-	InstrumentID string // canonical QNeXT identity, independent of provider instId
+	InstrumentID  string // canonical QNeXT identity, independent of provider instId
 	InstID        string
 	ContractValue float64 // troy ounces of gold per contract
 }
@@ -55,12 +55,12 @@ type apiResponse[T any] struct {
 	Data []T    `json:"data"`
 }
 type instrumentInfo struct {
-	InstID   string `json:"instId"`
-	InstType string `json:"instType"`
-	State    string `json:"state"`
-	CtVal    string `json:"ctVal"`
-	CtValCcy string `json:"ctValCcy"`
-	CtType string `json:"ctType"`
+	InstID    string `json:"instId"`
+	InstType  string `json:"instType"`
+	State     string `json:"state"`
+	CtVal     string `json:"ctVal"`
+	CtValCcy  string `json:"ctValCcy"`
+	CtType    string `json:"ctType"`
 	SettleCcy string `json:"settleCcy"`
 }
 
@@ -122,7 +122,6 @@ func (c Client) DiscoverXAUUSD(ctx context.Context) (Contract, error) {
 	}
 	return found[0], nil
 }
-
 
 const SwapProviderID = "XAU-USDT-SWAP"
 
@@ -212,7 +211,9 @@ func (c Client) History(ctx context.Context, contract Contract, timeframe string
 	cursor := to.UnixMilli()
 	bars := make(map[int64]domain.Bar)
 	canonicalID := contract.InstrumentID
-	if canonicalID == "" {canonicalID = InstrumentID} // legacy X-Perp call sites
+	if canonicalID == "" {
+		canonicalID = InstrumentID
+	} // legacy X-Perp call sites
 	for page := 0; page < 1000; page++ {
 		q := url.Values{"instId": {contract.InstID}, "bar": {barSize[queryTF]}, "limit": {"300"}, "after": {strconv.FormatInt(cursor, 10)}}
 		var response apiResponse[[]string]

@@ -229,7 +229,9 @@ func (s Stream) once(ctx context.Context, contract Contract, sink func(string, d
 			}
 			now := time.Now().UTC()
 			canonicalID := contract.InstrumentID
-			if canonicalID == "" {canonicalID = InstrumentID} // backwards compatible X-Perp
+			if canonicalID == "" {
+				canonicalID = InstrumentID
+			} // backwards compatible X-Perp
 			tick := domain.Tick{
 				InstrumentID: canonicalID, Provider: ProviderName,
 				Price: price, Quantity: size * contract.ContractValue,

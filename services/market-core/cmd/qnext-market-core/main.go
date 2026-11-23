@@ -139,7 +139,7 @@ func main() {
 			log.Printf("OKX XAU-USDT-SWAP discovery unavailable: %v", discoveryErr)
 		} else {
 			okxSwap = contract
-			log.Printf("OKX XAU-USDT-SWAP discovered live instrument %s",contract.InstID)
+			log.Printf("OKX XAU-USDT-SWAP discovered live instrument %s", contract.InstID)
 		}
 	}
 
