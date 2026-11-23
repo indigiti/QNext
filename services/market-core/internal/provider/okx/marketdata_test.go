@@ -19,7 +19,7 @@ func TestDiscoverXAUUSDRequiresOneLiveXPerp(t *testing.T) {
 			return
 		}
 		fmt.Fprint(w, `{"code":"0","data":[
-			{"instId":"XAU-USD_UM_XPERP","instType":"FUTURES","state":"live","ctVal":"0.001","ctValCcy":"XAU"},
+			{"instId":"XAU-USD_UM_XPERP-310502","instType":"FUTURES","state":"live","ctVal":"0.001","ctValCcy":"XAU"},
 			{"instId":"XAU-USD_UM-261127","instType":"FUTURES","state":"live","ctVal":"0.001","ctValCcy":"XAU"},
 			{"instId":"XAU-USDT-SWAP","instType":"SWAP","state":"live","ctVal":"0.01","ctValCcy":"XAU"},
 			{"instId":"XAU-USD_UM-251127_XPERP","instType":"FUTURES","state":"expired","ctVal":"0.001","ctValCcy":"XAU"}
@@ -30,7 +30,7 @@ func TestDiscoverXAUUSDRequiresOneLiveXPerp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.InstID != "XAU-USD_UM_XPERP" || c.ContractValue != 0.001 {
+	if c.InstID != "XAU-USD_UM_XPERP-310502" || c.ContractValue != 0.001 {
 		t.Fatalf("wrong contract: %+v", c)
 	}
 }
@@ -57,7 +57,7 @@ func TestHistoryConfirmedOnlyAndContractToGoldVolume(t *testing.T) {
 	}))
 	defer server.Close()
 	c := Client{BaseURL: server.URL}
-	bars, err := c.History(context.Background(), Contract{InstID: "XAU-USD_UM_XPERP", ContractValue: 0.001},
+	bars, err := c.History(context.Background(), Contract{InstID: "XAU-USD_UM_XPERP-310502", ContractValue: 0.001},
 		"1m", now.Add(-3*time.Minute), now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
