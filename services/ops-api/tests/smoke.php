@@ -145,6 +145,20 @@ try {
 } catch (RuntimeException) {
 }
 expect(!is_file($flatConfig->okxGoldConfigPath()), 'unsupported gold action must not persist any configuration');
+$unsupportedSwap = $flatController->okxSwapState();
+expect(($unsupportedSwap['supported'] ?? true) === false, 'old Market Core must not advertise USDT swap');
+expect(($unsupportedSwap['running_enabled'] ?? true) === false, 'old Market Core must not falsely show swap live');
+try {
+    $flatController->setOKXSwap(true);
+    expect(false, 'unsupported Market Core must reject USDT swap enable');
+} catch (RuntimeException) {
+}
+expect(!is_file($flatConfig->okxSwapConfigPath()), 'unsupported swap operation must not change config');
+AtomicFile::writeJson($flatConfig->okxSwapConfigPath(), ['enabled' => true]);
+$savedSwap = $flatController->okxSwapState();
+expect(($savedSwap['configured'] ?? false) === true && ($savedSwap['supported'] ?? true) === false,
+    'swap desired state is persisted but must not imply live availability');
+
 AtomicFile::writeJson($flatConfig->okxGoldConfigPath(), ['enabled' => true]);
 $persistedGold = $flatController->okxGoldState();
 expect(($persistedGold['configured'] ?? false) === true, 'private gold control should retain desired state');
