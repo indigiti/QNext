@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/indigiti/QNext/services/market-core/internal/candle"
+	"github.com/indigiti/QNext/services/market-core/internal/domain"
 	"github.com/indigiti/QNext/services/market-core/internal/history"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
@@ -40,26 +41,43 @@ func repairOKXGold(ctx context.Context, client okx.Client, contract okx.Contract
 	if history == nil || broker == nil {
 		return errors.New("history and broker required")
 	}
+
+	// Keep source exchange final candles authoritative if an overlapping
+	// locally formed bar is subsequently emitted with a lower revision.
 	for _, tf := range []string{"1m", "5s"} {
-		// 1-second history is bounded to short reconnect gaps; do not issue
-		// unbounded historical tick-range requests for a 24/7 market.
 		start := from
 		if tf == "5s" && to.Sub(start) > 5*time.Minute {
 			start = to.Add(-5 * time.Minute)
 		}
-		if !start.Before(to) {
-			continue
-		}
+		if !start.Before(to) { continue }
 		bars, err := client.History(ctx, contract, tf, start, to)
-		if err != nil {
-			return fmt.Errorf("OKX %s backfill: %w", tf, err)
-		}
+		if err != nil { return fmt.Errorf("OKX %s backfill: %w", tf, err) }
+		previous, err := history.LoadRange(okx.InstrumentID, tf, start, to)
+		if err != nil { return fmt.Errorf("OKX read %s prior bars: %w", tf, err) }
+		byOpen := make(map[int64]domain.Bar, len(previous))
+		for _, prior := range previous { byOpen[prior.OpenTime.UnixMilli()] = prior }
+		changed := false
 		for _, bar := range bars {
-			if err := history.AppendBar(bar); err != nil {
-				return err
+			key := bar.OpenTime.UnixMilli()
+			if prior, ok := byOpen[key]; ok {
+				if prior.Final && prior.Open==bar.Open && prior.High==bar.High &&
+					prior.Low==bar.Low && prior.Close==bar.Close && prior.Volume==bar.Volume {
+					continue
+				}
+				if prior.Revision == ^uint32(0) {return errors.New("OKX candle revision overflow")}
+				bar.Revision = prior.Revision + 1
+				bar.Corrected = true
+				bar.CorrectedAt = time.Now().UTC()
+			} else {
+				bar.Revision = 1
 			}
-			broker.PublishBar(bar)
+			if err := history.AppendBar(bar); err != nil { return err }
+			byOpen[key] = bar
+			changed = true
 		}
+		// Historical bars are retrieved through REST. Do not inject an older
+		// recovered bar into the monotonic live WebSocket bar stream.
+		if changed { broker.PublishResync(okx.InstrumentID, tf, "okx_history_repair") }
 	}
 	return nil
 }
