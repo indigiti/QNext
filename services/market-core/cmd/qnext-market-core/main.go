@@ -76,7 +76,8 @@ func main() {
 
 	var config *marketconfig.Config
 	var accessToken string
-	if configPath := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG")); configPath != "" {
+	marketConfigPath := strings.TrimSpace(os.Getenv("QNEXT_MARKET_CONFIG"))
+	if configPath := marketConfigPath; configPath != "" {
 		loaded, err := marketconfig.Load(configPath)
 		if err != nil {
 			log.Fatalf("load QNext market config: %v", err)
@@ -103,8 +104,14 @@ func main() {
 		log.Fatalf("build symbol registry: %v", err)
 	}
 	calendars := marketcalendar.DefaultRegistry()
+	okxRequested, okxSettingErr := okxGoldRequested(marketConfigPath)
+	okxConfigError := ""
+	if okxSettingErr != nil {
+		okxConfigError = okxSettingErr.Error()
+		log.Printf("OKX XAUUSD setting rejected (feed remains OFF): %v", okxSettingErr)
+	}
 	var okxGold *okx.Contract
-	if strings.TrimSpace(os.Getenv("QNEXT_OKX_XAUUSD")) == "1" {
+	if okxRequested {
 		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, 15*time.Second)
 		contract, discoveryErr := discoverOKXGold(discoveryCtx, registry)
 		cancelDiscovery()
@@ -311,7 +318,7 @@ func main() {
 				"raw_retention":           rawRetention.Snapshot(),
 				"live_integrity":          integrityStatus,
 				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
-				"okx_xauusd":              map[string]any{"enabled": okxGold != nil, "mode": "trades-all plus 1m and 1s REST repair"},
+				"okx_xauusd":              map[string]any{"available": true, "requested": okxRequested, "enabled": okxGold != nil, "config_error": okxConfigError, "instrument_id": okx.InstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
 			}
 		},
 	})
@@ -333,7 +340,7 @@ func main() {
 	if okxGold != nil {
 		contract := *okxGold
 		go func() {
-			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker); err != nil && ctx.Err() == nil {
+			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker, feedTracker.Observe); err != nil && ctx.Err() == nil {
 				log.Printf("OKX XAUUSD ingestion stopped: %v", err)
 			}
 		}()
