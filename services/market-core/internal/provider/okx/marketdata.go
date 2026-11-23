@@ -19,7 +19,7 @@ const (
 	ProviderName = "okx"
 	InstrumentID = "OKX:XAUUSD-XPERP"
 	defaultREST = "https://www.okx.com"
-	defaultWS = "wss://ws.okx.com:8443/ws/v5/business"
+	defaultWS = "wss://ws.okx.com/ws/v5/business"
 )
 
 // Contract is discovered from the *live* OKX FUTURES instrument catalogue.
