@@ -298,3 +298,30 @@ describe('OpsAPI', () => {
 
     await expect(api.status()).rejects.toThrow('Ops API returned non-JSON HTTP 404');
   });
+
+
+describe('OKX XAUUSD admin setting', () => {
+  it('uses authenticated same-origin GET/PUT endpoints and sends only a boolean', async () => {
+    const calls: Array<{ path: string; method: string; body: string | undefined; header: string | null }> = [];
+    const fetcher: typeof fetch = async (input, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({ path: String(input), method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? init.body : undefined,
+        header: headers.get('X-QNext-Admin-Request') });
+      return new Response(JSON.stringify(calls.length === 1
+        ? { supported: true, configured: false, running_enabled: false, can_restart: true, live: false }
+        : { saved: true, changed: true, restart_queued: true, configured: true }), { status: 200 });
+    };
+    const api = new OpsAPI({ fetcher });
+    const state = await api.okxGold();
+    expect(state.supported).toBe(true);
+    const result = await api.saveOKXGold(true);
+    expect(result.restart_queued).toBe(true);
+    expect(calls).toEqual([
+      { path: '/qnext/admin/api/index.php?route=%2Fokx-xauusd', method: 'GET',
+        body: undefined, header: '1' },
+      { path: '/qnext/admin/api/index.php?route=%2Fokx-xauusd', method: 'PUT',
+        body: '{"enabled":true}', header: '1' },
+    ]);
+  });
+});
