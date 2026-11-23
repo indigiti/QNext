@@ -223,6 +223,29 @@ export interface FeedStatusBody {
   };
 }
 
+export interface OKXGoldState {
+  supported: boolean;
+  configured: boolean;
+  running_enabled: boolean;
+  live: boolean;
+  restart_required: boolean;
+  can_restart: boolean;
+  last_trade_ms: number | null;
+  last_price: number | null;
+  instrument_id: string;
+  message: string;
+}
+
+export interface OKXGoldSaveResult {
+  saved: boolean;
+  changed: boolean;
+  restart_queued: boolean;
+  restart_output?: string;
+  configured?: boolean;
+  verified_live?: boolean;
+  state?: OKXGoldState;
+}
+
 export interface FeedStatusResponse {
   ok: boolean;
   status?: number | null;
@@ -406,6 +429,17 @@ export class OpsAPI {
 
   status(): Promise<OpsStatus> {
     return this.request<OpsStatus>('/status');
+  }
+
+  okxGold(): Promise<OKXGoldState> {
+    return this.request<OKXGoldState>('/okx-xauusd');
+  }
+
+  saveOKXGold(enabled: boolean): Promise<OKXGoldSaveResult> {
+    return this.request<OKXGoldSaveResult>('/okx-xauusd', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
   }
 
   getConfig(): Promise<Record<string, unknown>> {
