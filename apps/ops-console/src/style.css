@@ -385,3 +385,22 @@ button.compact { padding: .45rem .7rem; font-size: .82rem; }
 @media (max-width: 700px) {
   .okx-gold-admin { grid-template-columns: 1fr; }
 }
+
+/* Independent OKX USDT gold swap control shares the X-Perp layout. */
+.okx-swap-admin {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(250px, 2fr);
+  gap: 1rem;
+  align-items: start;
+  margin: .75rem 0;
+}
+.okx-swap-detail {
+  display: grid;
+  gap: .35rem;
+  border: 1px solid var(--border, #2c3545);
+  border-radius: 10px;
+  padding: .85rem 1rem;
+}
+#okx-swap-runtime-status {font-weight:600;}
+#okx-swap-message {overflow-wrap:anywhere;}
+@media(max-width:700px) {.okx-swap-admin {grid-template-columns:1fr;}}
