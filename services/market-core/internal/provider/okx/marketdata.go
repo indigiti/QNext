@@ -95,10 +95,14 @@ func (c Client) DiscoverXAUUSD(ctx context.Context) (Contract, error) {
 		// OKX uses an expiry-suffixed ID for five-year X-Perps.
 		// Ordinary dated gold futures never contain "_XPERP-".
 		const prefix = "XAU-USD_UM_XPERP-"
-		if !strings.HasPrefix(id, prefix) { continue }
+		if !strings.HasPrefix(id, prefix) {
+			continue
+		}
 		expiry := strings.TrimPrefix(id, prefix)
 		expiryDate, parseErr := time.Parse("060102", expiry)
-		if parseErr != nil || len(expiry) != 6 || expiryDate.Before(time.Now().UTC()) { continue }
+		if parseErr != nil || len(expiry) != 6 || expiryDate.Before(time.Now().UTC()) {
+			continue
+		}
 		// OKX reports ctValCcy for contract volume conversions.
 		if item.CtValCcy != "XAU" {
 			continue
