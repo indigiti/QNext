@@ -7,6 +7,7 @@ on:
     paths:
       - "services/market-core/internal/provider/okx/**"
       - ".github/workflows/okx-xauusd-live-preflight.yml"
+      - "docs/operations/okx-xauusd-release-gate.md"
   workflow_dispatch:
 
 permissions:
