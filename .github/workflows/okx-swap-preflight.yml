@@ -6,6 +6,7 @@ on:
     paths:
       - "services/market-core/internal/provider/okx/**"
       - ".github/workflows/okx-swap-preflight.yml"
+      - "docs/operations/okx-xauusdt-swap-staging.md"
   workflow_dispatch:
 permissions:
   contents: read
