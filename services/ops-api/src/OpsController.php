@@ -844,7 +844,7 @@ final class OpsController
     {
         $state = $this->okxSwapState();
         if (!$state['supported']) {
-            throw new RuntimeException('OKX XAU-USDT-SWAP is not supported by the running Market Core release. Deploy PR #171 first.');
+            throw new RuntimeException('OKX XAU-USDT-SWAP is unavailable in the running Market Core release; deploy the swap-enabled release first.');
         }
         if (!$state['can_restart']) {
             throw new RuntimeException('Market Core restart control is unavailable; no setting was changed.');
