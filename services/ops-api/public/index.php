@@ -309,6 +309,16 @@ try {
         }
         respond(200, $controller->setOKXGold($body['enabled']));
     }
+    if ($method === 'GET' && $path === '/okx-xauusdt') {
+        respond(200, $controller->okxSwapState());
+    }
+    if ($method === 'PUT' && $path === '/okx-xauusdt') {
+        $body = request_body();
+        if (!array_key_exists('enabled', $body) || !is_bool($body['enabled'])) {
+            respond(400, ['error' => 'enabled must be a JSON boolean']);
+        }
+        respond(200, $controller->setOKXSwap($body['enabled']));
+    }
     // Routes below this point inherit the existing admin token/session gate.
     // POST performs one rate-limited, read-only backend telemetry snapshot.
     if ($method === 'GET' && $path === '/performance-report') {
