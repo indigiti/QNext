@@ -2,8 +2,8 @@ package okx
 
 import (
 	"context"
-	"os"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -23,14 +23,16 @@ func TestLiveOKXGoldExternalSmoke(t *testing.T) {
 	contract, err := client.DiscoverXAUUSD(ctx)
 	if err != nil {
 		var response apiResponse[instrumentInfo]
-		if diagErr:=client.get(ctx,"/api/v5/public/instruments",url.Values{"instType":{"FUTURES"}},&response);diagErr==nil {
-			t.Logf("OKX exchange response code=%s, FUTURES count=%d",response.Code,len(response.Data))
-			for _,item:=range response.Data {
-				if strings.Contains(strings.ToUpper(item.InstID),"XAU")||strings.Contains(strings.ToUpper(item.InstID),"GOLD") {
-					t.Logf("gold candidate instId=%q type=%q state=%q ctVal=%q ctValCcy=%q",item.InstID,item.InstType,item.State,item.CtVal,item.CtValCcy)
+		if diagErr := client.get(ctx, "/api/v5/public/instruments", url.Values{"instType": {"FUTURES"}}, &response); diagErr == nil {
+			t.Logf("OKX exchange response code=%s, FUTURES count=%d", response.Code, len(response.Data))
+			for _, item := range response.Data {
+				if strings.Contains(strings.ToUpper(item.InstID), "XAU") || strings.Contains(strings.ToUpper(item.InstID), "GOLD") {
+					t.Logf("gold candidate instId=%q type=%q state=%q ctVal=%q ctValCcy=%q", item.InstID, item.InstType, item.State, item.CtVal, item.CtValCcy)
 				}
 			}
-		} else {t.Logf("diagnostic instruments query failed: %v",diagErr)}
+		} else {
+			t.Logf("diagnostic instruments query failed: %v", diagErr)
+		}
 		t.Fatalf("live OKX gold contract unavailable: %v", err)
 	}
 	t.Logf("verified OKX gold contract=%s contract_size_XAU=%v", contract.InstID, contract.ContractValue)
