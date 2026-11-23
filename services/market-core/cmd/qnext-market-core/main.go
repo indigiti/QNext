@@ -221,6 +221,14 @@ func main() {
 		Version:         version,
 		Commit:          commit,
 		StartedAt:       started,
+		Readiness: func() (bool, []string) {
+			persistOK, persistReasons := store.PersistenceReadiness()
+			return evaluateMarketReadiness(
+				time.Now().UTC(), started, config != nil, ctx.Err() != nil,
+				calendars, feedTracker.MostRecentProcessedMS(),
+				persistOK, persistReasons,
+			)
+		},
 		StreamHandler:   stream.NewWebSocketHandler(broker),
 		ChartTimeframes: chartTimeframes,
 		LiveBars:        broker,
