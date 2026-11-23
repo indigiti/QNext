@@ -22,7 +22,7 @@ jobs:
         with:
           go-version: "1.24.x"
       - name: Format staged OKX code
-        run: gofmt -w services/market-core/internal/provider/okx services/market-core/internal/candle/engine.go services/market-core/internal/candle/okx_24x7_test.go services/market-core/internal/marketcalendar/registry.go services/market-core/internal/marketcalendar/okx_24x7_test.go services/market-core/cmd/qnext-market-core/main.go services/market-core/cmd/qnext-market-core/okx_xauusd.go
+        run: gofmt -w services/market-core/internal/provider/okx services/market-core/internal/candle/engine.go services/market-core/internal/candle/okx_24x7_test.go services/market-core/internal/marketcalendar/registry.go services/market-core/internal/marketcalendar/okx_24x7_test.go services/market-core/cmd/qnext-market-core/main.go services/market-core/cmd/qnext-market-core/okx_xauusd.go services/market-core/cmd/qnext-market-core/okx_admin_config.go services/market-core/cmd/qnext-market-core/okx_admin_config_test.go
       - name: Commit formatting (isolated feature branch)
         shell: bash
         run: |
