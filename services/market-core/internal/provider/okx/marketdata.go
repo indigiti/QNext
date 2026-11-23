@@ -18,6 +18,7 @@ import (
 const (
 	ProviderName = "okx"
 	InstrumentID = "OKX:XAUUSD-XPERP"
+	SwapInstrumentID = "OKX:XAU-USDT-SWAP"
 	defaultREST  = "https://www.okx.com"
 	defaultWS    = "wss://ws.okx.com/ws/v5/business"
 )
@@ -25,6 +26,7 @@ const (
 // Contract is discovered from the *live* OKX FUTURES instrument catalogue.
 // Display labels and expired monthly futures are never treated as API IDs.
 type Contract struct {
+	InstrumentID string // canonical QNeXT identity, independent of provider instId
 	InstID        string
 	ContractValue float64 // troy ounces of gold per contract
 }
@@ -58,6 +60,8 @@ type instrumentInfo struct {
 	State    string `json:"state"`
 	CtVal    string `json:"ctVal"`
 	CtValCcy string `json:"ctValCcy"`
+	CtType string `json:"ctType"`
+	SettleCcy string `json:"settleCcy"`
 }
 
 func (c Client) get(ctx context.Context, path string, query url.Values, dst any) error {
@@ -111,12 +115,45 @@ func (c Client) DiscoverXAUUSD(ctx context.Context) (Contract, error) {
 		if err != nil || v <= 0 {
 			continue
 		}
-		found = append(found, Contract{InstID: item.InstID, ContractValue: v})
+		found = append(found, Contract{InstrumentID: InstrumentID, InstID: item.InstID, ContractValue: v})
 	}
 	if len(found) != 1 {
 		return Contract{}, fmt.Errorf("okx expected one live XAUUSD X-Perp, found %d; refusing to guess an instrument ID", len(found))
 	}
 	return found[0], nil
+}
+
+
+const SwapProviderID = "XAU-USDT-SWAP"
+
+// DiscoverXAUSwap uses the exact, live OKX linear USDT gold swap.
+// It intentionally never aliases a USD expiry perpetual, mark index, or XAUT symbol.
+// Contract size/currency must be learned from the live exchange metadata.
+func (c Client) DiscoverXAUSwap(ctx context.Context) (Contract, error) {
+	var response apiResponse[instrumentInfo]
+	q := url.Values{"instType": {"SWAP"}, "instId": {SwapProviderID}}
+	if err := c.get(ctx, "/api/v5/public/instruments", q, &response); err != nil {
+		return Contract{}, err
+	}
+	if response.Code != "0" {
+		return Contract{}, fmt.Errorf("okx swap instruments: %s (%s)", response.Code, response.Msg)
+	}
+	if len(response.Data) != 1 {
+		return Contract{}, fmt.Errorf("okx gold swap: expected exact instrument, got %d", len(response.Data))
+	}
+	item := response.Data[0]
+	if item.InstID != SwapProviderID || item.InstType != "SWAP" || item.State != "live" {
+		return Contract{}, fmt.Errorf("okx XAU-USDT-SWAP not live or mismatched instrument identity")
+	}
+	if item.CtType != "linear" || item.SettleCcy != "USDT" || item.CtValCcy != "XAU" {
+		return Contract{}, fmt.Errorf("okx gold swap unsupported contract units: ctType=%s settle=%s ctValCcy=%s",
+			item.CtType, item.SettleCcy, item.CtValCcy)
+	}
+	v, err := strconv.ParseFloat(item.CtVal, 64)
+	if err != nil || v <= 0 {
+		return Contract{}, errors.New("okx gold swap invalid contract value")
+	}
+	return Contract{InstrumentID: SwapInstrumentID, InstID: item.InstID, ContractValue: v}, nil
 }
 
 var barSize = map[string]string{
@@ -174,6 +211,8 @@ func (c Client) History(ctx context.Context, contract Contract, timeframe string
 	}
 	cursor := to.UnixMilli()
 	bars := make(map[int64]domain.Bar)
+	canonicalID := contract.InstrumentID
+	if canonicalID == "" {canonicalID = InstrumentID} // legacy X-Perp call sites
 	for page := 0; page < 1000; page++ {
 		q := url.Values{"instId": {contract.InstID}, "bar": {barSize[queryTF]}, "limit": {"300"}, "after": {strconv.FormatInt(cursor, 10)}}
 		var response apiResponse[[]string]
@@ -216,7 +255,7 @@ func (c Client) History(ctx context.Context, contract Contract, timeframe string
 				return nil, fmt.Errorf("invalid OKX OHLCV at %d", ts)
 			}
 			bars[ts] = domain.Bar{
-				InstrumentID: InstrumentID, Timeframe: queryTF, OpenTime: openAt, CloseTime: openAt.Add(duration),
+				InstrumentID: canonicalID, Timeframe: queryTF, OpenTime: openAt, CloseTime: openAt.Add(duration),
 				Open: vals[0], High: vals[1], Low: vals[2], Close: vals[3],
 				Volume: vals[4] * contract.ContractValue, VolumeSource: "OKX_XAU_CONTRACT_TRADES", VolumeStatus: "OBSERVED",
 				Final: true, AuthorityProvider: ProviderName, Quality: domain.QualityRecovered, Recovered: true,
