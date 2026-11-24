@@ -26,6 +26,8 @@ import {
   velaChartAlerts, withChartAlertSwitch,
 } from './vela-alert-toggle';
 import { installVelaWheelZoomControl, registerVelaZoomSettings } from './vela-zoom-settings';
+import { registerIndicatorTemplates } from './indicator-templates';
+import './indicator-templates.css';
 import './theme.css';
 
 declare global {
@@ -176,6 +178,7 @@ async function bootstrapVela(timeframes: string[]) {
   const disposeWheelZoom = installVelaWheelZoomControl(document.getElementById('app')!);
   window.addEventListener('pagehide', disposeWheelZoom, { once: true });
   let workspace: VelaWorkspace;
+  registerIndicatorTemplates(() => workspace);
   const catalogProvider = createProvider();
   const search = createSymbolSearch(() => catalogProvider.listCatalog(), async entry => {
     const chart = workspace.chart;
@@ -206,7 +209,7 @@ async function bootstrapVela(timeframes: string[]) {
     indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',
     topbar: {
-      left: ['qnext.symbol.search', 'symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
+      left: ['qnext.symbol.search', 'symbol', 'timeframes', 'style', 'indicators', 'qnext.indicator.templates', 'undo-redo'],
       // Zoom action sits immediately before the Data Window / Object Tree buttons.
       right: ['actions', 'alerts', 'qnext.alerts.toggle', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot', 'fullscreen'],
     },
