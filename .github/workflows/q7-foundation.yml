@@ -1,0 +1,54 @@
+name: Q7 Foundation
+
+on:
+  pull_request:
+    paths:
+      - "scripts/release/**"
+      - "services/market-core/**"
+      - "apps/**/package*.json"
+      - ".github/workflows/q7-foundation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
+
+  dependency-lock-candidates:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [workspace, ops-console]
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Resolve lock candidate without running dependency scripts
+        run: |
+          set -euo pipefail
+          if test -f package-lock.json; then
+            npm ci --ignore-scripts --no-audit --no-fund
+          else
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          fi
+          sha256sum package-lock.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q7-npm-lock-${{ matrix.app }}
+          path: apps/${{ matrix.app }}/package-lock.json
+          if-no-files-found: error
+      - name: Emit reviewable lock candidate chunks
+        run: |
+          base64 -w 0 package-lock.json | fold -w 2000 | sed 's/^/QNEXT_LOCK_CHUNK /'

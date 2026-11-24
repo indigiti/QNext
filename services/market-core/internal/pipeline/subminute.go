@@ -21,12 +21,18 @@ type subminuteState struct {
 type subminuteRollupEngine struct {
 	states     map[string]*subminuteState
 	incomplete map[string]uint64
+	policy     *candle.Engine
 }
 
-func newSubminuteRollupEngine() *subminuteRollupEngine {
+func newSubminuteRollupEngine(policies ...*candle.Engine) *subminuteRollupEngine {
+	var policy *candle.Engine
+	if len(policies) > 0 {
+		policy = policies[0]
+	}
 	return &subminuteRollupEngine{
 		states:     make(map[string]*subminuteState),
 		incomplete: make(map[string]uint64),
+		policy:     policy,
 	}
 }
 
@@ -34,7 +40,7 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 	if source.Timeframe != "5s" {
 		return nil, errors.New("subminute rollup source must be 5s")
 	}
-	open, closeAt, err := candle.BucketForInstrument(source.InstrumentID, source.OpenTime, timeframe)
+	open, closeAt, err := r.policy.BucketForInstrument(source.InstrumentID, source.OpenTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +79,7 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 	}
 	forming := aggregateSubminute(state, timeframe)
 	if forming.InstrumentID != "" {
-		_, sessionClose := candle.InstrumentSessionBounds(source.InstrumentID, source.OpenTime)
+		_, sessionClose := r.policy.InstrumentSessionBounds(source.InstrumentID, source.OpenTime)
 		// At the cash/derivatives session close no new 5s tick will arrive to
 		// trigger a bucket rollover. Persist the actual completed last
 		// 15s/30s/1m candle on the clock final instead of leaving it forming.

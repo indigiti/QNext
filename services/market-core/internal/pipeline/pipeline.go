@@ -101,8 +101,8 @@ func New(candles *candle.Engine, history HistoryWriter, timeframes []string) (*P
 	}
 	return &Pipeline{
 		candles:          candles,
-		rollups:          newRollupEngine("candle-rollup-v2-incremental"),
-		subminute:        newSubminuteRollupEngine(),
+		rollups:          newRollupEngine("candle-rollup-v2-incremental", candles),
+		subminute:        newSubminuteRollupEngine(candles),
 		history:          history,
 		integrity:        newIntegrityLedger(),
 		direct:           append([]string(nil), direct...),
@@ -122,7 +122,7 @@ func (p *Pipeline) ApplyTick(tick domain.Tick) ([]domain.Bar, error) {
 	// capture still see them via MarketSink.Observer, but they must not create
 	// invalid 5s/15s buckets or turn a healthy provider connection into a
 	// reconnect/recovery loop.
-	if p.hasCanonical5s && !tick.EventTime.IsZero() && !candle.InInstrumentSession(tick.InstrumentID, tick.EventTime) {
+	if p.hasCanonical5s && !tick.EventTime.IsZero() && !p.candles.InInstrumentSession(tick.InstrumentID, tick.EventTime) {
 		p.stats.OutOfSessionTicks++
 		return nil, nil
 	}
@@ -165,7 +165,7 @@ func (p *Pipeline) ApplyVolume(tick domain.Tick) ([]domain.Bar, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.hasCanonical5s && !tick.EventTime.IsZero() && !candle.InInstrumentSession(tick.InstrumentID, tick.EventTime) {
+	if p.hasCanonical5s && !tick.EventTime.IsZero() && !p.candles.InInstrumentSession(tick.InstrumentID, tick.EventTime) {
 		p.stats.OutOfSessionVolume++
 		return nil, nil
 	}
@@ -261,17 +261,17 @@ func (p *Pipeline) observeMissingSince(instrumentID string, lastTick domain.Tick
 	// Never count the closed-session wall clock as a stream of missing
 	// market candles. Bound observations to the last real tick's session,
 	// so an overnight restart cannot generate tens of thousands of gaps.
-	if !candle.InInstrumentSession(instrumentID, lastTick.EventTime) {
+	if !p.candles.InInstrumentSession(instrumentID, lastTick.EventTime) {
 		return
 	}
-	_, sessionClose := candle.InstrumentSessionBounds(instrumentID, lastTick.EventTime)
+	_, sessionClose := p.candles.InstrumentSessionBounds(instrumentID, lastTick.EventTime)
 	if at.After(sessionClose) {
 		at = sessionClose
 	}
 	if !at.After(lastTick.EventTime) {
 		return
 	}
-	open, closeAt, err := candle.BucketForInstrument(instrumentID, lastTick.EventTime.UTC(), "5s")
+	open, closeAt, err := p.candles.BucketForInstrument(instrumentID, lastTick.EventTime.UTC(), "5s")
 	if err != nil || !closeAt.After(open) {
 		return
 	}

@@ -123,10 +123,11 @@ type timeframeSpec struct {
 }
 
 type Engine struct {
-	mu            sync.Mutex
-	version       string
-	bars          map[string]domain.Bar
-	pendingVolume map[string]float64
+	mu             sync.Mutex
+	version        string
+	bars           map[string]domain.Bar
+	pendingVolume  map[string]float64
+	utcInstruments map[string]bool
 }
 
 func New(version string) *Engine {
@@ -135,6 +136,42 @@ func New(version string) *Engine {
 		bars:          make(map[string]domain.Bar),
 		pendingVolume: make(map[string]float64),
 	}
+}
+
+// NewWithUTCInstruments uses explicitly certified continuous UTC instruments.
+// Copy identities once at startup; all candle/clock/rollup lookups are O(1).
+func NewWithUTCInstruments(version string, instruments map[string]bool) *Engine {
+	e := New(version)
+	e.utcInstruments = make(map[string]bool, len(instruments))
+	for id, enabled := range instruments {
+		if enabled {
+			e.utcInstruments[id] = true
+		}
+	}
+	return e
+}
+
+func (e *Engine) InstrumentSessionBounds(id string, at time.Time) (time.Time, time.Time) {
+	if e != nil && e.utcInstruments[id] {
+		start := at.UTC().Truncate(24 * time.Hour)
+		return start, start.Add(24 * time.Hour)
+	}
+	return InstrumentSessionBounds(id, at)
+}
+
+func (e *Engine) InInstrumentSession(id string, at time.Time) bool {
+	if at.IsZero() {
+		return false
+	}
+	open, closeAt := e.InstrumentSessionBounds(id, at)
+	return !at.Before(open) && at.Before(closeAt)
+}
+
+func (e *Engine) BucketForInstrument(id string, at time.Time, timeframe string) (time.Time, time.Time, error) {
+	if e != nil && e.utcInstruments[id] {
+		return cryptoBucketUTC(at, timeframe)
+	}
+	return BucketForInstrument(id, at, timeframe)
 }
 
 func SupportedTimeframes() []string {
@@ -275,7 +312,7 @@ func (e *Engine) Apply(tick domain.Tick, timeframe string) ([]domain.Bar, error)
 		return nil, errors.New("tick requires instrument and event time")
 	}
 
-	openTime, closeTime, err := BucketForInstrument(tick.InstrumentID, tick.EventTime, timeframe)
+	openTime, closeTime, err := e.BucketForInstrument(tick.InstrumentID, tick.EventTime, timeframe)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +378,7 @@ func (e *Engine) ApplyVolume(tick domain.Tick, timeframe string) ([]domain.Bar, 
 		return nil, nil
 	}
 
-	openTime, _, err := BucketForInstrument(tick.InstrumentID, tick.EventTime, timeframe)
+	openTime, _, err := e.BucketForInstrument(tick.InstrumentID, tick.EventTime, timeframe)
 	if err != nil {
 		return nil, err
 	}

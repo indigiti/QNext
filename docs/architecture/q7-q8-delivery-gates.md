@@ -49,3 +49,22 @@ routing remains unchanged. The candle/rollup session policy still contains
 exchange-specific branches, so a non-OKX adapter must not be activated until
 that policy is generalized and its volume/timeframe/recovery contract is
 certified. No external exchange or new symbol is enabled by this patch alone.
+
+## Q7 remaining foundation work
+
+- Direct-feed continuous UTC policy now comes from the verified registry lane and
+  immutable instrument identity set; the same policy is used in the candle engine,
+  finalization clock and both rollup stages. Legacy NSE/BSE and SYN/SYN+ behavior
+  remains unchanged. Other calendar types still require their own certification.
+- Q7 Foundation CI generates npm lock candidates using the package registry, with
+  scripts disabled and read-only repository permission. Commit reviewed lockfiles
+  and switch every npm build to npm ci before calling dependency resolution locked.
+- `scripts/release/release_delta.py` implements exact-base changed-file transport
+  and deletion-aware reconstruction into a new directory. The approved base SHA,
+  target SHA and target inventory digest must come from a separate trusted channel.
+  Full payload inventory is verified before reconstruction is exposed. Existing
+  DigiOps full release remains the production-compatible artifact. Do not apply a
+  delta over the running release or claim service activation/rollback certification.
+- A full trading session with actual live sources, gap/revision evidence and
+  workload-aware performance evidence remains a mandatory external exit gate.
+  No CI fixture is a substitute for live certification.
