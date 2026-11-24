@@ -81,7 +81,7 @@ jobs:
           php-version: "8.3"
 
       - name: Install workspace dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Validate installed workspace dependencies
         run: npm ls --depth=0

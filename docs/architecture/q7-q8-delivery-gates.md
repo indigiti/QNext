@@ -49,3 +49,36 @@ routing remains unchanged. The candle/rollup session policy still contains
 exchange-specific branches, so a non-OKX adapter must not be activated until
 that policy is generalized and its volume/timeframe/recovery contract is
 certified. No external exchange or new symbol is enabled by this patch alone.
+
+## Q7 remaining foundation work
+
+- Direct-feed continuous UTC policy now comes from the verified registry lane and
+  immutable instrument identity set; the same policy is used in the candle engine,
+  finalization clock and both rollup stages. Legacy NSE/BSE and SYN/SYN+ behavior
+  remains unchanged. Other calendar types still require their own certification.
+- Q7 Foundation CI generated npm lockfiles using the package registry. Both
+  candidates were verified against their CI SHA-256 digests and committed. The
+  four npm build workflows now use npm ci; the exact head still requires CI.
+- `scripts/release/release_delta.py` implements exact-base changed-file transport
+  and deletion-aware reconstruction into a new directory. The approved base SHA,
+  target SHA and target inventory digest must come from a separate trusted channel.
+  Full payload inventory is verified before reconstruction is exposed. Existing
+  DigiOps full release remains the production-compatible artifact. Do not apply a
+  delta over the running release or claim service activation/rollback certification.
+- A full trading session with actual live sources, gap/revision evidence and
+  workload-aware performance evidence remains a mandatory external exit gate.
+  No CI fixture is a substitute for live certification.
+
+The optional live integrity monitor includes active direct UTC instruments, with
+bounded per-series publication/final-event evidence and gap checks across day
+boundaries. Missing intervals are counted in constant time rather than rescanned
+on every finalization clock cycle. These are publication observations, not
+broker trade-loss certification. Raw capture remains provider-specific.
+
+Selective release candidates can be generated manually using the exact successful
+main release run IDs, base/target full commit SHAs and independently approved
+target inventory SHA-256. The candidate workflow verifies reconstruction,
+performance-size budgets, POSIX executable identities and immutable staging in a
+temporary fixture. The existing DigiOps installer is not switched to delta
+activation by this workflow. The full release remains the fallback until the
+external activation/rollback path is exercised with real artifacts.

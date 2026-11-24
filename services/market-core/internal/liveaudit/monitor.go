@@ -41,19 +41,29 @@ type Alert struct {
 	Detail         string  `json:"detail"`
 }
 
+// SeriesEvidence is bounded by the configured target set and audited timeframes.
+// Counts describe published events, not verified broker executions.
+type SeriesEvidence struct {
+	Events      uint64 `json:"events"`
+	FinalEvents uint64 `json:"final_events"`
+	LastEventMS int64  `json:"last_event_ms,omitempty"`
+	LastFinalMS int64  `json:"last_final_open_ms,omitempty"`
+}
+
 type Snapshot struct {
-	Enabled           bool              `json:"enabled"`
-	State             string            `json:"state"`
-	ObservedEvents    uint64            `json:"observed_events"`
-	LastEventAtMS     int64             `json:"last_event_at_ms,omitempty"`
-	Counts            map[string]uint64 `json:"counts"`
-	Recent            []Alert           `json:"recent"`
-	AuditDropped      uint64            `json:"audit_dropped"`
-	RawCaptureEnabled bool              `json:"raw_capture_enabled"`
-	RawCaptureDropped uint64            `json:"raw_capture_dropped"`
-	RawCaptureErrors  uint64            `json:"raw_capture_errors"`
-	PersistErrors     uint64            `json:"persist_errors"`
-	LastPersistError  string            `json:"last_persist_error,omitempty"`
+	Enabled           bool                      `json:"enabled"`
+	State             string                    `json:"state"`
+	ObservedEvents    uint64                    `json:"observed_events"`
+	LastEventAtMS     int64                     `json:"last_event_at_ms,omitempty"`
+	Counts            map[string]uint64         `json:"counts"`
+	Recent            []Alert                   `json:"recent"`
+	AuditDropped      uint64                    `json:"audit_dropped"`
+	RawCaptureEnabled bool                      `json:"raw_capture_enabled"`
+	RawCaptureDropped uint64                    `json:"raw_capture_dropped"`
+	RawCaptureErrors  uint64                    `json:"raw_capture_errors"`
+	PersistErrors     uint64                    `json:"persist_errors"`
+	LastPersistError  string                    `json:"last_persist_error,omitempty"`
+	SeriesEvidence    map[string]SeriesEvidence `json:"series_evidence"`
 }
 
 type observed struct {
@@ -65,6 +75,7 @@ type series struct {
 	seq      uint64
 	current  *observed
 	previous *observed
+	evidence SeriesEvidence
 }
 
 // Diagnostics returns capture enabled, capture drops, capture write errors,
@@ -76,6 +87,7 @@ type Monitor struct {
 	root             string
 	aliases          map[string]string
 	targets          map[string]bool
+	continuous       map[string]bool
 	events           chan stream.BarEvent
 	series           map[string]*series
 	raised           map[string]bool
@@ -96,7 +108,7 @@ type Monitor struct {
 // New accepts SYN/SYN+ -> underlying source associations already authorized
 // by the market configuration. Only these instruments and four small
 // timeframes are audited. No extra market feed subscription is requested.
-func New(storageRoot string, aliases map[string]string) *Monitor {
+func New(storageRoot string, aliases map[string]string, continuousIDs ...string) *Monitor {
 	owned := make(map[string]string, len(aliases))
 	targets := make(map[string]bool, len(aliases)*2)
 	for syn, source := range aliases {
@@ -107,15 +119,23 @@ func New(storageRoot string, aliases map[string]string) *Monitor {
 		targets[syn] = true
 		targets[source] = true
 	}
+	continuous := make(map[string]bool, len(continuousIDs))
+	for _, id := range continuousIDs {
+		if id != "" {
+			targets[id] = true
+			continuous[id] = true
+		}
+	}
 	return &Monitor{
-		root:    filepath.Join(storageRoot, "live-integrity"),
-		aliases: owned,
-		targets: targets,
-		events:  make(chan stream.BarEvent, 4096),
-		series:  make(map[string]*series),
-		raised:  make(map[string]bool),
-		counts:  make(map[string]uint64),
-		recent:  make([]Alert, 0, recentLimit),
+		continuous: continuous,
+		root:       filepath.Join(storageRoot, "live-integrity"),
+		aliases:    owned,
+		targets:    targets,
+		events:     make(chan stream.BarEvent, 4096),
+		series:     make(map[string]*series),
+		raised:     make(map[string]bool),
+		counts:     make(map[string]uint64),
+		recent:     make([]Alert, 0, recentLimit),
 	}
 }
 
@@ -179,6 +199,16 @@ func (m *Monitor) observe(event stream.BarEvent) {
 	if event.Seq > 0 {
 		entry.seq = event.Seq
 	}
+	entry.evidence.Events++
+	if at.UnixMilli() > entry.evidence.LastEventMS {
+		entry.evidence.LastEventMS = at.UnixMilli()
+	}
+	if bar.Final {
+		entry.evidence.FinalEvents++
+		if bar.OpenTime.UnixMilli() > entry.evidence.LastFinalMS {
+			entry.evidence.LastFinalMS = bar.OpenTime.UnixMilli()
+		}
+	}
 
 	switch {
 	case entry.current == nil:
@@ -186,7 +216,7 @@ func (m *Monitor) observe(event stream.BarEvent) {
 	case bar.OpenTime.After(entry.current.bar.OpenTime):
 		previous := entry.current.bar
 		duration := auditedFrames[bar.Timeframe]
-		if previous.OpenTime.In(india).Format("2006-01-02") == bar.OpenTime.In(india).Format("2006-01-02") &&
+		if (m.continuous[bar.InstrumentID] || previous.OpenTime.In(india).Format("2006-01-02") == bar.OpenTime.In(india).Format("2006-01-02")) &&
 			bar.OpenTime.Sub(previous.OpenTime) > duration {
 			m.emit(at, Alert{Kind: "PUBLISHED_CANDLE_GAP", InstrumentID: bar.InstrumentID,
 				Timeframe: bar.Timeframe, OpenTimeMS: bar.OpenTime.UnixMilli(),
@@ -354,6 +384,17 @@ func (m *Monitor) Snapshot() Snapshot {
 		counts[key] = value
 	}
 	recent := append([]Alert(nil), m.recent...)
+	evidence := make(map[string]SeriesEvidence, len(m.targets)*len(auditedFrames))
+	for id := range m.targets {
+		for tf := range auditedFrames {
+			key := id + "|" + tf
+			if observed := m.series[key]; observed != nil {
+				evidence[key] = observed.evidence
+			} else {
+				evidence[key] = SeriesEvidence{}
+			}
+		}
+	}
 	state := "OBSERVING"
 	if len(recent) > 0 || m.persistErrors > 0 {
 		state = "ALERTS_RECORDED"
@@ -363,6 +404,6 @@ func (m *Monitor) Snapshot() Snapshot {
 		Counts: counts, Recent: recent, AuditDropped: m.auditDropped,
 		RawCaptureEnabled: m.rawEnabled, RawCaptureDropped: m.rawDropped,
 		RawCaptureErrors: m.rawErrors, PersistErrors: m.persistErrors,
-		LastPersistError: m.lastPersistError,
+		LastPersistError: m.lastPersistError, SeriesEvidence: evidence,
 	}
 }

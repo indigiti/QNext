@@ -66,6 +66,16 @@ func (l *integrityLedger) observeMissing(instrumentID string, openTime, closeTim
 	l.record(instrumentID, openTime, closeTime, IntegrityMissing, reason)
 }
 
+// observeMissingRun records a run's cardinality and newest bucket in one
+// operation; the ledger has always retained only the newest entry per symbol.
+func (l *integrityLedger) observeMissingRun(instrumentID string, lastOpen, lastClose time.Time, count uint64) {
+	if l == nil || count == 0 || instrumentID == "" || lastOpen.IsZero() || !lastClose.After(lastOpen) {
+		return
+	}
+	l.counts[IntegrityMissing] += count - 1
+	l.record(instrumentID, lastOpen, lastClose, IntegrityMissing, "FEED_HEALTH_UNCERTAIN")
+}
+
 func (l *integrityLedger) record(instrumentID string, openTime, closeTime time.Time, state BucketIntegrity, reason string) {
 	l.counts[state]++
 	l.latest[instrumentID] = IntegrityEntry{

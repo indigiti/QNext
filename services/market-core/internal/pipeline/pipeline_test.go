@@ -315,3 +315,25 @@ func TestPipelineVolumeOverlayIgnoresPostClose(t *testing.T) {
 		t.Fatalf("out-of-session volume counter = %d, want 1", got)
 	}
 }
+
+func TestContinuousMissingIntegrityRunIsNotRecounted(t *testing.T) {
+	const id = "FIXTURE:BTC-USDT"
+	engine := candle.NewWithUTCInstruments("test", map[string]bool{id: true})
+	p, err := New(engine, nil, []string{"5s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 28, 0, 0, 0, 0, time.UTC)
+	_, err = p.ApplyTick(domain.Tick{InstrumentID: id, Provider: "fixture", Price: 100, EventTime: at, Quality: domain.QualityGood})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sample := range []time.Time{at.Add(23 * time.Hour), at.Add(23 * time.Hour), at.Add(48 * time.Hour)} {
+		if _, err := p.AdvanceClock(sample, func(string, domain.Tick, time.Time) bool { return false }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := p.integrity.counts[IntegrityMissing]; got != 17279 {
+		t.Fatalf("missing run count=%d, want 17279", got)
+	}
+}

@@ -141,6 +141,11 @@ func (r *Registry) Prepare(ctx context.Context, spec Spec, symbols *symbol.Regis
 	if !ok || cal.Timezone != binding.Instrument.Timezone {
 		return Binding{}, errors.New("unregistered or incompatible direct calendar")
 	}
+	// This runtime lane supports continuous UTC sessions only. Reject an
+	// unsupported calendar before exposing a symbol to the shared engine.
+	if !cal.Continuous || cal.Timezone != "UTC" {
+		return Binding{}, errors.New("direct calendar requires continuous UTC policy")
+	}
 	if err := symbols.RegisterMapped(binding.Instrument, symbol.ProviderInstrument{
 		Provider: binding.Provider, InstrumentID: binding.Instrument.ID, ProviderKey: binding.Key,
 	}); err != nil {
