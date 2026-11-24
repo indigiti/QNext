@@ -3,6 +3,8 @@ import type { WorkspaceState } from '@luxalgo/vela/workspace';
 import {
   INDICATOR_TEMPLATES_STORAGE_KEY,
   applyIndicatorTemplateToState,
+  captureLiveIndicatorSnapshot,
+  unavailableTemplateIndicators,
   readIndicatorTemplates,
   sanitizeIndicatorTemplates,
   writeIndicatorTemplates,
@@ -113,6 +115,41 @@ describe('QNeXT indicator templates', () => {
       ['NSE:NIFTY', '15s'],
       ['NSE:BANKNIFTY', '1m'],
     ]);
+  });
+
+  it('captures complete values, repeated script instances, false, zero and hidden state', () => {
+    const handle = (values: Record<string, unknown>, visible = true) => ({
+      inputValues: () => values, propValues: () => ({ precision: 2 }), visible,
+    });
+    const cell = {
+      instances: [
+        { entry: { name: 'EMA' }, handle: handle({ length: 9, show: false, offset: 0 }) },
+        { entry: { name: 'EMA' }, handle: handle({ length: 34 }, false) },
+      ],
+      chart: { indicators: () => [{ ...handle({ length: 21 }), nativeType: 'rsi' }] },
+    } as unknown as Parameters<typeof captureLiveIndicatorSnapshot>[0];
+    expect(captureLiveIndicatorSnapshot(cell, { manifest: ['EMA', 'EMA'], natives: ['rsi'] })).toEqual({
+      manifest: [
+        { name: 'EMA', inputs: { length: 9, show: false, offset: 0 }, props: { precision: 2 } },
+        { name: 'EMA', inputs: { length: 34 }, props: { precision: 2 }, hidden: true },
+      ],
+      natives: [{ type: 'rsi', inputs: { length: 21 } }],
+    });
+    expect(() => captureLiveIndicatorSnapshot(cell, { manifest: ['EMA'], natives: ['rsi'] })).toThrow();
+  });
+
+  it('blocks unavailable studies before replacing the current set', () => {
+    expect(unavailableTemplateIndicators(template.indicators, [
+      { name: 'EMA-VWAP-ADX' }, { name: 'RSI', native: true, nativeType: 'rsi' },
+    ])).toEqual([]);
+    expect(unavailableTemplateIndicators(template.indicators, [])).toEqual(['EMA-VWAP-ADX', 'rsi']);
+  });
+
+  it('rejects invalid and over-limit writes rather than silently deleting templates', () => {
+    const storage = memoryStorage();
+    expect(writeIndicatorTemplates(storage, [{ ...template, name: '' }])).toBe(false);
+    expect(writeIndicatorTemplates(storage, Array.from({ length: 101 }, (_, i) => ({ ...template, id: String(i) })))).toBe(false);
+    expect(storage.setItem).not.toHaveBeenCalled();
   });
 
   it('does not write when browser storage rejects the update', () => {
