@@ -2,7 +2,6 @@ import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
 import { catalogTimeframe } from '../symbol-catalog';
 import { createSymbolSearch } from '../symbol-search-launcher';
 import { mountThemeControl } from '../theme';
-import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL, OKX_GOLD_GROUP_ID, OKX_GOLD_GROUP_LABEL, sectionOfTicker } from '../symbol-sections';
 import { mountScreenAwakeButton, type ScreenAwakeController } from '../screen-awake';
 import {
   QNextLightweightChart,
@@ -30,8 +29,8 @@ export interface LightweightSymbol {
   description?: string;
   type?: string;
   prefix?: string;
-  group?: string;
-  default?: boolean;
+  instrument_id?: string;
+  mode?: string;
 }
 
 export interface LightweightPaneConfig {
@@ -68,8 +67,8 @@ export function buildLightweightPaneConfigs(
     const index = configs.length;
     const symbol = symbols[index % Math.max(symbols.length, 1)];
     configs.push({
-      ticker: symbol?.ticker ?? fallback.ticker,
-      timeframe: fallback.timeframe,
+      ticker: symbol?.instrument_id ?? symbol?.ticker ?? fallback.ticker,
+      timeframe: catalogTimeframe({mode: symbol?.mode ?? 'unknown'}, fallback.timeframe),
     });
   }
   return configs;
@@ -116,7 +115,7 @@ export class QNextLightweightWorkspace {
   private transportTimer?: ReturnType<typeof setTimeout>;
   private shell?: HTMLElement;
   private grid?: HTMLElement;
-  private symbolSelect?: HTMLSelectElement;
+  private readonly historyOnly = new Set<string>();
   private symbolSearch?: HTMLButtonElement;
   private disposeSymbolShortcut?: () => void;
   private timeframeSelect?: HTMLSelectElement;
@@ -129,21 +128,15 @@ export class QNextLightweightWorkspace {
     this.screenAwake = options.screenAwake;
     this.markerClient = new QNextPaperMarkerClient({ apiBase: options.apiBase });
     this.markerPollIntervalMs = options.markerPollIntervalMs ?? 2_000;
-    // Group headings are native Vela picker descriptors, not tradeable
-    // instruments. Never offer a heading as a lightweight chart ticker.
-    const tradable = options.symbols.filter((item) => item.type !== 'root');
-    this.symbols = tradable.length > 0
-      ? tradable
-      : [{ ticker: options.initialTicker, group: CORE_GROUP_ID }];
+    // Consume the same real catalog as the search modal, with no parallel selector.
+    this.symbols = options.symbols.filter(item => item.type !== 'root');
+    for (const item of this.symbols) {
+      if (item.mode === 'historical_1m') this.historyOnly.add(item.instrument_id ?? item.ticker);
+    }
     this.timeframes = options.timeframes;
     this.fallback = {
       ticker: options.initialTicker,
-      timeframe: sectionOfTicker(options.initialTicker, this.symbols.map((item) => ({
-        ticker: item.ticker,
-        prefix: item.prefix ?? 'QNEXT',
-        type: item.type ?? 'index',
-        synthetic: item.ticker.includes('-SYN'),
-      }))) === 'nse_1m' ? '1m' : options.initialTimeframe,
+      timeframe: this.historyOnly.has(options.initialTicker) ? '1m' : options.initialTimeframe,
     };
     this.layout = options.initialLayout ?? 1;
     this.syncCharts = options.syncCharts ?? true;
@@ -201,52 +194,17 @@ export class QNextLightweightWorkspace {
     brand.className = 'qnext-lightweight-brand';
     brand.textContent = 'QNext Lightweight';
 
-    const symbolSelect = document.createElement('select');
-    symbolSelect.className = 'qnext-lightweight-select qnext-symbol-select';
-    symbolSelect.setAttribute('aria-label', 'Active chart symbol');
-    const groups = [
-      { id: CORE_GROUP_ID, label: CORE_GROUP_LABEL },
-      { id: NSE_MINUTE_GROUP_ID, label: NSE_MINUTE_GROUP_LABEL },
-      { id: OKX_GOLD_GROUP_ID, label: OKX_GOLD_GROUP_LABEL },
-    ];
-    for (const group of groups) {
-      const items = this.symbols.filter((symbol) =>
-        (symbol.group ?? CORE_GROUP_ID) === group.id);
-      if (items.length === 0) continue;
-      const container = document.createElement('optgroup');
-      container.label = group.label;
-      for (const symbol of items) {
-        const option = document.createElement('option');
-        option.value = symbol.ticker;
-        option.textContent = symbol.description
-          ? `${symbol.ticker} — ${symbol.description}`
-          : symbol.ticker;
-        container.append(option);
-      }
-      symbolSelect.append(container);
-    }
-    symbolSelect.addEventListener('change', () => {
-      const config = this.paneConfigs[this.activePane];
-      if (!config || config.ticker === symbolSelect.value) return;
-      config.ticker = symbolSelect.value;
-      if (this.symbols.some((symbol) => symbol.ticker === config.ticker
-        && symbol.group === NSE_MINUTE_GROUP_ID)) {
-        // NSE watchlist candles are historical-only 1m; a 15s/5m chart
-        // would otherwise show a misleading empty plot.
-        config.timeframe = '1m';
-        timeframeSelect.value = '1m';
-      }
-      void this.rebuildPane(this.activePane);
-    });
-
     const symbolSearch = document.createElement('button');
     symbolSearch.type = 'button';
     symbolSearch.className = 'qnext-lightweight-select qnext-symbol-search';
+    symbolSearch.setAttribute('aria-label','Active chart symbol search');
     symbolSearch.textContent = 'Symbol Search';
     const search = createSymbolSearch(() => this.provider.listCatalog(), async entry => {
       const pane = this.activePane;
       const config = this.paneConfigs[pane];
       if (!config) throw new Error('No active chart');
+      if (entry.mode === 'historical_1m') this.historyOnly.add(entry.instrument_id);
+      else this.historyOnly.delete(entry.instrument_id);
       config.ticker = entry.instrument_id;
       config.timeframe = catalogTimeframe(entry,config.timeframe);
       await this.rebuildPane(pane);
@@ -267,8 +225,7 @@ export class QNextLightweightWorkspace {
     timeframeSelect.addEventListener('change', () => {
       const config = this.paneConfigs[this.activePane];
       if (!config || config.timeframe === timeframeSelect.value) return;
-      const isNSEMinute = this.symbols.some((symbol) => (symbol.ticker === config.ticker || ((symbol.prefix ?? '') + ':' + symbol.ticker).toUpperCase() === config.ticker.toUpperCase())
-        && symbol.group === NSE_MINUTE_GROUP_ID);
+      const isNSEMinute = this.historyOnly.has(config.ticker);
       if (isNSEMinute && timeframeSelect.value !== '1m') {
         timeframeSelect.value = '1m';
         return;
@@ -323,7 +280,6 @@ export class QNextLightweightWorkspace {
     toolbar.append(
       brand,
       symbolSearch,
-      symbolSelect,
       timeframeSelect,
       layoutSelect,
       syncLabel,
@@ -343,7 +299,6 @@ export class QNextLightweightWorkspace {
 
     this.shell = shell;
     this.grid = grid;
-    this.symbolSelect = symbolSelect;
     this.symbolSearch = symbolSearch;
     this.timeframeSelect = timeframeSelect;
     this.layoutSelect = layoutSelect;
@@ -450,7 +405,6 @@ export class QNextLightweightWorkspace {
     const config = this.paneConfigs[this.activePane];
     if (!config) return;
     if (this.symbolSearch) this.symbolSearch.textContent = config.ticker + ' ▾';
-    if (this.symbolSelect) this.symbolSelect.value = config.ticker;
     if (this.timeframeSelect) this.timeframeSelect.value = config.timeframe;
     if (this.layoutSelect) this.layoutSelect.value = String(this.layout);
     if (this.syncInput) this.syncInput.checked = this.syncCharts;

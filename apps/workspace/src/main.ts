@@ -1,5 +1,5 @@
 import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
-import { catalogTimeframe } from './symbol-catalog';
+import { catalogTimeframe, resolveCatalogInstrument } from './symbol-catalog';
 import { createSymbolSearch } from './symbol-search-launcher';
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { createQNextPineEngine, resolveQNextPineMode, withConfirmedMtfRecompute } from './pine-engine';
@@ -216,7 +216,7 @@ async function bootstrapVela(timeframes: string[]) {
   syncVelaChartAlertAction();
   installVelaPanHistory(workspace);
   if (pineTrace) installVelaSignalTrace(workspace, pineTrace);
-  const labResolverProvider = createProvider();
+  const labResolverProvider = catalogProvider;
   // Keep Shadow-Live collection for Admin/Intelligence Lab, but do not mount
   // the floating public chart status or the manual Send to Lab widget.
   mountIntelligenceLabShadowBridge(
@@ -237,21 +237,16 @@ async function bootstrapLightweight(
   if (!app) throw new Error('QNext workspace root #app not found');
 
   const provider = createProvider();
-  const initialTicker = runtime.symbol ?? 'NSE:NIFTY';
+  let initialTicker = runtime.symbol ?? 'NSE:NIFTY';
   const initialTimeframe = resolveInitialTimeframe(timeframes);
 
-  let symbols: Awaited<ReturnType<QNextProvider['listSymbols']>>;
+  let symbols: Awaited<ReturnType<QNextProvider['listCatalog']>> = [];
   try {
-    symbols = await provider.listSymbols();
+    symbols = await provider.listCatalog();
+    initialTicker = resolveCatalogInstrument(symbols,initialTicker).instrument_id;
   } catch (error) {
     console.warn('QNext symbol catalog unavailable; using configured symbol', error);
-    symbols = [{
-      ticker: initialTicker,
-      description: initialTicker,
-      type: 'index',
-      prefix: 'NSE',
-      group: 'QNEXT-CORE',
-    }];
+    // Keep the configured chart request, never fabricate a directory entry.
   }
 
   const query = new URLSearchParams(window.location.search);

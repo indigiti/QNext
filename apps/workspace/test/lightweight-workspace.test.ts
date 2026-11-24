@@ -59,3 +59,14 @@ describe('transport status labels', () => {
     expect(transportModeLabel('idle')).toBe('Idle');
   });
 });
+
+describe('multi-exchange layout construction', () => {
+  it('uses canonical ids and preserves historical-only timeframes for new panes', () => {
+    const fallback = {ticker:'NSE:NIFTY50',timeframe:'15s'};
+    const configs = buildLightweightPaneConfigs(2,[fallback],[
+      {ticker:'NIFTY',instrument_id:'NSE:NIFTY50'},
+      {ticker:'ABC',instrument_id:'BSE:ABC',mode:'historical_1m'},
+    ],fallback);
+    expect(configs).toEqual([fallback,{ticker:'BSE:ABC',timeframe:'1m'}]);
+  });
+});

@@ -57,14 +57,12 @@ describe('core index and additional NSE 1m separation', () => {
     expect(items[0].ticker).toBe('RELIANCE');
   });
 
-  it('keeps lightweight picker true optgroups and 1m-only selection without inventing fake symbols', () => {
-    expect(lightweight).toContain("const tradable = options.symbols.filter((item) => item.type !== 'root')");
-    expect(lightweight).toContain("document.createElement('optgroup')");
-    expect(lightweight).toContain('container.label = group.label');
-    expect(lightweight).toContain('config.timeframe = \'1m\'');
-    expect(lightweight).toContain("symbol.group === NSE_MINUTE_GROUP_ID");
-    expect(lightweight).toContain('timeframeSelect.value = \'1m\'');
-    expect(lightweight).toContain('group.id');
+  it('uses the shared catalog browser and preserves 1m restrictions without a second picker', () => {
+    expect(lightweight).toContain('createSymbolSearch(() => this.provider.listCatalog()');
+    expect(lightweight).not.toContain("document.createElement('optgroup')");
+    expect(lightweight).toContain('config.ticker = entry.instrument_id');
+    expect(lightweight).toContain('catalogTimeframe(entry,config.timeframe)');
+    expect(lightweight).toContain('this.historyOnly.has(config.ticker)');
     expect(CORE_GROUP_ID).not.toBe(NSE_MINUTE_GROUP_ID);
   });
 

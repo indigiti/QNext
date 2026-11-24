@@ -91,3 +91,7 @@ Verify both chart engines and the Admin Market Data page at 1440,
 
 A successful GitHub build does not certify interactive Vela grouping.
 The staging browser check is required before production use.
+
+## Shared multi-exchange browser
+
+The new symbol browser is the primary picker for Lightweight and an additional Vela toolbar action plus Ctrl/Cmd+K. It reads the canonical catalog and builds exchange, asset class and product facets from registered instruments rather than frontend exchange lists. New provider integrations must register canonical identities and explicit `market_category`, `product_type`, and `data_mode` where applicable. A configured stream is not proof of actual live ticks. Lightweight no longer constructs a second full-catalog dropdown. Its newly created panes use canonical IDs and preserve the 1-minute-only data-mode restriction. Vela's existing native selector is retained as a compatibility entry point pending browser verification. This browser does not register any feed or market subscriptions; a user selection opens the chart through the existing provider. Admin configuration and live health stay separate.
