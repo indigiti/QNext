@@ -16,12 +16,23 @@ export function createQNextPineEngine(mode: QNextPineMode = 'worker', trace?: Ve
   return trace ? wrapPineModelTrace(engine, trace) : engine;
 }
 
-/** Opt-in fresh snapshots for confirmed multi-timeframe drawing scripts. */
+/**
+ * Fresh snapshots for explicitly opted-in MTF scripts and the installed Trinity
+ * ribbon (legacy admin-managed copies predate the opt-in marker).
+ * This is execution scheduling only: Pine's lookahead/offset semantics stay intact.
+ */
 export function withConfirmedMtfRecompute(engine: ScriptingEngine): ScriptingEngine {
   const optedIn = new WeakSet<PreparedScript>();
-  const newestTime = (req: ExecutionRequest): number | undefined => {
+  // A same-timestamp correction to the previous bar or a changed history
+  // window must not be swallowed by the ordinary forming-bar tick dedupe.
+  // O(1) per tick: do not hash or copy the full history in the UI thread.
+  const snapshotKey = (req: ExecutionRequest): string => {
     const bars = req.getBars?.() ?? req.bars;
-    return bars[bars.length - 1]?.time;
+    const closed = bars[bars.length - 2];
+    return JSON.stringify([
+      bars.length, bars[0]?.time, bars[bars.length - 1]?.time,
+      closed?.time, closed?.open, closed?.high, closed?.low, closed?.close, closed?.volume,
+    ]);
   };
 
   return {
@@ -29,7 +40,10 @@ export function withConfirmedMtfRecompute(engine: ScriptingEngine): ScriptingEng
     capabilities: engine.capabilities,
     async prepare(source, id) {
       const prepared = await engine.prepare(source, id);
-      if (/^[ \t]*\/\/[ \t]*@qnext-confirmed-mtf-recompute[ \t]*\r?$/m.test(source)) {
+      const explicit = /^[ \t]*\/\/[ \t]*@qnext-confirmed-mtf-recompute[ \t]*\r?$/m.test(source);
+      const legacyTrinity = prepared.meta.title?.trim().toLowerCase() === 'trinity midpoint atr ribbon'
+        && /\brequest\s*\.\s*security\s*\(/.test(source);
+      if (explicit || legacyTrinity) {
         optedIn.add(prepared);
       }
       return prepared;
@@ -41,7 +55,7 @@ export function withConfirmedMtfRecompute(engine: ScriptingEngine): ScriptingEng
       // Rebuild from the latest candle snapshot rather than mutating a cached
       // secondary Pine context. Input changes still trigger a run immediately.
       const session = engine.execute({ ...req, mode: 'static' }, handlers);
-      let lastScheduled = newestTime(req);
+      let lastScheduled = snapshotKey(req);
       return {
         ...session,
         notifyBars(reason) {
@@ -49,7 +63,7 @@ export function withConfirmedMtfRecompute(engine: ScriptingEngine): ScriptingEng
             session.notifyBars(reason);
             return;
           }
-          const current = newestTime(req);
+          const current = snapshotKey(req);
           if (reason !== 'complete' && current === lastScheduled) return;
           lastScheduled = current;
           session.notifyBars(reason);

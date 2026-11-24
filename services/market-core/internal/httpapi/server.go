@@ -68,19 +68,19 @@ type symbolsResponse struct {
 }
 
 type symbolResponse struct {
-	InstrumentID string `json:"instrument_id"`
-	Ticker       string `json:"ticker"`
-	Description  string `json:"description"`
-	Type         string `json:"type"`
-	Prefix       string `json:"prefix"`
-	Currency     string `json:"currency"`
-	Timezone     string `json:"timezone"`
-	CalendarID   string `json:"calendar_id"`
-	MarketCategory string `json:"market_category,omitempty"`
-	ProductType string `json:"product_type,omitempty"`
-	DataMode string `json:"data_mode,omitempty"`
-	Aliases []string `json:"aliases,omitempty"`
-	Synthetic    bool   `json:"synthetic"`
+	InstrumentID   string   `json:"instrument_id"`
+	Ticker         string   `json:"ticker"`
+	Description    string   `json:"description"`
+	Type           string   `json:"type"`
+	Prefix         string   `json:"prefix"`
+	Currency       string   `json:"currency"`
+	Timezone       string   `json:"timezone"`
+	CalendarID     string   `json:"calendar_id"`
+	MarketCategory string   `json:"market_category,omitempty"`
+	ProductType    string   `json:"product_type,omitempty"`
+	DataMode       string   `json:"data_mode,omitempty"`
+	Aliases        []string `json:"aliases,omitempty"`
+	Synthetic      bool     `json:"synthetic"`
 }
 
 type calendarResponse struct {
@@ -442,19 +442,19 @@ func (s *Server) symbols(w http.ResponseWriter, r *http.Request) {
 	response := symbolsResponse{Symbols: make([]symbolResponse, 0, len(instruments))}
 	for _, instrument := range instruments {
 		response.Symbols = append(response.Symbols, symbolResponse{
-			InstrumentID: instrument.ID,
-			Ticker:       instrument.Symbol,
-			Description:  instrument.Name,
-			Type:         strings.ToLower(instrument.AssetClass),
-			Prefix:       instrument.Exchange,
-			Currency:     instrument.Currency,
-			Timezone:     instrument.Timezone,
-			CalendarID:   instrument.CalendarID,
+			InstrumentID:   instrument.ID,
+			Ticker:         instrument.Symbol,
+			Description:    instrument.Name,
+			Type:           strings.ToLower(instrument.AssetClass),
+			Prefix:         instrument.Exchange,
+			Currency:       instrument.Currency,
+			Timezone:       instrument.Timezone,
+			CalendarID:     instrument.CalendarID,
 			MarketCategory: instrument.MarketCategory,
-			ProductType: instrument.ProductType,
-			DataMode: instrument.DataMode,
-			Aliases: instrument.Aliases,
-			Synthetic:    instrument.Synthetic,
+			ProductType:    instrument.ProductType,
+			DataMode:       instrument.DataMode,
+			Aliases:        instrument.Aliases,
+			Synthetic:      instrument.Synthetic,
 		})
 	}
 	writeJSON(w, http.StatusOK, response)

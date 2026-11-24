@@ -49,3 +49,23 @@ CI verifies:
 - Ops API Pine v6 persistence and rejection of non-v6 source
 
 Runtime compilation errors in a pasted Pine script are surfaced by the Pine engine when the user adds/runs the script on a chart.
+
+## MTF refresh consistency policy
+
+The workspace applies a fresh-snapshot execution policy to Pine scripts with
+`// @qnext-confirmed-mtf-recompute` and to legacy admin-managed copies of
+`Trinity MidPoint ATR Ribbon` containing a `request.security()` call. Other
+scripts continue normal incremental streaming. User-selected timeframes and
+Pine inputs are passed through unchanged.
+
+Snapshots run on a new chart candle, changes to the immediately preceding
+candle, changed history edges/count, and history completion; the upstream
+engine handles input updates and coalesces in-flight worker runs. Ordinary
+forming-candle ticks do not trigger full-history recalculations. Consequently
+the opted-in ribbon updates at chart-bar cadence rather than tick cadence.
+
+This policy does not rewrite Pine `request.security()` lookahead or offsets,
+nor guarantee non-repainting semantics for developing HTF candles. Compare
+closed-bar plots with identical input settings, warm-up history, and OHLCV
+revisions before declaring refresh parity. The live deployed Pine script is
+admin-managed and may require its own confirmed-HTF expression correction.

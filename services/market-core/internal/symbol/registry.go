@@ -9,20 +9,20 @@ import (
 )
 
 type Instrument struct {
-	ID         string   `json:"instrument_id"`
-	Symbol     string   `json:"symbol"`
-	Name       string   `json:"name"`
-	AssetClass string   `json:"asset_class"`
-	Exchange   string   `json:"exchange"`
-	Currency   string   `json:"currency"`
-	Timezone   string   `json:"timezone"`
-	CalendarID string   `json:"calendar_id,omitempty"`
-	Aliases    []string `json:"aliases,omitempty"`
-	MarketCategory string `json:"market_category,omitempty"`
-	ProductType string `json:"product_type,omitempty"`
-	DataMode string `json:"data_mode,omitempty"`
-	Synthetic  bool     `json:"synthetic"`
-	Visible    bool     `json:"visible"`
+	ID             string   `json:"instrument_id"`
+	Symbol         string   `json:"symbol"`
+	Name           string   `json:"name"`
+	AssetClass     string   `json:"asset_class"`
+	Exchange       string   `json:"exchange"`
+	Currency       string   `json:"currency"`
+	Timezone       string   `json:"timezone"`
+	CalendarID     string   `json:"calendar_id,omitempty"`
+	Aliases        []string `json:"aliases,omitempty"`
+	MarketCategory string   `json:"market_category,omitempty"`
+	ProductType    string   `json:"product_type,omitempty"`
+	DataMode       string   `json:"data_mode,omitempty"`
+	Synthetic      bool     `json:"synthetic"`
+	Visible        bool     `json:"visible"`
 }
 
 func (i Instrument) Validate() error {
@@ -233,10 +233,10 @@ func syntheticPlusInstruments(instruments map[string]Instrument) []Instrument {
 				"SYNTHETIC+ " + market,
 			},
 			MarketCategory: base.MarketCategory,
-			ProductType: base.ProductType,
-			DataMode: base.DataMode,
-			Synthetic: true,
-			Visible:   true,
+			ProductType:    base.ProductType,
+			DataMode:       base.DataMode,
+			Synthetic:      true,
+			Visible:        true,
 		})
 	}
 	return shadows
