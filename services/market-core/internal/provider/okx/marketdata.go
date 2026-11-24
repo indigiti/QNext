@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"regexp"
 	"net/http"
 	"net/url"
 	"sort"
@@ -28,7 +30,8 @@ const (
 type Contract struct {
 	InstrumentID  string // canonical QNeXT identity, independent of provider instId
 	InstID        string
-	ContractValue float64 // troy ounces of gold per contract
+	ContractValue float64 // base-asset units per contract
+	BaseCurrency  string  // empty preserves legacy XAU provenance
 }
 
 type Client struct {
@@ -129,8 +132,21 @@ const SwapProviderID = "XAU-USDT-SWAP"
 // It intentionally never aliases a USD expiry perpetual, mark index, or XAUT symbol.
 // Contract size/currency must be learned from the live exchange metadata.
 func (c Client) DiscoverXAUSwap(ctx context.Context) (Contract, error) {
+	return c.DiscoverLinearSwap(ctx, SwapProviderID)
+}
+
+var linearSwapID = regexp.MustCompile(`^[A-Z0-9]{1,20}-[A-Z0-9]{1,20}-SWAP$`)
+
+// DiscoverLinearSwap verifies an exact live contract and base-unit conversion.
+// Inverse and quanto contracts are not supported by this normalized trade path.
+func (c Client) DiscoverLinearSwap(ctx context.Context, providerKey string) (Contract, error) {
+	if !linearSwapID.MatchString(providerKey) {
+		return Contract{}, errors.New("invalid OKX linear swap ID")
+	}
+	parts := strings.Split(providerKey, "-")
+	base, settle := parts[0], parts[1]
 	var response apiResponse[instrumentInfo]
-	q := url.Values{"instType": {"SWAP"}, "instId": {SwapProviderID}}
+	q := url.Values{"instType": {"SWAP"}, "instId": {providerKey}}
 	if err := c.get(ctx, "/api/v5/public/instruments", q, &response); err != nil {
 		return Contract{}, err
 	}
@@ -138,21 +154,28 @@ func (c Client) DiscoverXAUSwap(ctx context.Context) (Contract, error) {
 		return Contract{}, fmt.Errorf("okx swap instruments: %s (%s)", response.Code, response.Msg)
 	}
 	if len(response.Data) != 1 {
-		return Contract{}, fmt.Errorf("okx gold swap: expected exact instrument, got %d", len(response.Data))
+		return Contract{}, fmt.Errorf("okx swap: expected exact instrument, got %d", len(response.Data))
 	}
 	item := response.Data[0]
-	if item.InstID != SwapProviderID || item.InstType != "SWAP" || item.State != "live" {
-		return Contract{}, fmt.Errorf("okx XAU-USDT-SWAP not live or mismatched instrument identity")
+	if item.InstID != providerKey || item.InstType != "SWAP" || item.State != "live" {
+		return Contract{}, errors.New("okx swap not live or mismatched instrument identity")
 	}
-	if item.CtType != "linear" || item.SettleCcy != "USDT" || item.CtValCcy != "XAU" {
-		return Contract{}, fmt.Errorf("okx gold swap unsupported contract units: ctType=%s settle=%s ctValCcy=%s",
+	if item.CtType != "linear" || item.SettleCcy != settle || item.CtValCcy != base {
+		return Contract{}, fmt.Errorf("okx swap unsupported contract units: ctType=%s settle=%s ctValCcy=%s",
 			item.CtType, item.SettleCcy, item.CtValCcy)
 	}
 	v, err := strconv.ParseFloat(item.CtVal, 64)
-	if err != nil || v <= 0 {
-		return Contract{}, errors.New("okx gold swap invalid contract value")
+	if err != nil || v <= 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		return Contract{}, errors.New("okx swap invalid contract value")
 	}
-	return Contract{InstrumentID: SwapInstrumentID, InstID: item.InstID, ContractValue: v}, nil
+	return Contract{InstrumentID: "OKX:" + providerKey, InstID: providerKey, ContractValue: v, BaseCurrency: base}, nil
+}
+
+func (c Contract) volumeSource() string {
+	if c.BaseCurrency == "" || c.BaseCurrency == "XAU" {
+		return "OKX_XAU_CONTRACT_TRADES"
+	}
+	return "OKX_" + c.BaseCurrency + "_CONTRACT_TRADES"
 }
 
 var barSize = map[string]string{
@@ -258,7 +281,7 @@ func (c Client) History(ctx context.Context, contract Contract, timeframe string
 			bars[ts] = domain.Bar{
 				InstrumentID: canonicalID, Timeframe: queryTF, OpenTime: openAt, CloseTime: openAt.Add(duration),
 				Open: vals[0], High: vals[1], Low: vals[2], Close: vals[3],
-				Volume: vals[4] * contract.ContractValue, VolumeSource: "OKX_XAU_CONTRACT_TRADES", VolumeStatus: "OBSERVED",
+				Volume: vals[4] * contract.ContractValue, VolumeSource: contract.volumeSource(), VolumeStatus: "OBSERVED",
 				Final: true, AuthorityProvider: ProviderName, Quality: domain.QualityRecovered, Recovered: true,
 				CandleEngineVersion: "okx-rest-v1", CreatedAt: time.Now().UTC(),
 			}

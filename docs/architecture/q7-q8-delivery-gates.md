@@ -26,3 +26,26 @@ Start after Q7 certification; feature flags and independent modules prevent opti
 Exit gate: identical calculations are shared across users/features where appropriate, alert delivery is verified across restarts/retries, and resource budgets pass representative load and failure tests.
 
 No Q8 feature is certified by this Q7.1 change.
+
+## Q7.2/Q7.3 direct-feed foundation
+
+The optional private JSON file selected by `QNEXT_DIRECT_FEEDS_CONFIG` registers
+additional, explicitly enabled direct feeds via a startup adapter registry.
+See `config/qnext-direct-feeds.example.json`. Existing OKX gold admin toggles
+are unchanged and are not accepted as duplicate manifest entries. Additional
+symbols are limited to eight. Invalid configuration fails closed for additional
+feeds and is visible in readiness; existing feeds are not disabled.
+
+The initial production adapter supports exact, live OKX linear swaps only,
+verifying base/settlement currencies and finite positive contract size before
+atomic symbol registration. Existing X-Perp uses its separate discovery rule.
+All compatible direct feeds share one canonical candle pipeline and clock;
+history, broker, and normalized tick contracts are reused. Startup REST
+backfills are limited to two in flight. Each symbol still has its own provider
+subscription and reconnect state; exchange multiplexing remains a later task.
+
+This is not universal exchange certification. Upstox/Dhan synthetic/volume
+routing remains unchanged. The candle/rollup session policy still contains
+exchange-specific branches, so a non-OKX adapter must not be activated until
+that policy is generalized and its volume/timeframe/recovery contract is
+certified. No external exchange or new symbol is enabled by this patch alone.
