@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -158,14 +160,18 @@ jobs:
           go mod download
           go test ./...
           mkdir -p ../../build
-          version="${GITHUB_SHA:0:12}"
+          # Runtime source revision is independent of unrelated frontend releases.
+          core_commit="$(git log -1 --format=%H -- .)"
+          test "${#core_commit}" -eq 40
+          printf '%s\n' "$core_commit" > ../../build/market-core-source-commit
+          version="${core_commit:0:12}"
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath \
-            -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA}" \
+            go build -trimpath -buildvcs=false \
+            -ldflags "-s -w -X main.version=${version} -X main.commit=${core_commit}" \
             -o ../../build/qnext-market-core \
             ./cmd/qnext-market-core
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath \
+            go build -trimpath -buildvcs=false \
             -ldflags "-s -w" \
             -o ../../build/qnext-data-collector \
             ./cmd/qnext-data-collector
@@ -195,6 +201,28 @@ jobs:
           test "$(readlink -f "/proc/$second_pid/exe")" = "$runtime_root/bin/$versioned"
           curl --fail --silent --show-error --max-time 3 http://127.0.0.1:18080/health >/dev/null
 
+          # Migrate to the content-addressed name; the legacy name transition is
+          # conservative. A subsequent identical replacement must retain PID.
+          digest="$(sha256sum build/qnext-market-core | cut -d ' ' -f1)"
+          addressed="qnext-market-core-$digest"
+          install -m 0750 build/qnext-market-core "$runtime_root/bin/$addressed"
+          printf '%s\n' "$addressed" > "$runtime_root/bin/qnext-market-core.current"
+          /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
+          same_pid="$(cat "$runtime_root/run/market-core.pid")"
+          install -m 0750 build/qnext-market-core "$runtime_root/bin/replacement"
+          mv -f "$runtime_root/bin/replacement" "$runtime_root/bin/$addressed"
+          /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
+          test "$(cat "$runtime_root/run/market-core.pid")" = "$same_pid"
+          # Different executable content must still replace the running process.
+          cp build/qnext-market-core "$runtime_root/bin/changed"
+          printf changed >> "$runtime_root/bin/changed"
+          changed_digest="$(sha256sum "$runtime_root/bin/changed" | cut -d ' ' -f1)"
+          chmod 0750 "$runtime_root/bin/changed"
+          mv "$runtime_root/bin/changed" "$runtime_root/bin/qnext-market-core-$changed_digest"
+          printf '%s\n' "qnext-market-core-$changed_digest" > "$runtime_root/bin/qnext-market-core.current"
+          /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
+          test "$(cat "$runtime_root/run/market-core.pid")" != "$same_pid"
+
           /bin/bash "$runtime_root/deploy/qnext-ops-user" stop | grep -qx stopped
           rm -rf "$runtime_root"
 
@@ -210,8 +238,11 @@ jobs:
           cp apps/workspace/public/.htaccess release/public/.htaccess
           cp -a apps/ops-console/dist/. release/public/admin/
           version="${GITHUB_SHA:0:12}"
-          binary_name="qnext-market-core-${version}"
-          collector_binary_name="qnext-data-collector-${version}"
+          core_commit="$(cat build/market-core-source-commit)"
+          core_sha="$(sha256sum build/qnext-market-core | cut -d ' ' -f1)"
+          collector_sha="$(sha256sum build/qnext-data-collector | cut -d ' ' -f1)"
+          binary_name="qnext-market-core-${core_sha}"
+          collector_binary_name="qnext-data-collector-${collector_sha}"
           install -m 0750 build/qnext-market-core "release/private/bin/${binary_name}"
           printf '%s\n' "${binary_name}" > release/private/bin/qnext-market-core.current
           install -m 0750 build/qnext-data-collector "release/private/bin/${collector_binary_name}"
@@ -251,6 +282,10 @@ jobs:
             "ref": "${GITHUB_REF_NAME}",
             "public_prefix": "public",
             "private_prefix": "private",
+            "component_identity": {
+              "market_core": {"source_commit": "${core_commit}", "sha256": "${core_sha}"},
+              "data_collector": {"sha256": "${collector_sha}"}
+            },
             "services": {
               "market_core": "${binary_name}",
               "data_collector": "${collector_binary_name}",
@@ -303,10 +338,12 @@ jobs:
           # The staging-only tar below adds stable symlinks for legacy systemd.
           test ! -e release/private/bin/qnext-market-core
           test ! -e release/private/bin/qnext-data-collector
-          test -s "release/private/bin/qnext-market-core-${version}"
-          test -s "release/private/bin/qnext-data-collector-${version}"
-          test "$(cat release/private/bin/qnext-market-core.current)" = "qnext-market-core-${version}"
-          test "$(cat release/private/bin/qnext-data-collector.current)" = "qnext-data-collector-${version}"
+          test -s "release/private/bin/${binary_name}"
+          test -s "release/private/bin/${collector_binary_name}"
+          test "$(cat release/private/bin/qnext-market-core.current)" = "${binary_name}"
+          test "$(cat release/private/bin/qnext-data-collector.current)" = "${collector_binary_name}"
+          test "$(sha256sum "release/private/bin/${binary_name}" | cut -d ' ' -f1)" = "$core_sha"
+          test "$(sha256sum "release/private/bin/${collector_binary_name}" | cut -d ' ' -f1)" = "$collector_sha"
           test -f release/private/strategy-lab/qnext_strategy_lab/syn_plus_runtime.py
           PYTHONPATH=release/private/strategy-lab python3 -m compileall -q release/private/strategy-lab/qnext_strategy_lab
           test -f release/private/intelligence/qnext_intelligence/learning_cli.py

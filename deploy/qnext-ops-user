@@ -187,28 +187,33 @@ collector_running() {
   return 1
 }
 
-runtime_binary_current() {
-  local pid running_identity deployed_identity
-  pid="$(read_pid || true)"
-  [[ -n "$pid" ]] || return 1
-  [[ -e "/proc/$pid/exe" ]] || return 1
-  [[ -f "$BINARY" ]] || return 1
-
-  running_identity="$(stat -Lc '%d:%i' "/proc/$pid/exe" 2>/dev/null || true)"
-  deployed_identity="$(stat -Lc '%d:%i' "$BINARY" 2>/dev/null || true)"
-  [[ -n "$running_identity" && "$running_identity" == "$deployed_identity" ]]
+# Inode equality is the fast path. A content-addressed executable copied
+# atomically by DigiOps can have a new inode without changing its code.
+# Cache verified equality by PID and file identities to avoid repeated hashes.
+binary_current() {
+  local pid="$1" binary="$2" label="$3"
+  local running deployed name digest key cached running_hash deployed_hash
+  [[ "$pid" =~ ^[0-9]+$ && -e "/proc/$pid/exe" && -f "$binary" ]] || return 1
+  running="$(stat -Lc '%d:%i:%s:%y:%z' "/proc/$pid/exe" 2>/dev/null || true)"
+  deployed="$(stat -Lc '%d:%i:%s:%y:%z' "$binary" 2>/dev/null || true)"
+  [[ -n "$running" && -n "$deployed" ]] || return 1
+  [[ "$running" == "$deployed" ]] && return 0
+  name="$(basename "$binary")"
+  [[ "$name" =~ ^qnext-(market-core|data-collector)-([a-f0-9]{64})$ ]] || return 1
+  digest="${BASH_REMATCH[2]}"
+  key="$pid|$running|$deployed|$digest"
+  cached="$(cat "$PRIVATE_ROOT/run/$label.binary-identity" 2>/dev/null || true)"
+  [[ "$cached" == "$key" ]] && return 0
+  running_hash="$(sha256sum "/proc/$pid/exe" 2>/dev/null | cut -d ' ' -f1 || true)"
+  deployed_hash="$(sha256sum "$binary" 2>/dev/null | cut -d ' ' -f1 || true)"
+  [[ "$running_hash" == "$digest" && "$deployed_hash" == "$digest" ]] || return 1
+  printf '%s\n' "$key" > "$PRIVATE_ROOT/run/$label.binary-identity"
 }
-
+runtime_binary_current() {
+  binary_current "$(read_pid || true)" "$BINARY" market-core
+}
 collector_binary_current() {
-  local pid running_identity deployed_identity
-  pid="$(read_collector_pid || true)"
-  [[ -n "$pid" ]] || return 1
-  [[ -e "/proc/$pid/exe" ]] || return 1
-  [[ -f "$COLLECTOR_BINARY" ]] || return 1
-
-  running_identity="$(stat -Lc '%d:%i' "/proc/$pid/exe" 2>/dev/null || true)"
-  deployed_identity="$(stat -Lc '%d:%i' "$COLLECTOR_BINARY" 2>/dev/null || true)"
-  [[ -n "$running_identity" && "$running_identity" == "$deployed_identity" ]]
+  binary_current "$(read_collector_pid || true)" "$COLLECTOR_BINARY" data-collector
 }
 
 acquire_lock() {

@@ -63,10 +63,31 @@ for binary in qnext-market-core qnext-data-collector; do
     exit 3
   }
   target="$(tr -d '\r\n' < "$payload/private/bin/$binary.current")"
-  [[ "$target" == "$binary-$version" ]] || {
-    echo "binary pointer does not match version: $binary" >&2
+  # Legacy releases use the overall release version. New releases declare
+  # an independent SHA-256 identity for each exact executable.
+  expected="$(python3 - "$payload/release-manifest.json" "$binary" "$version" <<'PY'
+import json, re, sys
+m = json.load(open(sys.argv[1], encoding="utf-8"))
+binary, version = sys.argv[2:]
+key = binary.removeprefix("qnext-").replace("-", "_")
+identities = m.get("component_identity")
+if identities is None:
+    print(binary + "-" + version)
+else:
+    digest = identities[key]["sha256"]
+    assert re.fullmatch("[a-f0-9]{64}", digest)
+    name = binary + "-" + digest
+    assert m["services"][key] == name
+    print(name)
+PY
+)" || exit 3
+  [[ "$target" == "$expected" ]] || {
+    echo "binary pointer does not match manifest: $binary" >&2
     exit 3
   }
+  if [[ "$target" =~ -([a-f0-9]{64})$ ]]; then
+    [[ "$(sha256sum "$payload/private/bin/$target" | cut -d ' ' -f1)" == "${BASH_REMATCH[1]}" ]] || exit 3
+  fi
   [[ "$(readlink "$payload/private/bin/$binary")" == "$target" ]] || {
     echo "binary compatibility symlink points elsewhere: $binary" >&2
     exit 3
@@ -103,7 +124,9 @@ cleanup() {
 }
 trap cleanup EXIT
 cp -a "$payload/." "$temporary/"
-[[ "$(readlink "$temporary/private/bin/qnext-market-core")" == "qnext-market-core-$version" ]] || exit 3
+for binary in qnext-market-core qnext-data-collector; do
+  [[ "$(readlink "$temporary/private/bin/$binary")" == "$(tr -d '\r\n' < "$temporary/private/bin/$binary.current")" ]] || exit 3
+done
 mv -T -- "$temporary" "$destination"
 temporary=""
 printf 'STAGED %s (%s)\n' "$version" "$expected_sha"

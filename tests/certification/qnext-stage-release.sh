@@ -61,3 +61,37 @@ if bash "$repo_root/deploy/qnext-stage-release" "$payload" "$private" "$sha" >/d
 fi
 test ! -e "$private/releases/$version"
 echo 'QNext immutable staging release installer: PASS'
+
+# Component-addressed release: different application identity, exact executable hashes.
+rm "$payload/private/bin/qnext-market-core"
+for binary in qnext-market-core qnext-data-collector; do
+  rm -f "$payload/private/bin/$binary"
+  digest="$(sha256sum "$payload/private/bin/$binary-$version" | cut -d ' ' -f1)"
+  mv "$payload/private/bin/$binary-$version" "$payload/private/bin/$binary-$digest"
+  printf '%s\n' "$binary-$digest" > "$payload/private/bin/$binary.current"
+  ln -s "$binary-$digest" "$payload/private/bin/$binary"
+done
+python3 - "$payload" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+path = root / "release-manifest.json"
+m = json.loads(path.read_text())
+m["component_identity"] = {}
+m["services"] = {}
+for key in ("market_core", "data_collector"):
+    name = "qnext-" + key.replace("_", "-")
+    pointer = (root / "private/bin" / (name + ".current")).read_text().strip()
+    m["services"][key] = pointer
+    m["component_identity"][key] = {"sha256": pointer.rsplit("-", 1)[1]}
+path.write_text(json.dumps(m))
+PY
+bash "$repo_root/deploy/qnext-stage-release" "$payload" "$private" "$sha" >/dev/null
+test -d "$private/releases/$version"
+mv "$private/releases/$version" "$private/releases/component-fixture"
+target="$(cat "$payload/private/bin/qnext-market-core.current")"
+printf corrupt >> "$payload/private/bin/$target"
+if bash "$repo_root/deploy/qnext-stage-release" "$payload" "$private" "$sha" >/dev/null 2>&1; then
+  echo 'FAILED: corrupted content-addressed binary accepted' >&2
+  exit 1
+fi
+echo 'QNext independent component identity: PASS'
