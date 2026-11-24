@@ -546,6 +546,7 @@ export function registerIndicatorTemplates(getWorkspace: () => VelaWorkspace | u
     target: 'topbar',
     label: 'Templates',
     icon: 'qnext-indicator-templates',
+    iconOnly: true,
     align: 'left',
     mobile: 'menu',
     order: 1,
