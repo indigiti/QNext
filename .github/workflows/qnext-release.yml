@@ -386,6 +386,7 @@ jobs:
           find release -type f -name '*.py[co]' -delete
           python3 scripts/release/release_inventory.py create release
           python3 scripts/release/release_inventory.py verify release
+          python3 scripts/release/performance_gate.py release
           python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
 
       # GitHub artifact ZIPs do not guarantee POSIX execute modes or symlinks.
@@ -471,4 +472,5 @@ jobs:
           assert packaged['artifact']=='digiops-release', "unexpected artifact name"
           PY
           python3 scripts/release/release_inventory.py verify downloaded-release
+          python3 scripts/release/performance_gate.py downloaded-release
           echo "DigiOps artifact routing, identity and split payload: PASS"

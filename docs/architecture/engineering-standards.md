@@ -15,3 +15,7 @@
 - The DigiOps release remains a full compatible runtime bundle until a verified incremental protocol exists. Use the release inventory to quantify changed and removed files. A delta must be bound to an approved exact base and target, reconstructed and verified before activation; never overlay a partial ZIP as though it were a complete release.
 - Keep private runtime state, credentials, live history, and external ML dependencies outside release artifacts.
 - CI must pass for the exact proposed commit. Browser smoke tests on staging are required for chart selection, timeframe restrictions, refresh, and live-feed changes. Do not claim deployment merely because an artifact exists.
+
+## Enforced performance budget
+
+`scripts/release/performance-budget.json` records the measured verified baseline and explicitly reviewed headroom for each runtime component. CI enforces the budget both before upload and after downloading the exact artifact. The workspace JavaScript gzip total and separate lazy symbol-browser chunk have independent limits. Gzip is a reproducible payload estimate, not the GitHub ZIP size or HTTP response time. A new component or budget increase requires a reviewed budget change and measured justification. No performance claim about CPU, RSS, or browser paint follows from passing a byte-size gate.

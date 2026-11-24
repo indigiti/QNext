@@ -1,0 +1,50 @@
+{
+  "schema": "QNEXT.PERFORMANCE.BUDGET/1",
+  "baseline_commit": "cc68e89b47020442493189804b438fdc3a76dbff",
+  "baseline_total_bytes": 19527120,
+  "max_total_bytes": 21500000,
+  "components": {
+    "workspace": {
+      "baseline_bytes": 3855261,
+      "max_bytes": 4250000
+    },
+    "admin": {
+      "baseline_bytes": 322463,
+      "max_bytes": 360000
+    },
+    "market-core": {
+      "baseline_bytes": 8339723,
+      "max_bytes": 9200000
+    },
+    "data-collector": {
+      "baseline_bytes": 6545678,
+      "max_bytes": 7250000
+    },
+    "intelligence": {
+      "baseline_bytes": 208227,
+      "max_bytes": 235000
+    },
+    "strategy-lab": {
+      "baseline_bytes": 47554,
+      "max_bytes": 55000
+    },
+    "ops-api": {
+      "baseline_bytes": 155649,
+      "max_bytes": 175000
+    },
+    "config-templates": {
+      "baseline_bytes": 7583,
+      "max_bytes": 10000
+    },
+    "deployment-tools": {
+      "baseline_bytes": 41564,
+      "max_bytes": 50000
+    },
+    "release-metadata": {
+      "baseline_bytes": 3418,
+      "max_bytes": 8000
+    }
+  },
+  "workspace_js_gzip_max_bytes": 1150000,
+  "symbol_browser_js_gzip_max_bytes": 10000
+}
