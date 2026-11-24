@@ -26,6 +26,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/dhan"
+	"github.com/indigiti/QNext/services/market-core/internal/provider/directfeed"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 	"github.com/indigiti/QNext/services/market-core/internal/resilience"
@@ -106,42 +107,31 @@ func main() {
 	}
 	calendars := marketcalendar.DefaultRegistry()
 	okxRequested, okxSettingErr := okxGoldRequested(marketConfigPath)
-	okxConfigError := ""
+	swapRequested, swapSettingErr := okxSwapRequested(marketConfigPath)
+	okxConfigError, swapConfigError := "", ""
 	if okxSettingErr != nil {
 		okxConfigError = okxSettingErr.Error()
-		log.Printf("OKX XAUUSD setting rejected (feed remains OFF): %v", okxSettingErr)
 	}
-	var okxGold *okx.Contract
-	if okxRequested {
-		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, 15*time.Second)
-		contract, discoveryErr := discoverOKXGold(discoveryCtx, registry)
-		cancelDiscovery()
-		if discoveryErr != nil {
-			log.Printf("OKX XAUUSD discovery unavailable; disabled without affecting NSE/BSE: %v", discoveryErr)
-		} else {
-			okxGold = contract
-			log.Printf("OKX XAUUSD discovered live X-Perp contract %s", contract.InstID)
-		}
-	}
-
-	// Separate opt-in: the USDT swap never replaces the existing USD X-Perp.
-	swapRequested, swapSettingErr := okxSwapRequested(marketConfigPath)
-	swapConfigError := ""
 	if swapSettingErr != nil {
 		swapConfigError = swapSettingErr.Error()
-		log.Printf("OKX XAU-USDT-SWAP setting rejected (feed OFF): %v", swapSettingErr)
 	}
-	var okxSwap *okx.Contract
-	if swapRequested {
-		discoveryCtx, cancelDiscovery := context.WithTimeout(ctx, 15*time.Second)
-		contract, discoveryErr := discoverOKXSwap(discoveryCtx, registry)
-		cancelDiscovery()
-		if discoveryErr != nil {
-			log.Printf("OKX XAU-USDT-SWAP discovery unavailable: %v", discoveryErr)
-		} else {
-			okxSwap = contract
-			log.Printf("OKX XAU-USDT-SWAP discovered live instrument %s", contract.InstID)
-		}
+	specs := []directfeed.Spec{
+		{Adapter: "okx-xperp", InstrumentID: okx.InstrumentID, Enabled: okxRequested},
+		{Adapter: "okx-linear-swap", InstrumentID: okx.SwapInstrumentID, ProviderKey: okx.SwapProviderID, Enabled: swapRequested},
+	}
+	additional, directConfigErr := configuredDirectFeeds(os.Getenv("QNEXT_DIRECT_FEEDS_CONFIG"), okx.InstrumentID, okx.SwapInstrumentID)
+	directConfigError := ""
+	if directConfigErr != nil {
+		directConfigError = directConfigErr.Error()
+		log.Printf("additional direct feeds disabled: %v", directConfigErr)
+	}
+	specs = append(specs, additional...)
+	directStates := prepareDirectFeeds(ctx, newDirectAdapters(okx.Client{}), registry, calendars, specs)
+	if okxConfigError == "" {
+		okxConfigError = directStates[0].Error
+	}
+	if swapConfigError == "" {
+		swapConfigError = directStates[1].Error
 	}
 
 	resilienceMetrics := resilience.NewMetrics()
@@ -260,9 +250,13 @@ func main() {
 
 	// Feed targets are independent of the chart catalog. A requested feed
 	// must pass discovery and its own session-aware freshness gate.
-	feedTargets := []independentFeedTarget{
-		{ID: okx.InstrumentID, CalendarID: "OKX_CRYPTO_24_7", Requested: okxRequested || okxConfigError != "", Active: okxGold != nil},
-		{ID: okx.SwapInstrumentID, CalendarID: "OKX_CRYPTO_24_7", Requested: swapRequested || swapConfigError != "", Active: okxSwap != nil},
+	feedTargets := make([]independentFeedTarget, 0, len(directStates))
+	for i, state := range directStates {
+		requested := state.Spec.Enabled || (i == 0 && okxConfigError != "") || (i == 1 && swapConfigError != "")
+		feedTargets = append(feedTargets, independentFeedTarget{
+			ID: state.Spec.InstrumentID, CalendarID: state.Binding.Instrument.CalendarID,
+			Requested: requested, Active: state.Active,
+		})
 	}
 	if config != nil {
 		for _, market := range config.EffectiveMarkets() {
@@ -285,6 +279,9 @@ func main() {
 				calendars, feedTracker.MostRecentProcessedMS(upstox.ProviderName, dhan.ProviderName),
 				persistOK, persistReasons,
 			)
+			if directConfigError != "" {
+				reasons = append(reasons, "direct_feed_config_invalid")
+			}
 			reasons = append(reasons, independentFeedReadiness(now, started, calendars, feedTargets, feedTracker.InstrumentProcessedMS)...)
 			return len(reasons) == 0, reasons
 		},
@@ -357,8 +354,9 @@ func main() {
 				"raw_retention":           rawRetention.Snapshot(),
 				"live_integrity":          integrityStatus,
 				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
-				"okx_xauusd":              map[string]any{"available": true, "requested": okxRequested, "enabled": okxGold != nil, "config_error": okxConfigError, "instrument_id": okx.InstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
-				"okx_xauusdt":             map[string]any{"available": true, "requested": swapRequested, "enabled": okxSwap != nil, "config_error": swapConfigError, "instrument_id": okx.SwapInstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
+				"direct_feeds":            map[string]any{"feeds": directStates, "config_error": directConfigError},
+				"okx_xauusd":              map[string]any{"available": true, "requested": okxRequested, "enabled": directStates[0].Active, "config_error": okxConfigError, "instrument_id": okx.InstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
+				"okx_xauusdt":             map[string]any{"available": true, "requested": swapRequested, "enabled": directStates[1].Active, "config_error": swapConfigError, "instrument_id": okx.SwapInstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
 			}
 		},
 	})
@@ -377,21 +375,8 @@ func main() {
 		}
 	}()
 
-	if okxGold != nil {
-		contract := *okxGold
-		go func() {
-			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker, feedTracker.Observe); err != nil && ctx.Err() == nil {
-				log.Printf("OKX XAUUSD ingestion stopped: %v", err)
-			}
-		}()
-	}
-	if okxSwap != nil {
-		contract := *okxSwap
-		go func() {
-			if err := runOKXGold(ctx, okx.Client{}, contract, store, broker, feedTracker.Observe); err != nil && ctx.Err() == nil {
-				log.Printf("OKX XAU-USDT-SWAP ingestion stopped: %v", err)
-			}
-		}()
+	if err := runDirectFeeds(ctx, directStates, store, broker, feedTracker.Observe); err != nil {
+		log.Printf("direct feed pipeline unavailable: %v", err)
 	}
 	if nseMinuteSync != nil {
 		go func() {

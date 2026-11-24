@@ -1,0 +1,16 @@
+{
+  "feeds": [
+    {
+      "adapter": "okx-linear-swap",
+      "instrument_id": "OKX:BTC-USDT-SWAP",
+      "provider_key": "BTC-USDT-SWAP",
+      "enabled": false
+    },
+    {
+      "adapter": "okx-linear-swap",
+      "instrument_id": "OKX:ETH-USDT-SWAP",
+      "provider_key": "ETH-USDT-SWAP",
+      "enabled": false
+    }
+  ]
+}
