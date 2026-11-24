@@ -49,3 +49,11 @@ export function resolveCatalogInstrument<T extends Pick<CatalogInstrument,'instr
   return matches[0];
 }
 export const catalogTimeframe=(entry:Pick<CatalogEntry,'mode'>,current:string):string=>entry.mode==='historical_1m'?'1m':current;
+
+/** Keep the rendered DOM bounded even when users browse the full catalog. */
+export const CATALOG_PAGE_SIZE=80;
+export function catalogPage<T>(matches:readonly T[],page:number):{items:T[];page:number;pages:number}{
+  const pages=Math.max(1,Math.ceil(matches.length/CATALOG_PAGE_SIZE));
+  const current=Math.max(0,Math.min(pages-1,Math.trunc(page)||0));
+  return {items:matches.slice(current*CATALOG_PAGE_SIZE,(current+1)*CATALOG_PAGE_SIZE),page:current,pages};
+}

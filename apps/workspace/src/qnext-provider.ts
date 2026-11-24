@@ -122,6 +122,7 @@ export class QNextProvider {
   private readonly pollIntervalMs: number;
   private readonly onDeliveredBar?: QNextProviderOptions['onDeliveredBar'];
   private symbolsPromise?: Promise<QNextSymbol[]>;
+  private catalogPromise?: Promise<ReturnType<typeof normalizeCatalog>>;
 
   private socket?: WebSocketLike;
   private socketConnected = false;
@@ -147,7 +148,13 @@ export class QNextProvider {
   }
 
   async listCatalog() {
-    return normalizeCatalog(await this.loadSymbols());
+    if (!this.catalogPromise) {
+      this.catalogPromise = this.loadSymbols().then(normalizeCatalog).catch(error => {
+        this.catalogPromise = undefined;
+        throw error;
+      });
+    }
+    return this.catalogPromise;
   }
 
   async listSymbols() {
