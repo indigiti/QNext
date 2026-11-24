@@ -190,4 +190,3 @@ func repairDirectFeed(ctx context.Context, binding directfeed.Binding, history *
 	}
 	return nil
 }
-

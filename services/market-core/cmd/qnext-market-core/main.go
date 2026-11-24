@@ -354,7 +354,7 @@ func main() {
 				"raw_retention":           rawRetention.Snapshot(),
 				"live_integrity":          integrityStatus,
 				"nse_1m":                  nseMinuteStatus(nseMinuteSync),
-				"direct_feeds": map[string]any{"feeds": directStates, "config_error": directConfigError},
+				"direct_feeds":            map[string]any{"feeds": directStates, "config_error": directConfigError},
 				"okx_xauusd":              map[string]any{"available": true, "requested": okxRequested, "enabled": directStates[0].Active, "config_error": okxConfigError, "instrument_id": okx.InstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
 				"okx_xauusdt":             map[string]any{"available": true, "requested": swapRequested, "enabled": directStates[1].Active, "config_error": swapConfigError, "instrument_id": okx.SwapInstrumentID, "mode": "trades-all plus 1m and 1s REST repair"},
 			}

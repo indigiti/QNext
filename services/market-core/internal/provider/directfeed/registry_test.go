@@ -29,7 +29,7 @@ func TestRegistryDiscoveryAndAtomicMapping(t *testing.T) {
 				CalendarID: "OKX_CRYPTO_24_7", DataMode: "stream", Visible: true},
 			Provider: "fixture", Key: s.ProviderKey,
 			History: func(context.Context, string, time.Time, time.Time) ([]domain.Bar, error) { return nil, nil },
-			Run: func(context.Context, func(domain.Tick) error, func(context.Context) error) error { return nil },
+			Run:     func(context.Context, func(domain.Tick) error, func(context.Context) error) error { return nil },
 		}, nil
 	}
 	if err := reg.Register("fixture", adapter); err != nil {
