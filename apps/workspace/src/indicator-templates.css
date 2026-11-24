@@ -281,3 +281,10 @@
     min-height: 36px;
   }
 }
+
+.qnext-indicator-template-panel { box-sizing: border-box; overflow: auto; }
+.qnext-indicator-template-feedback { margin: 0; font-size: 12px; line-height: 1.4; }
+.qnext-indicator-template-feedback:empty { display: none; }
+.qnext-indicator-template-feedback[data-kind='error'] { color: #ef9ba8; }
+:root[data-qnext-theme='light'] .qnext-indicator-template-feedback[data-kind='error'] { color: #9f3445; }
+:root[data-qnext-theme='light'] .qnext-template-icon-button[aria-pressed='true'] { color: #8d5b00; }
