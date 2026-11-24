@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import templateSource from '../src/indicator-templates.ts?raw';
 import workspaceSource from '../src/main.ts?raw';
 import shadowSource from '../src/intelligence-lab-shadow-bridge.ts?raw';
 import { describe, expect, it } from 'vitest';
@@ -13,6 +14,11 @@ describe('public chart toolbar integration', () => {
   it('registers the template action before creating Vela and includes its stylesheet', () => {
     expect(workspaceSource).toContain("import './indicator-templates.css'");
     expect(workspaceSource.indexOf('registerIndicatorTemplates(() => workspace)')).toBeLessThan(workspaceSource.indexOf('new VelaWorkspace('));
+  });
+
+  it('renders the Templates action as an icon with its accessible label', () => {
+    expect(templateSource).toContain("label: 'Templates',");
+    expect(templateSource).toContain("icon: 'qnext-indicator-templates',\n    iconOnly: true,");
   });
 
   it('places chart alert On/Off next to the native Alerts bell, ahead of Screen Awake', () => {
