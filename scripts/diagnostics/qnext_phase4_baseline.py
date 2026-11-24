@@ -99,7 +99,7 @@ def process_stats(pid: int) -> dict:
     tail = line[line.rfind(")") + 2:].split()
     ticks = int(tail[11]) + int(tail[12])
     rss = int(tail[21]) * os.sysconf("SC_PAGE_SIZE")
-    return {"cpu_ticks": ticks, "rss_bytes": rss}
+    return {"cpu_ticks": ticks, "rss_bytes": rss, "start_ticks": int(tail[19])}
 
 
 def delta(first, last):
@@ -148,6 +148,11 @@ def build_report(version: dict, samples: list[dict], expected_commit: str = "",
     if observations is not None and observations <= 0:
         warnings.append("No new provider ticks observed; latency certification needs live traffic")
     report = {
+        "elapsed_seconds": elapsed_s,
+        "workload": {"first_broker": first["broker"], "last_broker": last["broker"]},
+        "error_deltas": {source + "." + field: delta(first[source].get(field), last[source].get(field))
+                         for source in ("persistence", "capture") for field in ("errors", "dropped")
+                         if field in first[source]},
         "schema": "qnext-phase4-staging-baseline-v1",
         "commit": commit,
         "version": version.get("version"),
@@ -183,7 +188,8 @@ def build_report(version: dict, samples: list[dict], expected_commit: str = "",
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:18080")
-    parser.add_argument("--expected-commit", default="d74b82f100f2")
+    parser.add_argument("--expected-commit", required=True,
+                        help="Expected Market Core source commit (not application release commit)")
     parser.add_argument("--samples", type=int, default=4)
     parser.add_argument("--interval", type=float, default=10.0)
     parser.add_argument("--timeout", type=float, default=5.0)
@@ -207,6 +213,11 @@ def main(argv=None) -> int:
                                          time.time()))
             if args.pid:
                 pid_data.append(process_stats(args.pid))
+        final_version = request_json(base, "/version", args.timeout)
+        if any(version.get(key) != final_version.get(key) for key in ("commit", "started_at")):
+            raise ValueError("Market Core identity changed during sampling")
+        if pid_data and len({sample["start_ticks"] for sample in pid_data}) != 1:
+            raise ValueError("Process identity changed during sampling")
         report = build_report(version, samples, args.expected_commit, pid_data,
                               time.monotonic() - start)
         output = json.dumps(report, indent=2, sort_keys=True)

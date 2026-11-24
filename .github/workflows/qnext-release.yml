@@ -388,6 +388,7 @@ jobs:
           python3 scripts/release/release_inventory.py verify release
           python3 scripts/release/performance_gate.py release
           python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/diagnostics -p 'test_*.py' -v
 
       # GitHub artifact ZIPs do not guarantee POSIX execute modes or symlinks.
       # Keep the existing DigiOps artifact for compatibility and upload an

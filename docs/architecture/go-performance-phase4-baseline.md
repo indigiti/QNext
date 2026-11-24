@@ -65,3 +65,7 @@ obtain a controlled loopback-only `pprof` CPU/mutex capture per
 check load/fanout/network. If browser dispatch dominates, profile Lightweight
 and Vela chart callbacks independently. Never disable canonical candle
 formation or history persistence as a performance shortcut.
+
+## Comparative performance gate
+
+Supply the current Market Core source commit from the deployed release manifest's `component_identity.market_core.source_commit`, not the application Git SHA. The collector now requires an explicit expected commit and rejects a changed runtime identity during sampling. Collect two comparable live windows with PID measurement enabled. Run `python3 scripts/diagnostics/qnext_compare_performance.py baseline.json candidate.json`. The initial review tolerance is 15% relative growth for CPU, peak sampled RSS and cumulative p95 bounds; traffic rates must be within 20% and subscriptions stable/equivalent. Missing evidence or different workloads returns INCONCLUSIVE (exit 2), never PASS. Candidate persistence/capture errors, capture loss and slow disconnects are failures. Use comparable process ages, market conditions and subscriptions; these cumulative metrics are not chart-render latency. Browser paint and WSS-to-chart dispatch need separate browser profiling.
