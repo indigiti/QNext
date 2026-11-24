@@ -22,7 +22,7 @@ jobs:
           python-version: "3.11"
       - run: python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
 
-  dependency-lock-candidates:
+  locked-dependencies:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,20 +35,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Resolve lock candidate without running dependency scripts
+      - name: Verify committed lock and exact install
         run: |
           set -euo pipefail
-          if test -f package-lock.json; then
-            npm ci --ignore-scripts --no-audit --no-fund
-          else
-            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          fi
+          npm ci --ignore-scripts --no-audit --no-fund
+          git diff --exit-code -- package-lock.json
           sha256sum package-lock.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: q7-npm-lock-${{ matrix.app }}
-          path: apps/${{ matrix.app }}/package-lock.json
-          if-no-files-found: error
-      - name: Emit reviewable lock candidate chunks
-        run: |
-          base64 -w 0 package-lock.json | fold -w 2000 | sed 's/^/QNEXT_LOCK_CHUNK /'
