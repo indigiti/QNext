@@ -212,19 +212,38 @@ func (t *Tracker) Snapshot() Snapshot {
 }
 
 // MostRecentProcessedMS is a low-cost ingestion readiness signal.
-func (t *Tracker) MostRecentProcessedMS() int64 {
+func (t *Tracker) MostRecentProcessedMS(providers ...string) int64 {
 	if t == nil {
 		return 0
 	}
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	var latest int64
+	if len(providers) > 0 {
+		for _, name := range providers {
+			if at := t.providers[name].LastProcessedTimeMS; at > latest {
+				latest = at
+			}
+		}
+		return latest
+	}
 	for _, provider := range t.providers {
 		if provider.LastProcessedTimeMS > latest {
 			latest = provider.LastProcessedTimeMS
 		}
 	}
 	return latest
+}
+
+// InstrumentProcessedMS isolates readiness by canonical instrument, rather
+// than allowing another active symbol on the same provider to mask a stale feed.
+func (t *Tracker) InstrumentProcessedMS(instrumentID string) int64 {
+	if t == nil {
+		return 0
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.instruments[instrumentID].LastProcessedTimeMS
 }
 
 func AgeMS(atMS int64, now time.Time) int64 {

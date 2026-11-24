@@ -25,6 +25,7 @@ type Definition struct {
 	ID            string
 	Version       string
 	Timezone      string
+	Continuous    bool // full local calendar days, including weekends
 	RegularOpen   Clock
 	RegularClose  Clock
 	ExtendedOpen  Clock
@@ -131,8 +132,8 @@ func (r *Registry) Windows(id string, from, to time.Time, session Session) ([]Wi
 
 	windows := make([]Window, 0, 32)
 	for !cursor.After(last) {
-		if definition.ID == "OKX_CRYPTO_24_7" {
-			start := cursor.UTC()
+		if definition.Continuous {
+			start := cursor
 			end := start.AddDate(0, 0, 1)
 			if end.After(from) && start.Before(to) {
 				if start.Before(from) {
@@ -287,7 +288,7 @@ func BSEDerivatives2026() Definition {
 // NSE/BSE trading session. Windows() handles the full-day close as next midnight.
 func OKXCrypto24x7() Definition {
 	return Definition{
-		ID: "OKX_CRYPTO_24_7", Version: "okx-crypto-utc-v1", Timezone: "UTC",
+		ID: "OKX_CRYPTO_24_7", Version: "okx-crypto-utc-v1", Timezone: "UTC", Continuous: true,
 		RegularOpen: Clock{0, 0}, RegularClose: Clock{23, 59},
 		ExtendedOpen: Clock{0, 0}, ExtendedClose: Clock{23, 59},
 		SupportedFrom: "2025-01-01", SupportedTo: "2031-01-01",
