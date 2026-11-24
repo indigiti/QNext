@@ -235,7 +235,13 @@ func main() {
 	// already published to the existing WSS broker.
 	var liveMonitor *liveaudit.Monitor
 	if config != nil && strings.TrimSpace(os.Getenv("QNEXT_LIVE_INTEGRITY_MONITOR")) == "1" {
-		liveMonitor = liveaudit.New(storageRoot, volumeAliases)
+		var continuousIDs []string
+		for _, state := range directStates {
+			if state.Active {
+				continuousIDs = append(continuousIDs, state.Spec.InstrumentID)
+			}
+		}
+		liveMonitor = liveaudit.New(storageRoot, volumeAliases, continuousIDs...)
 		liveMonitor.SetDiagnostics(func() (bool, uint64, uint64, uint64) {
 			stats, ok := observability.CaptureStats().(capture.FrameStoreStats)
 			if !ok {

@@ -56,9 +56,9 @@ certified. No external exchange or new symbol is enabled by this patch alone.
   immutable instrument identity set; the same policy is used in the candle engine,
   finalization clock and both rollup stages. Legacy NSE/BSE and SYN/SYN+ behavior
   remains unchanged. Other calendar types still require their own certification.
-- Q7 Foundation CI generates npm lock candidates using the package registry, with
-  scripts disabled and read-only repository permission. Commit reviewed lockfiles
-  and switch every npm build to npm ci before calling dependency resolution locked.
+- Q7 Foundation CI generated npm lockfiles using the package registry. Both
+  candidates were verified against their CI SHA-256 digests and committed. The
+  four npm build workflows now use npm ci; the exact head still requires CI.
 - `scripts/release/release_delta.py` implements exact-base changed-file transport
   and deletion-aware reconstruction into a new directory. The approved base SHA,
   target SHA and target inventory digest must come from a separate trusted channel.
@@ -68,3 +68,9 @@ certified. No external exchange or new symbol is enabled by this patch alone.
 - A full trading session with actual live sources, gap/revision evidence and
   workload-aware performance evidence remains a mandatory external exit gate.
   No CI fixture is a substitute for live certification.
+
+The optional live integrity monitor includes active direct UTC instruments, with
+bounded per-series publication/final-event evidence and gap checks across day
+boundaries. Missing intervals are counted in constant time rather than rescanned
+on every finalization clock cycle. These are publication observations, not
+broker trade-loss certification. Raw capture remains provider-specific.

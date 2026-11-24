@@ -114,3 +114,24 @@ func TestLiveIntegrityStopsOnContextCancellation(t *testing.T) {
 		t.Fatal("monitor did not stop")
 	}
 }
+
+func TestContinuousDirectEvidenceAcrossMidnight(t *testing.T) {
+	const id = "FIXTURE:BTC-USDT"
+	m := New(t.TempDir(), nil, id)
+	at := time.Date(2026, 11, 28, 23, 59, 45, 0, time.UTC)
+	if m.Snapshot().SeriesEvidence[id+"|15s"].Events != 0 {
+		t.Fatal("missing evidence must not look observed")
+	}
+	first := testBar(id, "15s", at, 1, 0, true)
+	m.observe(stream.BarEvent{Seq: 1, Bar: first, PublishedAt: at.Add(15 * time.Second)})
+	next := testBar(id, "15s", at.Add(30*time.Second), 1, 0, true)
+	m.observe(stream.BarEvent{Seq: 2, Bar: next, PublishedAt: at.Add(45 * time.Second)})
+	snap := m.Snapshot()
+	if snap.Counts["PUBLISHED_CANDLE_GAP"] != 1 {
+		t.Fatalf("continuous gap not detected: %+v", snap.Counts)
+	}
+	e := snap.SeriesEvidence[id+"|15s"]
+	if e.Events != 2 || e.FinalEvents != 2 || e.LastFinalMS != next.OpenTime.UnixMilli() {
+		t.Fatalf("unexpected direct evidence: %+v", e)
+	}
+}

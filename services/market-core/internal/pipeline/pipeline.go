@@ -275,16 +275,18 @@ func (p *Pipeline) observeMissingSince(instrumentID string, lastTick domain.Tick
 	if err != nil || !closeAt.After(open) {
 		return
 	}
-	for nextOpen := closeAt; nextOpen.Before(sessionClose); nextOpen = nextOpen.Add(5 * time.Second) {
-		nextClose := nextOpen.Add(5 * time.Second)
-		if nextClose.After(at) {
-			break
+	// Count the complete missing run in O(1), without walking every bucket
+	// from the last live tick on each 100ms finalization-clock cycle.
+	if latest, ok := p.integrity.latest[instrumentID]; ok {
+		next := time.UnixMilli(latest.OpenTimeMS).UTC().Add(5 * time.Second)
+		if next.After(closeAt) {
+			closeAt = next
 		}
-		latest, ok := p.integrity.latest[instrumentID]
-		if ok && latest.OpenTimeMS >= nextOpen.UnixMilli() {
-			continue
-		}
-		p.integrity.observeMissing(instrumentID, nextOpen, nextClose, "FEED_HEALTH_UNCERTAIN")
+	}
+	count := at.Sub(closeAt) / (5 * time.Second)
+	if count > 0 {
+		lastOpen := closeAt.Add((count - 1) * 5 * time.Second)
+		p.integrity.observeMissingRun(instrumentID, lastOpen, lastOpen.Add(5*time.Second), uint64(count))
 	}
 }
 
