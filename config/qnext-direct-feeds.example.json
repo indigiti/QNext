@@ -11,6 +11,18 @@
       "instrument_id": "OKX:ETH-USDT-SWAP",
       "provider_key": "ETH-USDT-SWAP",
       "enabled": false
+    },
+    {
+      "adapter": "bitunix-perpetual",
+      "instrument_id": "BITUNIX:BTCUSDT",
+      "provider_key": "BTCUSDT",
+      "enabled": false
+    },
+    {
+      "adapter": "bitunix-perpetual",
+      "instrument_id": "BITUNIX:ETHUSDT",
+      "provider_key": "ETHUSDT",
+      "enabled": false
     }
   ]
 }

@@ -56,6 +56,7 @@ func DefaultRegistry() *Registry {
 	_ = registry.Register(NSEDerivatives2026())
 	_ = registry.Register(BSEDerivatives2026())
 	_ = registry.Register(OKXCrypto24x7())
+	_ = registry.Register(BitunixCrypto24x7())
 	return registry
 }
 
@@ -293,4 +294,12 @@ func OKXCrypto24x7() Definition {
 		ExtendedOpen: Clock{0, 0}, ExtendedClose: Clock{23, 59},
 		SupportedFrom: "2025-01-01", SupportedTo: "2031-01-01",
 	}
+}
+
+// BitunixCrypto24x7 is the initial crypto-perpetual lane, not a metals calendar.
+func BitunixCrypto24x7() Definition {
+	definition := OKXCrypto24x7()
+	definition.ID = "BITUNIX_CRYPTO_24_7"
+	definition.Version = "bitunix-crypto-utc-v1"
+	return definition
 }

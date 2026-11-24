@@ -28,11 +28,12 @@ type Spec struct {
 }
 
 type Binding struct {
-	Instrument symbol.Instrument
-	Provider   string
-	Key        string
-	History    func(context.Context, string, time.Time, time.Time) ([]domain.Bar, error)
-	Run        func(context.Context, func(domain.Tick) error, func(context.Context) error) error
+	Instrument        symbol.Instrument
+	Provider          string
+	Key               string
+	History           func(context.Context, string, time.Time, time.Time) ([]domain.Bar, error)
+	Run               func(context.Context, func(domain.Tick) error, func(context.Context) error) error
+	HistoryTimeframes []string // nil preserves the legacy 1m/5s recovery contract
 }
 
 type Adapter func(context.Context, Spec) (Binding, error)
@@ -145,6 +146,11 @@ func (r *Registry) Prepare(ctx context.Context, spec Spec, symbols *symbol.Regis
 	// unsupported calendar before exposing a symbol to the shared engine.
 	if !cal.Continuous || cal.Timezone != "UTC" {
 		return Binding{}, errors.New("direct calendar requires continuous UTC policy")
+	}
+	for _, tf := range binding.HistoryTimeframes {
+		if tf != "1m" && tf != "5s" {
+			return Binding{}, errors.New("unsupported direct history timeframe")
+		}
 	}
 	if err := symbols.RegisterMapped(binding.Instrument, symbol.ProviderInstrument{
 		Provider: binding.Provider, InstrumentID: binding.Instrument.ID, ProviderKey: binding.Key,
