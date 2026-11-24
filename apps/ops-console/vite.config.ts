@@ -4,7 +4,7 @@ export default defineConfig({
   base: '/qnext/admin/',
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
     emptyOutDir: true,
   },
 });

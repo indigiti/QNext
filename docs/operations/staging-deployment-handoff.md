@@ -53,3 +53,15 @@ It **does not** change `current` or `previous`, publish to the webroot, stop or 
 - Manually exercise admin authentication, chart themes, WSS/REST, NIFTY/SYN/SYN+, marker privacy, volume, and panning.
 - Keep the previous staging release/rollback pointer and preserved file-backed storage.
 - Production remains blocked until staging and rollback verification have completed.
+
+## Lean runtime payload and component inventory
+
+The DigiOps ZIP continues to be a complete self-contained release. Production frontend source maps, Python bytecode and Ops API test files are excluded. The CI-generated `release-inventory.json` records SHA-256, size and component ownership of every runtime file, including both executable pointers and the release metadata. CI verifies the inventory again after downloading the exact uploaded ZIP. The POSIX tar also carries this inventory, but its two extra executable symlinks are covered by the existing staging installer, not the ZIP inventory verifier.
+
+Compare two extracted ZIP inventory files with:
+
+```sh
+python3 scripts/release/release_inventory.py compare old/release-inventory.json new/release-inventory.json
+```
+
+This reports changed and removed files and their component ownership. It is not a deployable delta. The current DigiOps transfer/install protocol expects a complete archive. A future incremental protocol must reconstruct the full target using an exact verified base, verify every final file, remove stale assets, and publish atomically with rollback. Do not upload a partial ZIP under the existing artifact name. The Go binary embeds the full release commit, so even frontend-only changes may still result in a new binary until the runtime identity contract is separated.

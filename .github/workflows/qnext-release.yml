@@ -219,7 +219,8 @@ jobs:
           cp -a services/strategy-lab/qnext_strategy_lab release/private/strategy-lab/
           cp -a services/intelligence/qnext_intelligence release/private/intelligence/
           cp services/intelligence/README.md release/private/intelligence/README.md
-          cp -a services/ops-api release/private/ops-api
+          mkdir -p release/private/ops-api
+          cp -a services/ops-api/bootstrap.php services/ops-api/public services/ops-api/src release/private/ops-api/
 
           cp config/q1-market.example.json release/private/config/q1-market.example.json
           cp config/q3-resilience.example.json release/private/config/q3-resilience.example.json
@@ -333,6 +334,13 @@ jobs:
           test -x release/private/deploy/qnext-ml-dependencies
           test -s release/release-manifest.json
 
+          # Validation above may create bytecode; ship source only.
+          find release -type d -name __pycache__ -prune -exec rm -rf {} +
+          find release -type f \\( -name '*.pyc' -o -name '*.pyo' \\) -delete
+          python3 scripts/release/release_inventory.py create release
+          python3 scripts/release/release_inventory.py verify release
+          python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
+
       # GitHub artifact ZIPs do not guarantee POSIX execute modes or symlinks.
       # Keep the existing DigiOps artifact for compatibility and upload an
       # additional tarball with the exact release layout for staging installs.
@@ -362,6 +370,7 @@ jobs:
           path: |
             qnext-staging-release.tar.gz
             qnext-staging-release.tar.gz.sha256
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
 
@@ -370,6 +379,7 @@ jobs:
         with:
           name: digiops-release
           path: release/
+          compression-level: 9
           # Must include public/.htaccess for QNeXT WSS/REST routing;
           # upload-artifact v4 excludes hidden files by default.
           include-hidden-files: true
@@ -381,6 +391,8 @@ jobs:
     needs: build-release
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
       - name: Download exact deployment artifact
         uses: actions/download-artifact@v4
         with:
@@ -411,4 +423,5 @@ jobs:
           assert packaged['commit']==os.environ['GITHUB_SHA'], "artifact identity mismatch"
           assert packaged['artifact']=='digiops-release', "unexpected artifact name"
           PY
+          python3 scripts/release/release_inventory.py verify downloaded-release
           echo "DigiOps artifact routing, identity and split payload: PASS"
