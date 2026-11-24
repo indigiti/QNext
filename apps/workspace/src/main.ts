@@ -1,3 +1,6 @@
+import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
+import { catalogTimeframe } from './symbol-catalog';
+import { createSymbolSearch } from './symbol-search-launcher';
 import { VelaWorkspace } from '@luxalgo/vela/workspace';
 import { createQNextPineEngine, resolveQNextPineMode, withConfirmedMtfRecompute } from './pine-engine';
 
@@ -172,7 +175,16 @@ async function bootstrapVela(timeframes: string[]) {
   registerVelaChartAlertAction(velaChartAlerts);
   const disposeWheelZoom = installVelaWheelZoomControl(document.getElementById('app')!);
   window.addEventListener('pagehide', disposeWheelZoom, { once: true });
-  const workspace = new VelaWorkspace('#app', {
+  let workspace: VelaWorkspace;
+  const catalogProvider = createProvider();
+  const search = createSymbolSearch(() => catalogProvider.listCatalog(), async entry => {
+    const chart = workspace.chart;
+    await chart.setMarket({symbol:entry.instrument_id,timeframe:catalogTimeframe(entry,chart.market.timeframe ?? '1m')});
+  });
+  registerIcon('qnext-symbol-search','<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>');
+  registerWidgetAction({id:'qnext.symbol.search',target:'topbar',label:'Symbol Search',icon:'qnext-symbol-search',iconOnly:false,align:'left',order:0,run:search.open});
+  window.addEventListener('pagehide',search.dispose,{once:true});
+  workspace = new VelaWorkspace('#app', {
     layout: false,
     symbol: runtime.symbol ?? 'NSE:NIFTY',
     timeframe: resolveInitialTimeframe(timeframes),
@@ -194,7 +206,7 @@ async function bootstrapVela(timeframes: string[]) {
     indicators: loadCustomIndicators,
     persist: 'qnext-workspace-v2',
     topbar: {
-      left: ['symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
+      left: ['qnext.symbol.search', 'symbol', 'timeframes', 'style', 'indicators', 'undo-redo'],
       // Zoom action sits immediately before the Data Window / Object Tree buttons.
       right: ['actions', 'alerts', 'qnext.alerts.toggle', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot', 'fullscreen'],
     },

@@ -1,0 +1,20 @@
+.qnext-symbol-browser{width:min(850px,calc(100vw - 24px));max-height:min(82vh,760px);box-sizing:border-box;border:1px solid #b9bdc5;border-radius:12px;background:#fff;color:#172033;padding:20px;box-shadow:0 20px 80px #0004;font:14px system-ui;overflow:auto}
+.qnext-symbol-browser::backdrop{background:#10182780}
+.qnext-symbol-browser header,.qnext-symbol-filters,.qnext-symbol-tabs,.qnext-symbol-row{display:flex;gap:8px;align-items:center}
+.qnext-symbol-browser header{justify-content:space-between;margin-bottom:18px}
+.qnext-symbol-browser h2{margin:0;font-size:19px}
+.qnext-symbol-browser button,.qnext-symbol-browser select,.qnext-symbol-browser input{font:inherit;color:inherit;background:transparent;border:1px solid #a1a6b477;border-radius:6px;padding:8px;min-width:0}
+.qnext-symbol-browser button{cursor:pointer}
+.qnext-symbol-browser button[aria-pressed=true]{background:#168167;color:white}
+.qnext-symbol-filters{flex-wrap:wrap}.qnext-symbol-filters input{flex:1 1 230px}
+.qnext-symbol-tabs{flex-wrap:wrap;margin:12px 0}
+.qnext-symbol-browser [role=status]{font-size:12px;opacity:.8;margin:10px 0}
+.qnext-symbol-results{max-height:50vh;overflow:auto;overscroll-behavior:contain}
+.qnext-symbol-row{border-bottom:1px solid #9993;min-height:46px}
+.qnext-symbol-row>button:first-child{border:0;font-size:18px}
+.qnext-symbol-browser .qnext-symbol-open{border:0;text-align:left;display:grid;grid-template-columns:minmax(115px,1fr) 1.3fr 1.4fr;align-items:center;gap:10px;flex:1;width:100%}
+.qnext-symbol-open span{font-size:12px;overflow-wrap:anywhere}.qnext-symbol-open strong{overflow-wrap:anywhere}
+.qnext-symbol-browser .qnext-symbol-open:hover,.qnext-symbol-browser .qnext-symbol-open:focus-visible{background:#8882;outline:2px solid #168167;outline-offset:-2px}
+.qnext-symbol-browser [hidden]{display:none}
+[data-qnext-theme=dark] .qnext-symbol-browser{background:#171d29;color:#e5e9f1;border-color:#555e70}
+@media(max-width:600px){.qnext-symbol-browser{padding:12px}.qnext-symbol-browser .qnext-symbol-open{grid-template-columns:1fr 1fr;gap:4px}.qnext-symbol-open span:last-child{grid-column:1/-1}.qnext-symbol-filters select{flex:1}.qnext-symbol-results{max-height:47vh}}

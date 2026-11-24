@@ -1,6 +1,8 @@
 import { QNextProvider, type QNextTransportSnapshot } from '../qnext-provider';
+import { catalogTimeframe } from '../symbol-catalog';
+import { createSymbolSearch } from '../symbol-search-launcher';
 import { mountThemeControl } from '../theme';
-import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL, sectionOfTicker } from '../symbol-sections';
+import { CORE_GROUP_ID, CORE_GROUP_LABEL, NSE_MINUTE_GROUP_ID, NSE_MINUTE_GROUP_LABEL, OKX_GOLD_GROUP_ID, OKX_GOLD_GROUP_LABEL, sectionOfTicker } from '../symbol-sections';
 import { mountScreenAwakeButton, type ScreenAwakeController } from '../screen-awake';
 import {
   QNextLightweightChart,
@@ -115,6 +117,8 @@ export class QNextLightweightWorkspace {
   private shell?: HTMLElement;
   private grid?: HTMLElement;
   private symbolSelect?: HTMLSelectElement;
+  private symbolSearch?: HTMLButtonElement;
+  private disposeSymbolShortcut?: () => void;
   private timeframeSelect?: HTMLSelectElement;
   private layoutSelect?: HTMLSelectElement;
   private syncInput?: HTMLInputElement;
@@ -160,6 +164,7 @@ export class QNextLightweightWorkspace {
   }
 
   destroy(): void {
+    this.disposeSymbolShortcut?.();
     this.disposeAwakeControl?.();
     this.disposeAwakeControl = undefined;
     this.stopMarkerPolling();
@@ -202,6 +207,7 @@ export class QNextLightweightWorkspace {
     const groups = [
       { id: CORE_GROUP_ID, label: CORE_GROUP_LABEL },
       { id: NSE_MINUTE_GROUP_ID, label: NSE_MINUTE_GROUP_LABEL },
+      { id: OKX_GOLD_GROUP_ID, label: OKX_GOLD_GROUP_LABEL },
     ];
     for (const group of groups) {
       const items = this.symbols.filter((symbol) =>
@@ -233,6 +239,22 @@ export class QNextLightweightWorkspace {
       void this.rebuildPane(this.activePane);
     });
 
+    const symbolSearch = document.createElement('button');
+    symbolSearch.type = 'button';
+    symbolSearch.className = 'qnext-lightweight-select qnext-symbol-search';
+    symbolSearch.textContent = 'Symbol Search';
+    const search = createSymbolSearch(() => this.provider.listCatalog(), async entry => {
+      const pane = this.activePane;
+      const config = this.paneConfigs[pane];
+      if (!config) throw new Error('No active chart');
+      config.ticker = entry.instrument_id;
+      config.timeframe = catalogTimeframe(entry,config.timeframe);
+      await this.rebuildPane(pane);
+      this.updateToolbarFromActivePane();
+    });
+    symbolSearch.onclick = search.open;
+    this.disposeSymbolShortcut = search.dispose;
+
     const timeframeSelect = document.createElement('select');
     timeframeSelect.className = 'qnext-lightweight-select qnext-timeframe-select';
     timeframeSelect.setAttribute('aria-label', 'Active chart timeframe');
@@ -245,7 +267,7 @@ export class QNextLightweightWorkspace {
     timeframeSelect.addEventListener('change', () => {
       const config = this.paneConfigs[this.activePane];
       if (!config || config.timeframe === timeframeSelect.value) return;
-      const isNSEMinute = this.symbols.some((symbol) => symbol.ticker === config.ticker
+      const isNSEMinute = this.symbols.some((symbol) => (symbol.ticker === config.ticker || ((symbol.prefix ?? '') + ':' + symbol.ticker).toUpperCase() === config.ticker.toUpperCase())
         && symbol.group === NSE_MINUTE_GROUP_ID);
       if (isNSEMinute && timeframeSelect.value !== '1m') {
         timeframeSelect.value = '1m';
@@ -300,6 +322,7 @@ export class QNextLightweightWorkspace {
 
     toolbar.append(
       brand,
+      symbolSearch,
       symbolSelect,
       timeframeSelect,
       layoutSelect,
@@ -321,6 +344,7 @@ export class QNextLightweightWorkspace {
     this.shell = shell;
     this.grid = grid;
     this.symbolSelect = symbolSelect;
+    this.symbolSearch = symbolSearch;
     this.timeframeSelect = timeframeSelect;
     this.layoutSelect = layoutSelect;
     this.syncInput = syncInput;
@@ -425,6 +449,7 @@ export class QNextLightweightWorkspace {
   private updateToolbarFromActivePane(): void {
     const config = this.paneConfigs[this.activePane];
     if (!config) return;
+    if (this.symbolSearch) this.symbolSearch.textContent = config.ticker + ' ▾';
     if (this.symbolSelect) this.symbolSelect.value = config.ticker;
     if (this.timeframeSelect) this.timeframeSelect.value = config.timeframe;
     if (this.layoutSelect) this.layoutSelect.value = String(this.layout);
