@@ -4,7 +4,7 @@ import type {
 } from '@luxalgo/vela/plugin';
 import { withConfirmedMtfRecompute } from '../src/pine-engine';
 
-function setup() {
+function setup(title = 'FVG') {
   const session: ExecutionSession = {
     getContext: vi.fn(async () => null),
     update: vi.fn(),
@@ -14,7 +14,7 @@ function setup() {
   };
   const execute = vi.fn((_req: ExecutionRequest) => session);
   const prepare = async (): Promise<PreparedScript> => ({
-    language: 'pine', inputs: [], meta: { title: 'FVG', overlay: true },
+    language: 'pine', inputs: [], meta: { title, overlay: true },
     reactsToViewport: false, token: null,
   });
   const upstream: ScriptingEngine = {
@@ -53,6 +53,45 @@ describe('confirmed MTF snapshot policy', () => {
     expect(session.notifyBars).toHaveBeenCalledWith('complete');
     active.stop();
     expect(session.stop).toHaveBeenCalledOnce();
+  });
+
+  it('automatically uses snapshots for the legacy Trinity ribbon without changing its inputs', async () => {
+    const { engine, execute, session, bars, request, handlers } = setup('Trinity MidPoint ATR Ribbon');
+    const prepared = await engine.prepare('//@version=6\nplot(request.security(syminfo.tickerid, "1", close))', 'trinity');
+    const req = { ...request(prepared), inputs: { higherTf: '1' } };
+    const active = engine.execute(req, handlers);
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({ mode: 'static', inputs: { higherTf: '1' } });
+    active.update({ higherTf: '2' });
+    active.update({ higherTf: '5' });
+    expect(session.update).toHaveBeenLastCalledWith({ higherTf: '5' });
+    bars[0] = { ...bars[0]!, close: 2 };
+    active.notifyBars();
+    expect(session.notifyBars).not.toHaveBeenCalled();
+    bars.push({ ...bars[0]!, time: 30_000 });
+    active.notifyBars();
+    expect(session.notifyBars).toHaveBeenCalledTimes(1);
+    // A late revision of the previous bar must invalidate the snapshot.
+    bars[0] = { ...bars[0]!, high: 3 };
+    active.notifyBars();
+    expect(session.notifyBars).toHaveBeenCalledTimes(2);
+    active.notifyBars();
+    expect(session.notifyBars).toHaveBeenCalledTimes(2);
+    active.notifyBars('complete');
+    expect(session.notifyBars).toHaveBeenLastCalledWith('complete');
+    active.stop();
+  });
+
+  it('does not switch other MTF indicators or a Trinity title without security calls', async () => {
+    for (const [title, source] of [
+      ['Other MTF', 'plot(request.security(syminfo.tickerid, "1", close))'],
+      ['Trinity MidPoint ATR Ribbon', 'plot(close)'],
+    ] as const) {
+      const { engine, execute, request, handlers } = setup(title);
+      const prepared = await engine.prepare(source, 'unrelated');
+      const req = request(prepared);
+      engine.execute(req, handlers);
+      expect(execute.mock.calls[0]?.[0]).toBe(req);
+    }
   });
 
   it('leaves unrelated live scripts streaming', async () => {
