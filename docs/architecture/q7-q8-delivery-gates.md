@@ -74,3 +74,11 @@ bounded per-series publication/final-event evidence and gap checks across day
 boundaries. Missing intervals are counted in constant time rather than rescanned
 on every finalization clock cycle. These are publication observations, not
 broker trade-loss certification. Raw capture remains provider-specific.
+
+Selective release candidates can be generated manually using the exact successful
+main release run IDs, base/target full commit SHAs and independently approved
+target inventory SHA-256. The candidate workflow verifies reconstruction,
+performance-size budgets, POSIX executable identities and immutable staging in a
+temporary fixture. The existing DigiOps installer is not switched to delta
+activation by this workflow. The full release remains the fallback until the
+external activation/rollback path is exercised with real artifacts.

@@ -128,10 +128,66 @@ def reconstruct(base, archive, destination, expected_base, expected_target, expe
         require(tc == expected_target and th == expected_inventory and actual == after,
                 "reconstructed release identity mismatch")
         # This is an unpacked compatibility ZIP payload, not a POSIX installer.
-        # The existing staging installer restores its required executable modes.
+        # Use materialize-stage to restore the explicitly supported POSIX layout.
         require(not destination.exists() and not destination.is_symlink(), "destination already exists")
         temp.rename(destination)
         return report
+    finally:
+        if temp.exists():
+            shutil.rmtree(temp)
+
+
+# These executable paths match the full release assembler. Never trust ZIP
+# permission bits or symlink targets supplied by a delta archive.
+DEPLOY_EXECUTABLES = (
+    "qnext-ops-helper", "qnext-ops-web", "qnext-ops-user",
+    "qnext-stage-release", "qnext-intelligence-lab-python", "qnext-ml-dependencies",
+)
+
+
+def materialize_stage(source, destination, expected_commit, expected_inventory):
+    """Create a fresh POSIX staging payload, without activating it."""
+    require(SHA.fullmatch(expected_commit) and HASH.fullmatch(expected_inventory),
+            "approved SHA/digest required")
+    commit, checksum, approved = identity(source)
+    require(commit == expected_commit and checksum == expected_inventory,
+            "unapproved staging source")
+    require(not destination.exists() and not destination.is_symlink(), "destination already exists")
+    require(destination.parent.is_dir(), "destination parent must exist")
+    manifest = json.loads((source / "release-manifest.json").read_text())
+    require(manifest.get("version") == commit[:12], "release version mismatch")
+    names = {}
+    for key in ("market_core", "data_collector"):
+        binary = "qnext-" + key.replace("_", "-")
+        checksum = manifest["component_identity"][key]["sha256"]
+        require(HASH.fullmatch(checksum), "invalid executable identity")
+        target = binary + "-" + checksum
+        require(manifest["services"][key] == target, "binary manifest mismatch")
+        pointer = source / "private/bin" / (binary + ".current")
+        require(pointer.read_text().strip() == target, "binary pointer mismatch")
+        path = source / "private/bin" / target
+        require(path.is_file() and digest(path) == checksum, "binary digest mismatch")
+        names[binary] = target
+    for name in DEPLOY_EXECUTABLES:
+        require((source / "private/deploy" / name).is_file(), "missing deployment helper: " + name)
+    temp = Path(tempfile.mkdtemp(prefix=".qnext-posix-", dir=destination.parent))
+    try:
+        for path in approved["files"]:
+            relative = safe_path(path)
+            out = temp / relative
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source / relative, out)
+        shutil.copyfile(source / NAME, temp / NAME)
+        # Verify the complete byte inventory before adding compatibility links.
+        require(identity(temp) == (commit, expected_inventory, approved),
+                "POSIX payload copy mismatch")
+        for name in DEPLOY_EXECUTABLES:
+            (temp / "private/deploy" / name).chmod(0o750)
+        for binary, target in names.items():
+            (temp / "private/bin" / target).chmod(0o750)
+            (temp / "private/bin" / binary).symlink_to(target)
+        require(not destination.exists() and not destination.is_symlink(), "destination already exists")
+        temp.rename(destination)
     finally:
         if temp.exists():
             shutil.rmtree(temp)
@@ -149,7 +205,16 @@ def main():
     restore.add_argument("--base-commit", required=True)
     restore.add_argument("--target-commit", required=True)
     restore.add_argument("--target-inventory-sha256", required=True)
+    stage = sub.add_parser("materialize-stage")
+    stage.add_argument("source", type=Path)
+    stage.add_argument("destination", type=Path)
+    stage.add_argument("--target-commit", required=True)
+    stage.add_argument("--target-inventory-sha256", required=True)
     a = p.parse_args()
+    if a.action == "materialize-stage":
+        materialize_stage(a.source, a.destination, a.target_commit, a.target_inventory_sha256)
+        print("Verified POSIX staging payload created; not activated.")
+        return
     if a.action == "create":
         report = create(a.base, a.target, a.output)
     else:

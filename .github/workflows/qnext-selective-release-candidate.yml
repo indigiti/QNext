@@ -1,0 +1,94 @@
+name: QNext Selective Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_run:
+        description: Successful QNext release run ID for exact base
+        required: true
+        type: string
+      target_run:
+        description: Successful QNext release run ID for exact target
+        required: true
+        type: string
+      base_commit:
+        description: Approved full base SHA
+        required: true
+        type: string
+      target_commit:
+        description: Approved full target SHA
+        required: true
+        type: string
+      target_inventory_sha256:
+        description: Independently approved target release-inventory SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify both release workflow identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_RUN: ${{ inputs.base_run }}
+          TARGET_RUN: ${{ inputs.target_run }}
+          BASE_SHA: ${{ inputs.base_commit }}
+          TARGET_SHA: ${{ inputs.target_commit }}
+          TARGET_INVENTORY: ${{ inputs.target_inventory_sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$BASE_RUN" =~ ^[0-9]+$ && "$TARGET_RUN" =~ ^[0-9]+$ ]]
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$TARGET_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$TARGET_INVENTORY" =~ ^[a-f0-9]{64}$ ]]
+          for lane in BASE TARGET; do
+            run_var="${lane}_RUN"
+            sha_var="${lane}_SHA"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/${!run_var}" |
+              jq -e --arg sha "${!sha_var}" '.status == "completed" and .conclusion == "success" and .head_sha == $sha and .path == ".github/workflows/qnext-release.yml" and .head_branch == "main"'
+          done
+      - uses: actions/download-artifact@v4
+        with:
+          name: digiops-release
+          path: base-release
+          run-id: ${{ inputs.base_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: digiops-release
+          path: target-release
+          run-id: ${{ inputs.target_run }}
+          github-token: ${{ github.token }}
+      - name: Verify exact delta reconstruction and POSIX staging
+        env:
+          BASE_SHA: ${{ inputs.base_commit }}
+          TARGET_SHA: ${{ inputs.target_commit }}
+          TARGET_INVENTORY: ${{ inputs.target_inventory_sha256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p candidate private-fixture
+          python3 scripts/release/release_delta.py create base-release target-release candidate/qnext-delta.zip > candidate/report.json
+          python3 scripts/release/release_delta.py reconstruct base-release candidate/qnext-delta.zip reconstructed \
+            --base-commit "$BASE_SHA" --target-commit "$TARGET_SHA" --target-inventory-sha256 "$TARGET_INVENTORY"
+          python3 scripts/release/release_inventory.py verify reconstructed
+          python3 scripts/release/performance_gate.py reconstructed
+          python3 scripts/release/release_delta.py materialize-stage reconstructed posix-payload \
+            --target-commit "$TARGET_SHA" --target-inventory-sha256 "$TARGET_INVENTORY"
+          bash deploy/qnext-stage-release posix-payload private-fixture "$TARGET_SHA"
+          test ! -e private-fixture/current
+          sha256sum candidate/qnext-delta.zip > candidate/qnext-delta.zip.sha256
+          cat candidate/report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qnext-selective-release-candidate
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 14
