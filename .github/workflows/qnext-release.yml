@@ -336,7 +336,7 @@ jobs:
 
           # Validation above may create bytecode; ship source only.
           find release -type d -name __pycache__ -prune -exec rm -rf {} +
-          find release -type f \\( -name '*.pyc' -o -name '*.pyo' \\) -delete
+          find release -type f -name '*.py[co]' -delete
           python3 scripts/release/release_inventory.py create release
           python3 scripts/release/release_inventory.py verify release
           python3 -m unittest discover -s scripts/release -p 'test_*.py' -v
