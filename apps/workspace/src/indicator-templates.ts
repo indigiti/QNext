@@ -1,5 +1,5 @@
 import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
-import type { ChartState, VelaWorkspace, WorkspaceState } from '@luxalgo/vela/workspace';
+import type { ChartCell, ChartState, VelaWorkspace, WorkspaceState } from '@luxalgo/vela/workspace';
 
 export const INDICATOR_TEMPLATES_STORAGE_KEY = 'qnext.indicator-templates.v1';
 const STORAGE_VERSION = 1;
@@ -144,6 +144,7 @@ export function writeIndicatorTemplates(
 ): boolean {
   try {
     const safe = sanitizeIndicatorTemplates({ version: STORAGE_VERSION, templates });
+    if (safe.length !== templates.length) return false;
     storage.setItem(INDICATOR_TEMPLATES_STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, templates: safe }));
     return true;
   } catch {
@@ -179,6 +180,44 @@ export function applyIndicatorTemplateToState(
     ? { ...chart, indicators: cloneJson(template.indicators) }
     : chart);
   return next;
+}
+
+/** The Vela workspace ledger deliberately omits default-valued inputs. For a named
+ * template, freeze the values currently stored by each live handle, including false/0.
+ * Manifest identity comes from the shell rather than from the script's display title. */
+export function captureLiveIndicatorSnapshot(cell: Pick<ChartCell, 'instances' | 'chart'>, expected: IndicatorSnapshot): IndicatorSnapshot {
+  const manifest = cell.instances.filter(instance => !instance.external);
+  const natives = cell.chart.indicators().filter(handle => handle.nativeType !== undefined);
+  if (cell.instances.some(instance => instance.external) ||
+      manifest.length !== expected.manifest.length || natives.length !== expected.natives.length ||
+      manifest.some(instance => !instance.handle)) {
+    throw new Error('Indicators are loading or contain an unsupported external study.');
+  }
+  const snapshot = sanitizeIndicatorSnapshot({
+    manifest: manifest.map(instance => ({
+      name: instance.entry.name,
+      inputs: instance.handle!.inputValues(),
+      props: instance.handle!.propValues(),
+      hidden: !instance.handle!.visible,
+    })),
+    natives: natives.map(handle => ({
+      type: handle.nativeType,
+      inputs: handle.inputValues(),
+      hidden: !handle.visible,
+    })),
+  });
+  if (!snapshot) throw new Error('Indicator settings exceed the supported template format.');
+  return snapshot;
+}
+
+/** Fail before replacing any indicator if the current picker cannot resolve a study. */
+export function unavailableTemplateIndicators(snapshot: IndicatorSnapshot, library: ReturnType<ChartCell['libraryRows']>): string[] {
+  const scripts = new Set(library.filter(row => !row.native).map(row => row.name));
+  const natives = new Set(library.filter(row => row.native).map(row => row.nativeType));
+  return [...new Set([
+    ...snapshot.manifest.map(item => typeof item === 'string' ? item : item.name).filter(name => !scripts.has(name)),
+    ...snapshot.natives.map(item => typeof item === 'string' ? item : item.type).filter(type => !natives.has(type)),
+  ])];
 }
 
 function browserStorage(doc: Document): Storage | null {
@@ -221,7 +260,9 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
   }
 
   const doc = ctx.host.ownerDocument;
-  doc.getElementById('qnext-indicator-template-dialog')?.remove();
+  const previous = doc.getElementById('qnext-indicator-template-dialog') as HTMLDialogElement | null;
+  if (previous?.open) previous.close();
+  previous?.remove();
 
   const dialog = doc.createElement('dialog');
   dialog.id = 'qnext-indicator-template-dialog';
@@ -262,7 +303,10 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
   list.className = 'qnext-indicator-template-list';
   list.setAttribute('aria-live', 'polite');
 
-  panel.append(header, description, saveRow, listHeading, list);
+  const feedback = doc.createElement('p');
+  feedback.className = 'qnext-indicator-template-feedback';
+  feedback.setAttribute('role', 'status');
+  panel.append(header, description, saveRow, feedback, listHeading, list);
   dialog.append(panel);
   doc.body.append(dialog);
 
@@ -271,6 +315,11 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
   const persist = (templates: readonly IndicatorTemplate[]): boolean =>
     storage ? writeIndicatorTemplates(storage, templates) : false;
 
+  const report = (message: string, kind: 'info' | 'success' | 'error' = 'info'): void => {
+    feedback.textContent = message;
+    feedback.dataset.kind = kind;
+    ctx.toast(message, kind);
+  };
   const renderList = (): void => {
     list.replaceChildren();
     const templates = load().sort(templateSort);
@@ -301,15 +350,9 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
       const actions = doc.createElement('div');
       actions.className = 'qnext-indicator-template-actions';
       const applyButton = makeButton(doc, 'Apply', 'qnext-template-primary-button');
-      applyButton.addEventListener('click', () => applyTemplate(template, 'active'));
+      applyButton.addEventListener('click', () => applyTemplate(template));
       actions.append(applyButton);
 
-      const currentState = getWorkspace()?.getState();
-      if ((currentState?.charts.length ?? 0) > 1) {
-        const applyAllButton = makeButton(doc, 'All charts', 'qnext-template-secondary-button');
-        applyAllButton.addEventListener('click', () => applyTemplate(template, 'all'));
-        actions.append(applyAllButton);
-      }
 
       const favoriteButton = makeButton(
         doc,
@@ -323,7 +366,7 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
           ? { ...item, favorite: !item.favorite }
           : item);
         if (!persist(next)) {
-          ctx.toast('Could not update the template in browser storage.', 'error');
+          report('Could not update the template in browser storage.', 'error');
           return;
         }
         renderList();
@@ -334,19 +377,19 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
         const nextName = doc.defaultView?.prompt('Rename indicator template', template.name)?.trim();
         if (!nextName) return;
         if (nextName.length > MAX_NAME_LENGTH) {
-          ctx.toast('Template names must be 64 characters or fewer.', 'error');
+          report('Template names must be 64 characters or fewer.', 'error');
           return;
         }
         const current = load();
         if (current.some((item) => item.id !== template.id && item.name.toLowerCase() === nextName.toLowerCase())) {
-          ctx.toast('A template with that name already exists.', 'error');
+          report('A template with that name already exists.', 'error');
           return;
         }
         const next = current.map((item) => item.id === template.id
           ? { ...item, name: nextName, updatedAt: Date.now() }
           : item);
         if (!persist(next)) {
-          ctx.toast('Could not rename the template in browser storage.', 'error');
+          report('Could not rename the template in browser storage.', 'error');
           return;
         }
         renderList();
@@ -357,59 +400,102 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
         const confirmed = doc.defaultView?.confirm('Delete the "' + template.name + '" indicator template?') ?? false;
         if (!confirmed) return;
         if (!persist(load().filter((item) => item.id !== template.id))) {
-          ctx.toast('Could not delete the template from browser storage.', 'error');
+          report('Could not delete the template from browser storage.', 'error');
           return;
         }
         renderList();
       });
 
-      actions.append(favoriteButton, renameButton, deleteButton);
+      const duplicateButton = makeButton(doc, 'Duplicate', 'qnext-template-secondary-button');
+      duplicateButton.addEventListener('click', () => {
+        const current = load();
+        const name = doc.defaultView?.prompt('Name the copied template', (template.name + ' copy').slice(0, MAX_NAME_LENGTH))?.trim();
+        if (!name) return;
+        if (name.length > MAX_NAME_LENGTH || current.length >= MAX_TEMPLATES ||
+            current.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+          report('Use a unique name of up to 64 characters; maximum 100 templates.', 'error');
+          return;
+        }
+        const copy: IndicatorTemplate = {
+          id: newTemplateId(doc), name, indicators: cloneJson(template.indicators),
+          updatedAt: Date.now(), favorite: false,
+        };
+        if (!persist([copy, ...current])) {
+          report('Could not duplicate the template.', 'error');
+          return;
+        }
+        renderList();
+      });
+      actions.append(favoriteButton, renameButton, duplicateButton, deleteButton);
       row.append(details, actions);
       list.append(row);
     }
   };
 
-  const applyTemplate = (template: IndicatorTemplate, scope: IndicatorTemplateScope): void => {
+  const applyTemplate = (template: IndicatorTemplate): void => {
     const currentWorkspace = getWorkspace();
     if (!currentWorkspace) {
-      ctx.toast('The chart workspace is no longer available.', 'error');
+      report('The chart workspace is no longer available.', 'error');
       return;
     }
     try {
-      const state = currentWorkspace.getState();
-      currentWorkspace.applyState(applyIndicatorTemplateToState(state, template, scope));
+      const cell = currentWorkspace.active;
+      const state = activeChart(currentWorkspace.getState());
+      if (!state || state.id !== cell.id) throw new Error('Active chart changed; try again.');
+      if (cell.instances.some(instance => instance.external)) throw new Error('Remove external studies before replacing indicators.');
+      const missing = unavailableTemplateIndicators(template.indicators, cell.libraryRows());
+      if (missing.length) throw new Error('Unavailable indicators: ' + missing.join(', '));
+      // Rehydrate ONLY the active cell, without reapplying renderer or drawing state.
+      // Preserve the requested market/session and extension state; the Vela ledger
+      // replaces manifest instances and converges native instances without a new chart.
+      cell.rehydrate({
+        symbol: state.symbol, provider: state.provider, timeframe: state.timeframe,
+        session: state.session, bars: state.bars, ext: state.ext,
+        indicators: cloneJson(template.indicators),
+      });
+      ctx.stateChanged();
       const next = load().map((item) => item.id === template.id
         ? { ...item, lastUsedAt: Date.now() }
         : item);
       if (storage) persist(next);
-      ctx.toast(scope === 'all' ? 'Template applied to all charts.' : 'Indicator template applied.', 'success');
       dialog.close();
-    } catch {
-      ctx.toast('Could not apply the indicator template. The current chart was left unchanged.', 'error');
+      ctx.toast('Template loaded; indicators are recalculating.', 'info');
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'Could not load the template.', 'error');
     }
   };
 
   const saveCurrent = (): void => {
     const name = nameInput.value.trim();
     if (!name) {
-      ctx.toast('Enter a name for this indicator template.', 'error');
+      report('Enter a name for this indicator template.', 'error');
       nameInput.focus();
       return;
     }
 
     const state = getWorkspace()?.getState();
     if (!state) {
-      ctx.toast('The chart workspace is no longer available.', 'error');
+      report('The chart workspace is no longer available.', 'error');
       return;
     }
-    const indicators = activeChartIndicatorSnapshot(state);
+    let indicators: IndicatorSnapshot;
+    try {
+      indicators = captureLiveIndicatorSnapshot(getWorkspace()!.active, activeChartIndicatorSnapshot(state));
+    } catch (error) {
+      report(error instanceof Error ? error.message : 'Could not capture indicator settings.', 'error');
+      return;
+    }
     if (indicatorCount(indicators) === 0) {
-      ctx.toast('Add at least one indicator before saving a template.', 'error');
+      report('Add at least one indicator before saving a template.', 'error');
       return;
     }
 
     const current = load();
     const existing = current.find((item) => item.name.toLowerCase() === name.toLowerCase());
+    if (!existing && current.length >= MAX_TEMPLATES) {
+      report('Template limit reached. Delete a template before adding another.', 'error');
+      return;
+    }
     if (existing) {
       const confirmed = doc.defaultView?.confirm('Replace the saved "' + existing.name + '" template with the current indicators and settings?') ?? false;
       if (!confirmed) return;
@@ -424,11 +510,11 @@ function showIndicatorTemplates(ctx: Parameters<Parameters<typeof registerWidget
     };
     const next = [template, ...current.filter((item) => item.id !== template.id)];
     if (!persist(next)) {
-      ctx.toast('Could not save the template. Check browser storage permissions.', 'error');
+      report('Could not save the template. Check browser storage permissions.', 'error');
       return;
     }
     nameInput.value = '';
-    ctx.toast('Indicator template saved with its current settings.', 'success');
+    report('Indicator template saved with its current settings.', 'success');
     renderList();
   };
 
