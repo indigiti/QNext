@@ -213,6 +213,14 @@ jobs:
           mv -f "$runtime_root/bin/replacement" "$runtime_root/bin/$addressed"
           /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
           test "$(cat "$runtime_root/run/market-core.pid")" = "$same_pid"
+          # An independent healthy collector must survive a Market Core-only update.
+          cat > "$runtime_root/collector-stub.c" <<'C'
+          #include <unistd.h>
+          int main(void) { sleep(120); return 0; }
+          C
+          cc -O2 -o "$runtime_root/bin/qnext-data-collector" "$runtime_root/collector-stub.c"
+          UPSTOX_ACCESS_TOKEN=fixture /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
+          collector_pid="$(cat "$runtime_root/run/data-collector.pid")"
           # Different executable content must still replace the running process.
           cp build/qnext-market-core "$runtime_root/bin/changed"
           printf changed >> "$runtime_root/bin/changed"
@@ -220,8 +228,10 @@ jobs:
           chmod 0750 "$runtime_root/bin/changed"
           mv "$runtime_root/bin/changed" "$runtime_root/bin/qnext-market-core-$changed_digest"
           printf '%s\n' "qnext-market-core-$changed_digest" > "$runtime_root/bin/qnext-market-core.current"
-          /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
+          UPSTOX_ACCESS_TOKEN=fixture /bin/bash "$runtime_root/deploy/qnext-ops-user" reconcile | grep -qx active
           test "$(cat "$runtime_root/run/market-core.pid")" != "$same_pid"
+          test "$(cat "$runtime_root/run/data-collector.pid")" = "$collector_pid"
+          kill -0 "$collector_pid"
 
           /bin/bash "$runtime_root/deploy/qnext-ops-user" stop | grep -qx stopped
           rm -rf "$runtime_root"

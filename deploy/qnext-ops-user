@@ -207,7 +207,8 @@ binary_current() {
   running_hash="$(sha256sum "/proc/$pid/exe" 2>/dev/null | cut -d ' ' -f1 || true)"
   deployed_hash="$(sha256sum "$binary" 2>/dev/null | cut -d ' ' -f1 || true)"
   [[ "$running_hash" == "$digest" && "$deployed_hash" == "$digest" ]] || return 1
-  printf '%s\n' "$key" > "$PRIVATE_ROOT/run/$label.binary-identity"
+  printf '%s\n' "$key" > "$PRIVATE_ROOT/run/$label.binary-identity" || true
+  return 0
 }
 runtime_binary_current() {
   binary_current "$(read_pid || true)" "$BINARY" market-core
@@ -335,7 +336,7 @@ start_service() {
   if is_running; then
     if ! runtime_binary_current; then
       echo "QNext Market Core binary changed after deployment; restarting runtime" >>"$LOG_FILE"
-      stop_service >/dev/null || true
+      stop_market >/dev/null || true
     elif market_healthy; then
       if ! start_collector; then
         echo "QNext Data Collector is unavailable; Market Core remains active" >>"$COLLECTOR_LOG_FILE"
@@ -344,7 +345,7 @@ start_service() {
       return 0
     else
       echo "QNext Market Core process exists but is not serving $MARKET_URL; replacing stale runtime" >>"$LOG_FILE"
-      stop_service >/dev/null || true
+      stop_market >/dev/null || true
     fi
   fi
 
@@ -415,7 +416,10 @@ stop_collector() {
 
 stop_service() {
   stop_collector >/dev/null || true
+  stop_market
+}
 
+stop_market() {
   if ! is_running; then
     rm -f "$PID_FILE"
     echo "stopped"
