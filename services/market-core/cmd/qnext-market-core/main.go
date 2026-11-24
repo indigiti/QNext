@@ -25,6 +25,7 @@ import (
 	"github.com/indigiti/QNext/services/market-core/internal/marketconfig"
 	"github.com/indigiti/QNext/services/market-core/internal/observability"
 	"github.com/indigiti/QNext/services/market-core/internal/pipeline"
+	"github.com/indigiti/QNext/services/market-core/internal/provider/dhan"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/okx"
 	"github.com/indigiti/QNext/services/market-core/internal/provider/upstox"
 	"github.com/indigiti/QNext/services/market-core/internal/resilience"
@@ -257,17 +258,35 @@ func main() {
 		log.Printf("QNext read-only live integrity monitor enabled (raw capture requires QNEXT_RAW_CAPTURE=1)")
 	}
 
+	// Feed targets are independent of the chart catalog. A requested feed
+	// must pass discovery and its own session-aware freshness gate.
+	feedTargets := []independentFeedTarget{
+		{ID: okx.InstrumentID, CalendarID: "OKX_CRYPTO_24_7", Requested: okxRequested || okxConfigError != "", Active: okxGold != nil},
+		{ID: okx.SwapInstrumentID, CalendarID: "OKX_CRYPTO_24_7", Requested: swapRequested || swapConfigError != "", Active: okxSwap != nil},
+	}
+	if config != nil {
+		for _, market := range config.EffectiveMarkets() {
+			feedTargets = append(feedTargets, independentFeedTarget{
+				ID: market.Underlying.InstrumentID, CalendarID: market.CalendarID,
+				Requested: true, Active: true,
+			})
+		}
+	}
+
 	handler := httpapi.New(store, httpapi.Options{
 		Version:   version,
 		Commit:    commit,
 		StartedAt: started,
 		Readiness: func() (bool, []string) {
 			persistOK, persistReasons := store.PersistenceReadiness()
-			return evaluateMarketReadiness(
-				time.Now().UTC(), started, config != nil, ctx.Err() != nil,
-				calendars, feedTracker.MostRecentProcessedMS(),
+			now := time.Now().UTC()
+			_, reasons := evaluateMarketReadiness(
+				now, started, config != nil, ctx.Err() != nil,
+				calendars, feedTracker.MostRecentProcessedMS(upstox.ProviderName, dhan.ProviderName),
 				persistOK, persistReasons,
 			)
+			reasons = append(reasons, independentFeedReadiness(now, started, calendars, feedTargets, feedTracker.InstrumentProcessedMS)...)
+			return len(reasons) == 0, reasons
 		},
 		StreamHandler:   stream.NewWebSocketHandler(broker),
 		ChartTimeframes: chartTimeframes,
