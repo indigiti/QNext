@@ -20,7 +20,7 @@ describe('Vela 0.10.14 / chart stack upgrade safety', () => {
     expect(workspaceSource).toContain(
       "'actions', 'alerts', 'qnext.alerts.toggle', 'qnext.screen-awake.toggle', 'qnext.zoom.open', 'panels', 'screenshot', 'fullscreen'",
     );
-    expect(workspaceSource).toContain("'symbol', 'timeframes', 'style', 'indicators', 'undo-redo'");
+    expect(workspaceSource).toContain("'symbol', 'timeframes', 'style', 'indicators', 'qnext.indicator.templates', 'undo-redo'");
     expect(workspaceSource).toContain('installVelaPanHistory(workspace)');
     expect(workspaceSource).toContain('persist: \'qnext-workspace-v2\'');
   });
