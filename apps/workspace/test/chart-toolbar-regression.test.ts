@@ -7,7 +7,12 @@ import { describe, expect, it } from 'vitest';
 // Browser pointer tests remain part of staging smoke, because Vitest is DOM-free here.
 describe('public chart toolbar integration', () => {
   it('keeps the standard Vela timeframe and candle-style entry points', () => {
-    expect(workspaceSource).toContain("'symbol', 'timeframes', 'style', 'indicators', 'undo-redo'");
+    expect(workspaceSource).toContain("'symbol', 'timeframes', 'style', 'indicators', 'qnext.indicator.templates', 'undo-redo'");
+  });
+
+  it('registers the template action before creating Vela and includes its stylesheet', () => {
+    expect(workspaceSource).toContain("import './indicator-templates.css'");
+    expect(workspaceSource.indexOf('registerIndicatorTemplates(() => workspace)')).toBeLessThan(workspaceSource.indexOf('new VelaWorkspace('));
   });
 
   it('places chart alert On/Off next to the native Alerts bell, ahead of Screen Awake', () => {
