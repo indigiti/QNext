@@ -24,7 +24,7 @@ func registerOKXGold(registry *symbol.Registry, contract okx.Contract) error {
 	}
 	if err := registry.Register(symbol.Instrument{
 		ID: okx.InstrumentID, Symbol: "XAUUSD-XPERP", Name: "OKX Gold/USD X-Perpetual",
-		AssetClass: "FUTURES", Exchange: "OKX", Currency: "USD", Timezone: "UTC",
+		AssetClass: "FUTURES", MarketCategory: "Commodities", ProductType: "perpetual", DataMode: "stream", Exchange: "OKX", Currency: "USD", Timezone: "UTC",
 		CalendarID: "OKX_CRYPTO_24_7", Visible: true,
 		Aliases: []string{"XAUUSD", "OKX GOLD", "GOLD XPERP"},
 	}); err != nil {
@@ -159,7 +159,7 @@ func registerOKXSwap(registry *symbol.Registry, contract okx.Contract) error {
 	if err := registry.Register(symbol.Instrument{
 		ID: okx.SwapInstrumentID, Symbol: "XAU-USDT-SWAP",
 		Name:       "OKX Gold/USDT Perpetual Swap",
-		AssetClass: "FUTURES", Exchange: "OKX", Currency: "USDT", Timezone: "UTC",
+		AssetClass: "FUTURES", MarketCategory: "Commodities", ProductType: "perpetual", DataMode: "stream", Exchange: "OKX", Currency: "USDT", Timezone: "UTC",
 		CalendarID: "OKX_CRYPTO_24_7", Visible: true,
 		Aliases: []string{"XAUUSDT-SWAP", "OKX GOLD USDT"},
 	}); err != nil {

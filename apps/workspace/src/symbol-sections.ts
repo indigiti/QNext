@@ -45,7 +45,7 @@ export type SymbolWithSection = {
  * remain in Core. This does not expand broker subscription or storage scope.
  */
 export function symbolSection(symbol: Pick<SymbolWithSection, 'ticker' | 'prefix' | 'type' | 'synthetic'>): SymbolSection {
-  if (symbol.prefix.trim().toUpperCase() === 'OKX') return 'okx_gold';
+  if (symbol.prefix.trim().toUpperCase() === 'OKX' && ['XAUUSD-XPERP', 'XAU-USDT-SWAP'].includes(symbol.ticker.trim().toUpperCase())) return 'okx_gold';
   const ticker = symbol.ticker.trim().toUpperCase();
   if (coreOrder.has(ticker)) return 'core';
   const type = symbol.type.trim().toLowerCase();

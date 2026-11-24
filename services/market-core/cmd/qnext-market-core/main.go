@@ -540,6 +540,7 @@ func buildRegistry(config *marketconfig.Config) (*symbol.Registry, error) {
 				Symbol:     strings.ToUpper(strings.TrimSpace(entry.Symbol)),
 				Name:       entry.Name,
 				AssetClass: assetClass,
+				DataMode: "historical_1m",
 				Exchange:   "NSE", Currency: "INR", Timezone: "Asia/Kolkata",
 				CalendarID: "NSE_EQ", Visible: true,
 			}); err != nil {

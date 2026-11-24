@@ -1,3 +1,4 @@
+import { normalizeCatalog, resolveCatalogInstrument, type CatalogInstrument } from './symbol-catalog';
 import { liveWSSDispatchLatency } from './live-latency';
 
 import {
@@ -51,17 +52,7 @@ export interface QNextTransportSnapshot {
   polling_streams: number;
 }
 
-interface QNextSymbol {
-  instrument_id: string;
-  ticker: string;
-  description: string;
-  type: string;
-  prefix: string;
-  currency: string;
-  timezone: string;
-  calendar_id: string;
-  synthetic: boolean;
-}
+type QNextSymbol = CatalogInstrument;
 
 interface SymbolsPayload {
   symbols: QNextSymbol[];
@@ -153,6 +144,10 @@ export class QNextProvider {
 
   async resolveInstrumentID(ticker: string): Promise<string> {
     return (await this.resolveInstrument(ticker)).instrument_id;
+  }
+
+  async listCatalog() {
+    return normalizeCatalog(await this.loadSymbols());
   }
 
   async listSymbols() {
@@ -778,30 +773,7 @@ export class QNextProvider {
   }
 
   private async resolveInstrument(ticker: string): Promise<QNextSymbol> {
-    const symbols = await this.loadSymbols();
-    const requested = ticker.trim().toUpperCase();
-
-    const direct = symbols.find(
-      (symbol) => symbol.instrument_id.toUpperCase() === requested,
-    );
-    if (direct) {
-      return direct;
-    }
-
-    const separator = requested.indexOf(':');
-    const prefix = separator >= 0 ? requested.slice(0, separator) : '';
-    const bareTicker = separator >= 0 ? requested.slice(separator + 1) : requested;
-
-    const resolved = symbols.find((symbol) => {
-      if (symbol.ticker.toUpperCase() !== bareTicker) {
-        return false;
-      }
-      return !prefix || symbol.prefix.toUpperCase() === prefix;
-    });
-    if (!resolved) {
-      throw new Error(`QNext symbol is not registered: ${ticker}`);
-    }
-    return resolved;
+    return resolveCatalogInstrument(await this.loadSymbols(), ticker);
   }
 }
 

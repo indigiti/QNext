@@ -18,6 +18,9 @@ type Instrument struct {
 	Timezone   string   `json:"timezone"`
 	CalendarID string   `json:"calendar_id,omitempty"`
 	Aliases    []string `json:"aliases,omitempty"`
+	MarketCategory string `json:"market_category,omitempty"`
+	ProductType string `json:"product_type,omitempty"`
+	DataMode string `json:"data_mode,omitempty"`
 	Synthetic  bool     `json:"synthetic"`
 	Visible    bool     `json:"visible"`
 }
@@ -229,6 +232,9 @@ func syntheticPlusInstruments(instruments map[string]Instrument) []Instrument {
 				market + " SYN PLUS",
 				"SYNTHETIC+ " + market,
 			},
+			MarketCategory: base.MarketCategory,
+			ProductType: base.ProductType,
+			DataMode: base.DataMode,
 			Synthetic: true,
 			Visible:   true,
 		})

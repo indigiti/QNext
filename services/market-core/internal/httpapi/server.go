@@ -76,6 +76,10 @@ type symbolResponse struct {
 	Currency     string `json:"currency"`
 	Timezone     string `json:"timezone"`
 	CalendarID   string `json:"calendar_id"`
+	MarketCategory string `json:"market_category,omitempty"`
+	ProductType string `json:"product_type,omitempty"`
+	DataMode string `json:"data_mode,omitempty"`
+	Aliases []string `json:"aliases,omitempty"`
 	Synthetic    bool   `json:"synthetic"`
 }
 
@@ -446,6 +450,10 @@ func (s *Server) symbols(w http.ResponseWriter, r *http.Request) {
 			Currency:     instrument.Currency,
 			Timezone:     instrument.Timezone,
 			CalendarID:   instrument.CalendarID,
+			MarketCategory: instrument.MarketCategory,
+			ProductType: instrument.ProductType,
+			DataMode: instrument.DataMode,
+			Aliases: instrument.Aliases,
 			Synthetic:    instrument.Synthetic,
 		})
 	}
