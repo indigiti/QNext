@@ -94,5 +94,8 @@ func newDirectAdapters(client okx.Client) *directfeed.Registry {
 	}); err != nil {
 		panic(err)
 	}
+		if err := registerBitunixAdapter(r); err != nil {
+		panic(err)
+	}
 	return r
 }

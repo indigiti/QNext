@@ -134,7 +134,11 @@ func repairDirectFeed(ctx context.Context, binding directfeed.Binding, history *
 
 	// Keep source exchange final candles authoritative if an overlapping
 	// locally formed bar is subsequently emitted with a lower revision.
-	for _, tf := range []string{"1m", "5s"} {
+	timeframes := binding.HistoryTimeframes
+	if timeframes == nil {
+		timeframes = []string{"1m", "5s"}
+	}
+	for _, tf := range timeframes {
 		start := from
 		if tf == "5s" && to.Sub(start) > 5*time.Minute {
 			start = to.Add(-5 * time.Minute)
