@@ -325,7 +325,7 @@ expect(
 $chartState = $flatController->chartTimeframes();
 expect(
     ($chartState['enabled'] ?? []) === ['1m']
-    && ($chartState['candleEnabled'] ?? []) === ['1m'],
+    && ($chartState['candleEnabled'] ?? []) === ['5s', '1m'],
     'chart display should default to the candle-enabled subset'
 );
 try {
