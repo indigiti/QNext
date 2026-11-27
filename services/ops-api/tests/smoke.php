@@ -319,13 +319,13 @@ expect(
 
 $candleState = $flatController->candleTimeframes();
 expect(
-    ($candleState['enabled'] ?? []) === ['1m'],
+    ($candleState['enabled'] ?? []) === ['5s', '1m'],
     'candle formation should reflect configured timeframes'
 );
 $chartState = $flatController->chartTimeframes();
 expect(
     ($chartState['enabled'] ?? []) === ['1m']
-    && ($chartState['candleEnabled'] ?? []) === ['1m'],
+    && ($chartState['candleEnabled'] ?? []) === ['5s', '1m'],
     'chart display should default to the candle-enabled subset'
 );
 try {
@@ -335,18 +335,18 @@ try {
 }
 $savedCandles = $flatController->saveCandleTimeframes(['enabled' => ['15s', '1m']]);
 expect(
-    ($savedCandles['enabled'] ?? []) === ['15s', '1m'],
+    ($savedCandles['enabled'] ?? []) === ['5s', '15s', '1m'],
     'candle formation selection should save independently'
 );
-$savedChart = $flatController->saveChartTimeframes(['enabled' => ['15s']]);
+$savedChart = $flatController->saveChartTimeframes(['enabled' => ['5s', '15s']]);
 expect(
-    ($savedChart['enabled'] ?? []) === ['15s'],
+    ($savedChart['enabled'] ?? []) === ['5s', '15s'],
     'chart display selection should save independently'
 );
 $timeframeConfig = json_decode(file_get_contents($flatConfig->configPath()) ?: '{}', true);
 expect(
-    ($timeframeConfig['timeframes'] ?? []) === ['15s', '1m']
-    && ($timeframeConfig['chart_timeframes'] ?? []) === ['15s'],
+    ($timeframeConfig['timeframes'] ?? []) === ['5s', '15s', '1m']
+    && ($timeframeConfig['chart_timeframes'] ?? []) === ['5s', '15s'],
     'formation and chart display selections should persist separately'
 );
 
