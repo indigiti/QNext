@@ -178,7 +178,7 @@ async function bootstrapVela(timeframes: string[]) {
     await chart.setMarket({symbol:entry.instrument_id,timeframe:catalogTimeframe(entry,chart.market.timeframe ?? '1m')});
   });
   registerIcon('qnext-symbol-search','<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>');
-  registerWidgetAction({id:'qnext.symbol.search',target:'topbar',label:'Symbol Search',icon:'qnext-symbol-search',iconOnly:false,align:'left',order:0,run:search.open});
+  registerWidgetAction({id:'qnext.symbol.search',target:'topbar',label:'Symbol Search',icon:'qnext-symbol-search',iconOnly:true,align:'left',order:0,run:search.open});
   window.addEventListener('pagehide',search.dispose,{once:true});
   workspace = new VelaWorkspace('#app', {
     layout: false,

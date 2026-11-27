@@ -7,6 +7,10 @@ import { describe, expect, it } from 'vitest';
 // Guard the two workspace integration contracts that caused user-visible regressions.
 // Browser pointer tests remain part of staging smoke, because Vitest is DOM-free here.
 describe('public chart toolbar integration', () => {
+  it('renders Symbol Search as an icon-only action with its accessible label', () => {
+    expect(workspaceSource).toContain("label:'Symbol Search',icon:'qnext-symbol-search',iconOnly:true");
+  });
+
   it('keeps the standard Vela timeframe and candle-style entry points', () => {
     expect(workspaceSource).toContain("'symbol', 'timeframes', 'style', 'indicators', 'qnext.indicator.templates', 'undo-redo'");
   });
