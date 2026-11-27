@@ -67,6 +67,8 @@ interface BarsPayload {
   }>;
 }
 
+type BarsResponse = { ok: true; payload: BarsPayload } | { ok: false; status: number };
+
 interface CalendarPayload {
   calendar_id: string;
   version: string;
@@ -107,6 +109,8 @@ interface SharedBarSubscription {
   healing: boolean;
   polling: boolean;
   pollFailures: number;
+  pollGeneration: number;
+  pollRequest?: Promise<QNextBar[]>;
   lastPollSignature: string;
   pollTimer?: ReturnType<typeof setTimeout>;
 }
@@ -123,6 +127,8 @@ export class QNextProvider {
   private readonly onDeliveredBar?: QNextProviderOptions['onDeliveredBar'];
   private symbolsPromise?: Promise<QNextSymbol[]>;
   private catalogPromise?: Promise<ReturnType<typeof normalizeCatalog>>;
+  // In-flight only, scoped to this provider (and its fetch/auth context).
+  private readonly historyRequests = new Map<string, Promise<BarsResponse>>();
 
   private socket?: WebSocketLike;
   private socketConnected = false;
@@ -215,14 +221,12 @@ export class QNextProvider {
       ...(limit > 0 ? { limit: String(Math.min(limit, 5000)) } : {}),
     });
 
-    const response = await this.fetchImpl(
-      this.endpoint(`/api/v1/bars/?${query.toString()}`),
-    );
+    const response = await this.fetchBarsResponse(this.endpoint(`/api/v1/bars/?${query.toString()}`));
     if (!response.ok) {
       throw new Error(`QNext bars request failed: HTTP ${response.status}`);
     }
 
-    const payload = (await response.json()) as BarsPayload;
+    const payload = response.payload;
     const bars = normalizeBars(payload.bars ?? []);
     return limit > 0 && bars.length > limit ? bars.slice(-limit) : bars;
   }
@@ -248,14 +252,12 @@ export class QNextProvider {
       ...(limit > 0 ? { limit: String(Math.min(limit, 5000)) } : {}),
     });
 
-    const response = await this.fetchImpl(
-      this.endpoint(`/api/v1/bars/?${query.toString()}`),
-    );
+    const response = await this.fetchBarsResponse(this.endpoint(`/api/v1/bars/?${query.toString()}`));
     if (!response.ok) {
       throw new Error(`QNext canonical bars request failed: HTTP ${response.status}`);
     }
 
-    const payload = (await response.json()) as BarsPayload;
+    const payload = response.payload;
     const byTime = new Map<number, QNextCanonicalBar>();
     for (const raw of payload.bars ?? []) {
       const bar = normalizeCanonicalBar(raw);
@@ -271,6 +273,22 @@ export class QNextProvider {
     }
     const bars = [...byTime.values()].sort((left, right) => left.time - right.time);
     return limit > 0 && bars.length > limit ? bars.slice(-limit) : bars;
+  }
+
+  private fetchBarsResponse(url: string): Promise<BarsResponse> {
+    const pending = this.historyRequests.get(url);
+    if (pending) return pending;
+    // Defer fetch into the promise so even synchronous failures clear the
+    // entry. Each consumer normalizes its own bars; no mutable output is shared.
+    const request = Promise.resolve().then(async (): Promise<BarsResponse> => {
+      const response = await this.fetchImpl(url);
+      if (!response.ok) return { ok: false, status: response.status };
+      return { ok: true, payload: (await response.json()) as BarsPayload };
+    }).finally(() => {
+      this.historyRequests.delete(url);
+    });
+    this.historyRequests.set(url, request);
+    return request;
   }
 
   async getCalendar(
@@ -332,6 +350,7 @@ export class QNextProvider {
             healing: false,
             polling: false,
             pollFailures: 0,
+            pollGeneration: 0,
             lastPollSignature: '',
           };
           this.subscriptions.set(key, subscription);
@@ -589,7 +608,7 @@ export class QNextProvider {
       const snapshot = await this.getBars(subscription.ticker, subscription.timeframe, {
         limit: 500,
       });
-      if (!this.subscriptions.has(subscription.key)) {
+      if (this.subscriptions.get(subscription.key) !== subscription) {
         return;
       }
       for (const bar of snapshot) {
@@ -607,7 +626,7 @@ export class QNextProvider {
         this.freshSubscribe(subscription);
       }
     } catch (error) {
-      if (this.subscriptions.has(subscription.key)) {
+      if (this.subscriptions.get(subscription.key) === subscription) {
         console.error('QNext stream resync snapshot failed', error);
         this.startPolling(subscription);
       }
@@ -640,18 +659,37 @@ export class QNextProvider {
     }
     subscription.polling = true;
     subscription.pollFailures = 0;
+    subscription.lastPollSignature = '';
+    const generation = ++subscription.pollGeneration;
+    const active = () => subscription.polling &&
+      subscription.pollGeneration === generation &&
+      this.subscriptions.get(subscription.key) === subscription;
 
     const poll = async () => {
-      if (!subscription.polling || !this.subscriptions.has(subscription.key)) {
-        return;
-      }
+      if (!active()) return;
+      subscription.pollTimer = undefined;
       try {
+        // A quick WSS reconnect/disconnect can restart fallback while the old
+        // request is still pending. Wait for it, but never deliver its result.
+        const previous = subscription.pollRequest;
+        if (previous) {
+          try { await previous; } catch { /* obsolete generation */ }
+          if (!active()) return;
+        }
         const to = Date.now();
-        const bars = await this.getBars(subscription.ticker, subscription.timeframe, {
+        const request = this.getBars(subscription.ticker, subscription.timeframe, {
           from: to - livePollingLookbackMs(subscription.timeframe, 2),
           to,
           limit: 2,
         });
+        subscription.pollRequest = request;
+        let bars: QNextBar[];
+        try {
+          bars = await request;
+        } finally {
+          if (subscription.pollRequest === request) subscription.pollRequest = undefined;
+        }
+        if (!active()) return;
         subscription.pollFailures = 0;
         const latest = bars.at(-1);
         if (latest) {
@@ -662,22 +700,26 @@ export class QNextProvider {
             latest.low,
             latest.close,
             latest.volume ?? '',
+            latest.revision ?? '',
+            latest.volume_source ?? '',
+            latest.volume_status ?? '',
           ].join(':');
           if (signature !== subscription.lastPollSignature) {
             subscription.lastPollSignature = signature;
             this.deliver(subscription, latest);
           }
         }
-        if (this.socketConnected && subscription.needsSnapshot) {
+        if (active() && this.socketConnected && subscription.needsSnapshot) {
           void this.healAndSubscribe(subscription);
         }
       } catch (error) {
+        if (!active()) return;
         subscription.pollFailures += 1;
         if (subscription.pollFailures === 1 || subscription.pollFailures % 5 === 0) {
           console.error('QNext live polling failed', error);
         }
       } finally {
-        if (subscription.polling && this.subscriptions.has(subscription.key)) {
+        if (active()) {
           const retryDelay =
             subscription.pollFailures === 0
               ? this.pollIntervalMs
@@ -699,6 +741,7 @@ export class QNextProvider {
 
   private stopPolling(subscription: SharedBarSubscription): void {
     subscription.polling = false;
+    subscription.pollGeneration += 1;
     subscription.pollFailures = 0;
     if (subscription.pollTimer !== undefined) {
       clearTimeout(subscription.pollTimer);
