@@ -16,6 +16,7 @@ type rollupState struct {
 	minutes              map[int64]domain.Bar
 	count                int
 	finals               int
+	proxyMinutes         int
 	firstKey             int64
 	lastKey              int64
 	first                domain.Bar
@@ -74,15 +75,15 @@ func (r *rollupEngine) Apply(oneMinute domain.Bar, timeframe string) ([]domain.B
 
 	state.applyMinute(oneMinute)
 	forming := aggregateRollup(state, timeframe, r.version)
-	_, sessionClose := r.policy.InstrumentSessionBounds(oneMinute.InstrumentID, oneMinute.OpenTime)
-	// Persist the final higher-timeframe bar at exchange close; there is
-	// no next in-session minute to trigger ordinary bucket rollover.
-	if oneMinute.Final && !oneMinute.CloseTime.Before(sessionClose) &&
-		completeRollup(state) {
-		forming.Final = true
-		state.terminalFinalEmitted = true
-	} else {
-		forming.Final = false
+	// Session bounds are only needed for a complete, finalized source.
+	// Preserve exchange-close finalization without calendar work on forming updates.
+	forming.Final = false
+	if oneMinute.Final && completeRollup(state) {
+		_, sessionClose := r.policy.InstrumentSessionBounds(oneMinute.InstrumentID, oneMinute.OpenTime)
+		if !oneMinute.CloseTime.Before(sessionClose) {
+			forming.Final = true
+			state.terminalFinalEmitted = true
+		}
 	}
 	updates = append(updates, forming)
 	return updates, nil
@@ -107,6 +108,9 @@ func (s *rollupState) applyMinute(bar domain.Bar) {
 	if !exists {
 		s.minutes[key] = bar
 		s.count++
+		if bar.VolumeSource == "FUTURES_PROXY" {
+			s.proxyMinutes++
+		}
 		if bar.Final {
 			s.finals++
 		}
@@ -154,6 +158,12 @@ func (s *rollupState) applyMinute(bar domain.Bar) {
 			(qualityRank(bar.Quality) < qualityRank(previous.Quality) && previous.Quality == s.quality)
 
 	s.minutes[key] = bar
+	if previous.VolumeSource == "FUTURES_PROXY" {
+		s.proxyMinutes--
+	}
+	if bar.VolumeSource == "FUTURES_PROXY" {
+		s.proxyMinutes++
+	}
 	if previous.Final != bar.Final {
 		if bar.Final {
 			s.finals++
@@ -267,11 +277,8 @@ func aggregateRollup(state *rollupState, timeframe, version string) domain.Bar {
 		return domain.Bar{}
 	}
 	volumeSource, volumeStatus := "", "UNKNOWN"
-	for _, child := range state.minutes {
-		if child.VolumeSource == "FUTURES_PROXY" {
-			volumeSource, volumeStatus = "FUTURES_PROXY", "OBSERVED"
-			break
-		}
+	if state.proxyMinutes > 0 {
+		volumeSource, volumeStatus = "FUTURES_PROXY", "OBSERVED"
 	}
 	return domain.Bar{
 		InstrumentID:        state.first.InstrumentID,
@@ -297,15 +304,7 @@ func aggregateRollup(state *rollupState, timeframe, version string) domain.Bar {
 }
 
 func qualityRank(value domain.Quality) int {
-	rank := map[domain.Quality]int{
-		domain.QualityGood:      0,
-		domain.QualityRecovered: 1,
-		domain.QualityPartial:   2,
-		domain.QualityStale:     3,
-		domain.QualityDegraded:  4,
-		domain.QualityInvalid:   5,
-	}
-	return rank[value]
+	return domain.QualityRank(value)
 }
 
 func worseQuality(a, b domain.Quality) domain.Quality {

@@ -458,15 +458,7 @@ func tickCreationTime(tick domain.Tick) time.Time {
 }
 
 func worstQuality(a, b domain.Quality) domain.Quality {
-	rank := map[domain.Quality]int{
-		domain.QualityGood:      0,
-		domain.QualityRecovered: 1,
-		domain.QualityPartial:   2,
-		domain.QualityStale:     3,
-		domain.QualityDegraded:  4,
-		domain.QualityInvalid:   5,
-	}
-	if rank[b] > rank[a] {
+	if domain.QualityRank(b) > domain.QualityRank(a) {
 		return b
 	}
 	return a
