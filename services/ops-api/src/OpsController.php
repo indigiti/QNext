@@ -314,14 +314,12 @@ final class OpsController
         if (is_array($configured) && $configured !== []) {
             $enabled = $this->orderedSubset($available, $configured);
         }
-        if (!in_array('1m', $enabled, true)) {
-            $enabled[] = '1m';
-        }
+        $enabled = $this->orderedSubset($available, array_values(array_unique(array_merge($enabled, ['5s', '1m']))));
 
         return [
             'available' => $available,
             'enabled' => $enabled,
-            'protected' => ['1m'],
+            'protected' => ['5s', '1m'],
             'defaults' => $defaults,
         ];
     }
@@ -343,7 +341,8 @@ final class OpsController
             throw new RuntimeException('1m is protected and must remain enabled');
         }
 
-        $enabled = $this->orderedSubset($available, $requested);
+        // Canonical 5s is a locked-on formation source.
+        $enabled = $this->orderedSubset($available, array_values(array_unique(array_merge($requested, ['5s']))));
         $config = $this->getConfig();
         $config['timeframes'] = $enabled;
 
@@ -372,8 +371,8 @@ final class OpsController
 
         $candleConfigured = $config['timeframes'] ?? $defaults;
         $candleEnabled = is_array($candleConfigured) && $candleConfigured !== []
-            ? $this->orderedSubset($available, $candleConfigured)
-            : $defaults;
+            ? $this->orderedSubset($available, array_values(array_unique(array_merge($candleConfigured, ['5s']))))
+            : $this->orderedSubset($available, array_merge($defaults, ['5s']));
 
         $chartConfigured = $config['chart_timeframes'] ?? $defaults;
         $chartEnabled = is_array($chartConfigured) && $chartConfigured !== []
@@ -408,8 +407,8 @@ final class OpsController
         $config = $this->getConfig();
         $candleConfigured = $config['timeframes'] ?? $this->defaultTimeframes();
         $candleEnabled = is_array($candleConfigured)
-            ? $this->orderedSubset($available, $candleConfigured)
-            : $this->defaultTimeframes();
+            ? $this->orderedSubset($available, array_values(array_unique(array_merge($candleConfigured, ['5s']))))
+            : $this->orderedSubset($available, array_merge($this->defaultTimeframes(), ['5s']));
 
         foreach ($requested as $timeframe) {
             if (!in_array($timeframe, $candleEnabled, true)) {
@@ -424,6 +423,7 @@ final class OpsController
             throw new RuntimeException('at least one chart display timeframe must remain enabled');
         }
 
+        $config['timeframes'] = $this->orderedSubset($available, array_values(array_unique(array_merge($candleEnabled, ['5s']))));
         $config['chart_timeframes'] = $enabled;
         AtomicFile::writeJson($this->config->configPath(), $config);
 
@@ -436,7 +436,7 @@ final class OpsController
     private function availableTimeframes(): array
     {
         return [
-            '15s', '30s',
+            '5s', '15s', '30s',
             '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
             '1h', '2h', '3h', '4h',
             '1D', '1W', '1M',

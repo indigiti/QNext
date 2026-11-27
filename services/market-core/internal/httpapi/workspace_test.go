@@ -59,7 +59,7 @@ func TestWorkspaceSymbolsAndCalendarEndpoints(t *testing.T) {
 	handler := New(nil, Options{
 		Symbols:         registry,
 		Calendars:       marketcalendar.DefaultRegistry(),
-		ChartTimeframes: []string{"15s", "30s", "1m", "2m", "3m", "5m", "15m", "30m", "1h", "1D"},
+		ChartTimeframes: []string{"5s", "15s", "30s", "1m", "2m", "3m", "5m", "15m", "30m", "1h", "1D"},
 	})
 
 	symbolRequest := httptest.NewRequest(http.MethodGet, "/api/v1/symbols", nil)
@@ -92,7 +92,7 @@ func TestWorkspaceSymbolsAndCalendarEndpoints(t *testing.T) {
 	if err := json.Unmarshal(timeframeRecorder.Body.Bytes(), &timeframes); err != nil {
 		t.Fatal(err)
 	}
-	if len(timeframes.Timeframes) != 10 || timeframes.Timeframes[2] != "1m" || timeframes.Timeframes[9] != "1D" {
+	if len(timeframes.Timeframes) != 11 || timeframes.Timeframes[0] != "5s" || timeframes.Timeframes[3] != "1m" || timeframes.Timeframes[10] != "1D" {
 		t.Fatalf("unexpected enabled timeframes: %+v", timeframes.Timeframes)
 	}
 

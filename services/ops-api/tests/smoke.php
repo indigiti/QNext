@@ -319,7 +319,7 @@ expect(
 
 $candleState = $flatController->candleTimeframes();
 expect(
-    ($candleState['enabled'] ?? []) === ['1m'],
+    ($candleState['enabled'] ?? []) === ['5s', '1m'],
     'candle formation should reflect configured timeframes'
 );
 $chartState = $flatController->chartTimeframes();
