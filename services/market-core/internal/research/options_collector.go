@@ -63,6 +63,7 @@ type OptionsCollector struct {
 
 	spot       float64
 	state      map[string]OptionSnapshot
+	sortedKeys []string
 	buckets    map[time.Duration]time.Time
 	lastSource int64
 	closed     bool
@@ -121,15 +122,12 @@ func (c *OptionsCollector) ObserveState(update ResearchStateUpdate) error {
 	for key := range c.state {
 		if _, selected := update.Plan.Contracts[key]; !selected {
 			delete(c.state, key)
+			c.sortedKeys = nil
 		}
 	}
 
 	if update.SpotUpdated && update.Spot > 0 {
 		c.spot = update.Spot
-		for key, snapshot := range c.state {
-			snapshot.UnderlyingPrice = c.spot
-			c.state[key] = snapshot
-		}
 	}
 
 	for providerKey, entry := range update.Updates {
@@ -137,7 +135,10 @@ func (c *OptionsCollector) ObserveState(update ResearchStateUpdate) error {
 		if !selected {
 			continue
 		}
-		snapshot := c.state[providerKey]
+		snapshot, exists := c.state[providerKey]
+		if !exists {
+			c.sortedKeys = nil
+		}
 		snapshot.Schema = OptionSnapshotSchema
 		snapshot.Provider = upstox.ProviderName
 		snapshot.ProviderKey = providerKey
@@ -206,19 +207,26 @@ func (c *OptionsCollector) flush(interval time.Duration, snapshotAt time.Time) e
 	if len(c.state) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(c.state))
-	for key := range c.state {
-		keys = append(keys, key)
+	if c.sortedKeys == nil {
+		c.sortedKeys = make([]string, 0, len(c.state))
+		for key := range c.state {
+			c.sortedKeys = append(c.sortedKeys, key)
+		}
+		sort.Strings(c.sortedKeys)
 	}
-	sort.Strings(keys)
 
+	label := intervalLabel(interval)
+	atMS := snapshotAt.UnixMilli()
 	var buffer bytes.Buffer
 	encoder := json.NewEncoder(&buffer)
-	for _, key := range keys {
+	for _, key := range c.sortedKeys {
 		snapshot := c.state[key]
 		snapshot.Schema = OptionSnapshotSchema
-		snapshot.Interval = intervalLabel(interval)
-		snapshot.SnapshotAtMS = snapshotAt.UnixMilli()
+		snapshot.Interval = label
+		snapshot.SnapshotAtMS = atMS
+		// Spot is shared by all option snapshots in this bucket. Materialize
+		// it only when encoding instead of rewriting the chain on every tick.
+		snapshot.UnderlyingPrice = c.spot
 		if snapshot.SourceCurrentTSMS == 0 {
 			snapshot.SourceCurrentTSMS = c.lastSource
 		}
@@ -230,7 +238,7 @@ func (c *OptionsCollector) flush(interval time.Duration, snapshotAt time.Time) e
 	path := filepath.Join(
 		"research",
 		"options",
-		intervalLabel(interval),
+		label,
 		snapshotAt.Format("2006"),
 		snapshotAt.Format("01"),
 		snapshotAt.Format("2006-01-02")+".jsonl",

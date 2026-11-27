@@ -245,6 +245,9 @@ func (c *SynPlusCollector) evaluate(plan upstox.ResearchPlan, at time.Time, sour
 	}
 	sort.Float64s(strikes)
 	values := make([]float64, 0, len(strikes))
+	if len(strikes) > 0 {
+		snapshot.Candidates = make([]SynPlusCandidate, 0, len(strikes))
+	}
 
 	for _, strike := range strikes {
 		entry := pairs[strike]
@@ -287,13 +290,14 @@ func (c *SynPlusCollector) evaluate(plan upstox.ResearchPlan, at time.Time, sour
 		return snapshot
 	}
 
-	snapshot.Value = median(values)
+	// Values are private scratch storage. Sort in place and reuse it for MAD;
+	// candidate ordering and all arithmetic remain unchanged.
+	snapshot.Value = medianInPlace(values)
 	snapshot.BasisToSpot = snapshot.Value - snapshot.Spot
-	deviations := make([]float64, 0, len(values))
-	for _, value := range values {
-		deviations = append(deviations, math.Abs(value-snapshot.Value))
+	for i, value := range values {
+		values[i] = math.Abs(value - snapshot.Value)
 	}
-	snapshot.MedianAbsoluteDeviation = median(deviations)
+	snapshot.MedianAbsoluteDeviation = medianInPlace(values)
 	snapshot.Quality = "GOOD"
 	return snapshot
 }
@@ -333,13 +337,19 @@ func median(values []float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
-	copyValues := append([]float64(nil), values...)
-	sort.Float64s(copyValues)
-	mid := len(copyValues) / 2
-	if len(copyValues)%2 == 1 {
-		return copyValues[mid]
+	return medianInPlace(append([]float64(nil), values...))
+}
+
+func medianInPlace(values []float64) float64 {
+	if len(values) == 0 {
+		return 0
 	}
-	return (copyValues[mid-1] + copyValues[mid]) / 2
+	sort.Float64s(values)
+	mid := len(values) / 2
+	if len(values)%2 == 1 {
+		return values[mid]
+	}
+	return (values[mid-1] + values[mid]) / 2
 }
 
 func absDuration(value time.Duration) time.Duration {
