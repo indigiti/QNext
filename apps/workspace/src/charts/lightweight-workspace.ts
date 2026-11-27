@@ -51,6 +51,7 @@ export interface LightweightWorkspaceOptions {
   initialLayout?: LightweightLayout;
   syncCharts?: boolean;
   markerPollIntervalMs?: number;
+  onActiveMarketChange?: () => void;
 }
 
 export function buildLightweightPaneConfigs(
@@ -95,6 +96,7 @@ export class QNextLightweightWorkspace {
   private disposeAwakeControl?: () => void;
   private readonly markerClient: QNextPaperMarkerClient;
   private readonly markerPollIntervalMs: number;
+  private readonly onActiveMarketChange?: () => void;
   private readonly symbols: LightweightSymbol[];
   private readonly timeframes: string[];
   private readonly fallback: LightweightPaneConfig;
@@ -125,6 +127,7 @@ export class QNextLightweightWorkspace {
     this.screenAwake = options.screenAwake;
     this.markerClient = new QNextPaperMarkerClient({ apiBase: options.apiBase });
     this.markerPollIntervalMs = options.markerPollIntervalMs ?? 2_000;
+    this.onActiveMarketChange = options.onActiveMarketChange;
     // Consume the same real catalog as the search modal, with no parallel selector.
     this.symbols = options.symbols.filter(item => item.type !== 'root');
     for (const item of this.symbols) {
@@ -336,6 +339,7 @@ export class QNextLightweightWorkspace {
   }
 
   private async rebuildPane(index: number): Promise<void> {
+    this.onActiveMarketChange?.();
     const grid = this.grid;
     const oldChart = this.charts[index];
     const oldPane = this.paneElements[index];
@@ -398,7 +402,13 @@ export class QNextLightweightWorkspace {
     this.updateToolbarFromActivePane();
   }
 
+  activeMarket(): { symbol: string; timeframe: string } | undefined {
+    const config = this.paneConfigs[this.activePane];
+    return config ? { symbol: config.ticker, timeframe: config.timeframe } : undefined;
+  }
+
   private updateToolbarFromActivePane(): void {
+    this.onActiveMarketChange?.();
     const config = this.paneConfigs[this.activePane];
     if (!config) return;
     if (this.symbolSearch) this.symbolSearch.textContent = config.ticker + ' ▾';

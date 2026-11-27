@@ -15,6 +15,7 @@ export interface QNextProviderOptions {
   pollIntervalMs?: number;
   /** Optional passive observer; does not affect delivery or stream timing. */
   onDeliveredBar?: (ticker: string, timeframe: string, bar: QNextBar) => void;
+  onHistoryBar?: (ticker: string, timeframe: string, bar: QNextBar) => void;
 }
 
 export interface QNextRange {
@@ -125,6 +126,7 @@ export class QNextProvider {
   private readonly reconnectDelayMs: number;
   private readonly pollIntervalMs: number;
   private readonly onDeliveredBar?: QNextProviderOptions['onDeliveredBar'];
+  private readonly onHistoryBar?: QNextProviderOptions['onHistoryBar'];
   private symbolsPromise?: Promise<QNextSymbol[]>;
   private catalogPromise?: Promise<ReturnType<typeof normalizeCatalog>>;
   // In-flight only, scoped to this provider (and its fetch/auth context).
@@ -147,6 +149,7 @@ export class QNextProvider {
     this.reconnectDelayMs = options.reconnectDelayMs ?? 1_000;
     this.pollIntervalMs = options.pollIntervalMs ?? 250;
     this.onDeliveredBar = options.onDeliveredBar;
+    this.onHistoryBar = options.onHistoryBar;
   }
 
   async resolveInstrumentID(ticker: string): Promise<string> {
@@ -204,7 +207,9 @@ export class QNextProvider {
     ticker: string,
     timeframe: string,
     range: QNextRange = {},
+    observeHistory = true,
   ): Promise<QNextBar[]> {
+    const requestedTimeframe = timeframe;
     timeframe = normalizeHistoryTimeframe(timeframe);
     const instrument = await this.resolveInstrument(ticker);
     const to = range.to ?? Date.now();
@@ -228,6 +233,11 @@ export class QNextProvider {
 
     const payload = response.payload;
     const bars = normalizeBars(payload.bars ?? []);
+    const latest = bars.at(-1);
+    // Seed the tab from current history only; older pan requests cannot set its quote.
+    if (observeHistory && latest && (range.to === undefined || to >= Date.now() - 60_000)) {
+      try { this.onHistoryBar?.(ticker, requestedTimeframe, latest); } catch { /* passive UI */ }
+    }
     return limit > 0 && bars.length > limit ? bars.slice(-limit) : bars;
   }
 
@@ -424,6 +434,16 @@ export class QNextProvider {
     };
   }
 
+  /** Read existing transport state for this market, never create a stream. */
+  tabFeed(ticker: string, timeframe: string): 'live' | 'fallback' | 'connecting' | 'disconnected' | 'idle' {
+    const sub = [...this.subscriptions.values()].find(s =>
+      (s.ticker.toUpperCase() === ticker.toUpperCase() || s.instrumentID.toUpperCase() === ticker.toUpperCase()) &&
+      normalizeHistoryTimeframe(s.timeframe) === normalizeHistoryTimeframe(timeframe));
+    if (!sub) return 'idle';
+    if (sub.polling) return sub.pollFailures > 0 ? 'disconnected' : 'fallback';
+    return this.socketConnected && sub.streamID && !sub.needsSnapshot ? 'live' : 'connecting';
+  }
+
   private connectSharedSocket(): void {
     if (this.socket || this.subscriptions.size === 0) {
       return;
@@ -607,7 +627,7 @@ export class QNextProvider {
     try {
       const snapshot = await this.getBars(subscription.ticker, subscription.timeframe, {
         limit: 500,
-      });
+      }, false);
       if (this.subscriptions.get(subscription.key) !== subscription) {
         return;
       }
@@ -681,7 +701,7 @@ export class QNextProvider {
           from: to - livePollingLookbackMs(subscription.timeframe, 2),
           to,
           limit: 2,
-        });
+        }, false);
         subscription.pollRequest = request;
         let bars: QNextBar[];
         try {
