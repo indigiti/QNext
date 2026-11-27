@@ -1,32 +1,15 @@
-import { registerIcon, registerWidgetAction } from '@luxalgo/vela/plugin';
 import { catalogTimeframe, resolveCatalogInstrument } from './symbol-catalog';
 import { createSymbolSearch } from './symbol-search-launcher';
-import { VelaWorkspace } from '@luxalgo/vela/workspace';
-import { createQNextPineEngine, resolveQNextPineMode, withConfirmedMtfRecompute } from './pine-engine';
 
-import { resolveChartEngine, type QNextChartEngine } from './charts/chart-engine';
-import { VELA_INITIAL_HISTORY } from './charts/history-pagination';
-import { installVelaPanHistory } from './charts/vela-history';
-import { VelaSignalTrace, installVelaSignalTrace } from './charts/vela-signal-trace';
-import {
-  QNextLightweightWorkspace,
-  normalizeLightweightLayout,
-} from './charts/lightweight-workspace';
+import { normalizeLightweightLayout, resolveChartEngine, type QNextChartEngine } from './charts/chart-engine';
+import type { QNextLightweightWorkspace } from './charts/lightweight-workspace';
+import type { VelaWorkspace as VelaWorkspaceInstance } from '@luxalgo/vela/workspace';
+import type { VelaSignalTrace as VelaSignalTraceInstance } from './charts/vela-signal-trace';
 import { QNextProvider } from './qnext-provider';
 import { qnextBrowserLatencySnapshot } from './live-latency';
-import { QNextIndicatorEngine } from './qnext-indicator-engine';
-import { mountIntelligenceLabShadowBridge } from './intelligence-lab-shadow-bridge';
 import './style.css';
 import { applyTheme, currentTheme } from './theme';
-import { registerVelaAppearanceAction } from './vela-theme-action';
 import { createScreenAwakeController } from './screen-awake';
-import { registerVelaScreenAwakeAction } from './vela-screen-awake-action';
-import {
-  registerVelaChartAlertAction, syncVelaChartAlertAction,
-  velaChartAlerts, withChartAlertSwitch,
-} from './vela-alert-toggle';
-import { installVelaWheelZoomControl, registerVelaZoomSettings } from './vela-zoom-settings';
-import { registerIndicatorTemplates } from './indicator-templates';
 import './indicator-templates.css';
 import './theme.css';
 
@@ -45,9 +28,9 @@ declare global {
       /** Enables local-only Pine signal tracing; off by default. */
       pineTrace?: boolean;
     };
-    __QNEXT_WORKSPACE__?: VelaWorkspace;
+    __QNEXT_WORKSPACE__?: VelaWorkspaceInstance;
     __QNEXT_LIGHTWEIGHT_WORKSPACE__?: QNextLightweightWorkspace;
-    __QNEXT_PINE_TRACE__?: VelaSignalTrace;
+    __QNEXT_PINE_TRACE__?: VelaSignalTraceInstance;
   }
 }
 
@@ -150,11 +133,11 @@ async function loadCustomIndicators() {
   }
 }
 
-function createProvider(trace?: VelaSignalTrace): QNextProvider {
+function createProvider(trace?: VelaSignalTraceInstance): QNextProvider {
   return new QNextProvider({
     apiBase: runtime.apiBase ?? defaultApiBase,
     streamUrl: runtime.streamUrl,
-    ...(trace ? { onDeliveredBar: (ticker: string, timeframe: string, bar: Parameters<VelaSignalTrace['providerBar']>[2]) => trace.providerBar(ticker, timeframe, bar) } : {}),
+    ...(trace ? { onDeliveredBar: (ticker: string, timeframe: string, bar: Parameters<VelaSignalTraceInstance['providerBar']>[2]) => trace.providerBar(ticker, timeframe, bar) } : {}),
   });
 }
 
@@ -167,6 +150,16 @@ function resolveInitialTimeframe(timeframes: string[]): string {
 }
 
 async function bootstrapVela(timeframes: string[]) {
+  // Vela, its scripting engine and integrations belong to this runtime only.
+  const {
+    registerIcon, registerWidgetAction, VelaWorkspace,
+    createQNextPineEngine, resolveQNextPineMode, withConfirmedMtfRecompute,
+    VELA_INITIAL_HISTORY, installVelaPanHistory, VelaSignalTrace, installVelaSignalTrace,
+    QNextIndicatorEngine, mountIntelligenceLabShadowBridge, registerVelaAppearanceAction,
+    registerVelaScreenAwakeAction, installVelaWheelZoomControl, registerVelaZoomSettings,
+    registerIndicatorTemplates, registerVelaChartAlertAction, syncVelaChartAlertAction,
+    velaChartAlerts, withChartAlertSwitch,
+  } = await import('./vela-runtime');
   const pineTrace = runtime.pineTrace === true || new URLSearchParams(window.location.search).get('pine_trace') === '1'
     ? new VelaSignalTrace()
     : undefined;
@@ -177,7 +170,7 @@ async function bootstrapVela(timeframes: string[]) {
   registerVelaChartAlertAction(velaChartAlerts);
   const disposeWheelZoom = installVelaWheelZoomControl(document.getElementById('app')!);
   window.addEventListener('pagehide', disposeWheelZoom, { once: true });
-  let workspace: VelaWorkspace;
+  let workspace: VelaWorkspaceInstance;
   registerIndicatorTemplates(() => workspace);
   const catalogProvider = createProvider();
   const search = createSymbolSearch(() => catalogProvider.listCatalog(), async entry => {
@@ -243,14 +236,21 @@ async function bootstrapLightweight(
   let initialTicker = runtime.symbol ?? 'NSE:NIFTY';
   const initialTimeframe = resolveInitialTimeframe(timeframes);
 
-  let symbols: Awaited<ReturnType<QNextProvider['listCatalog']>> = [];
-  try {
-    symbols = await provider.listCatalog();
-    initialTicker = resolveCatalogInstrument(symbols,initialTicker).instrument_id;
-  } catch (error) {
-    console.warn('QNext symbol catalog unavailable; using configured symbol', error);
-    // Keep the configured chart request, never fabricate a directory entry.
-  }
+  const loadCatalog = async (): Promise<Awaited<ReturnType<QNextProvider['listCatalog']>>> => {
+    let symbols: Awaited<ReturnType<QNextProvider['listCatalog']>> = [];
+    try {
+      symbols = await provider.listCatalog();
+      initialTicker = resolveCatalogInstrument(symbols,initialTicker).instrument_id;
+    } catch (error) {
+      console.warn('QNext symbol catalog unavailable; using configured symbol', error);
+      // Keep the configured chart request, never fabricate a directory entry.
+    }
+    return symbols;
+  };
+  const [{ QNextLightweightWorkspace }, symbols] = await Promise.all([
+    import('./charts/lightweight-workspace'),
+    loadCatalog(),
+  ]);
 
   const query = new URLSearchParams(window.location.search);
   const layout = normalizeLightweightLayout(
