@@ -435,6 +435,7 @@ final class OpsController
 
     private function availableTimeframes(): array
     {
+        // Include canonical 5s so Admin can expose it without controlling its recorder.
         return [
             '5s', '15s', '30s',
             '1m', '2m', '3m', '5m', '10m', '15m', '30m', '45m',
