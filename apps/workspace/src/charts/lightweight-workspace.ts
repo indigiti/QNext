@@ -13,7 +13,8 @@ import {
   type QNextPaperMarkerSnapshot,
 } from './paper-markers';
 
-export type LightweightLayout = 1 | 2 | 4;
+import { normalizeLightweightLayout, type LightweightLayout } from './chart-engine';
+export { normalizeLightweightLayout, type LightweightLayout } from './chart-engine';
 
 export function transportModeLabel(mode: QNextTransportSnapshot['mode']): string {
   switch (mode) {
@@ -50,10 +51,6 @@ export interface LightweightWorkspaceOptions {
   initialLayout?: LightweightLayout;
   syncCharts?: boolean;
   markerPollIntervalMs?: number;
-}
-
-export function normalizeLightweightLayout(value: unknown): LightweightLayout {
-  return value === 2 || value === '2' ? 2 : value === 4 || value === '4' ? 4 : 1;
 }
 
 export function buildLightweightPaneConfigs(
