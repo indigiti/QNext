@@ -39,8 +39,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Test comparison gates and staging diagnostics
+        working-directory: candidate
         run: |
-          python -m unittest discover -s candidate/scripts/diagnostics -p 'test_*.py' -v
+          python -m unittest discover -s scripts/diagnostics -p 'test_*.py' -v
       - name: Compare identical Go workloads on the same runner
         run: python candidate/scripts/diagnostics/qnext_certify_microbench.py baseline candidate "${RUNNER_TEMP}/phase-g"
       - name: Upload evidence (not a deployable artifact)
