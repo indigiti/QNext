@@ -11,7 +11,7 @@ import {
 
 import { installChartResumeRecovery } from './chart-resume';
 import { QNextProvider, type QNextBar } from '../qnext-provider';
-import { toCandlestickData, toVolumeData } from './lightweight-adapter';
+import { sameCandlePoint, sameVolumePoint, toCandlestickData, toVolumeData } from './lightweight-adapter';
 import { applyRevisedHistoricalBar, loadOlderHistoryPage, mergeHistoricalBars, MAX_CHART_HISTORY, trimLiveChartBars } from './history-pagination';
 import {
   toLightweightPaperMarker,
@@ -174,13 +174,19 @@ export class QNextLightweightChart {
           candleSeries.setData(this.bars.map(toCandlestickData));
           volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
         } else {
-          candleSeries.update(toCandlestickData(bar));
-          if (volumeIsKnown(bar)) {
-            const volumePoint = toVolumeData(bar);
-            if (volumePoint) volumeSeries.update(volumePoint);
-          } else if (correctingCurrent && last?.volume !== undefined) {
-            // Missing is NOT zero. Remove a stale histogram point instead of fabricating volume.
-            volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
+          // Keep the accepted bar and its revision above, but skip unchanged
+          // rendered series independently (e.g. a volume-only correction).
+          if (!last || !correctingCurrent || !sameCandlePoint(last, bar)) {
+            candleSeries.update(toCandlestickData(bar));
+          }
+          if (!last || !correctingCurrent || !sameVolumePoint(last, bar)) {
+            if (volumeIsKnown(bar)) {
+              const volumePoint = toVolumeData(bar);
+              if (volumePoint) volumeSeries.update(volumePoint);
+            } else if (correctingCurrent && last?.volume !== undefined) {
+              // Missing is NOT zero. Remove a stale histogram point instead of fabricating volume.
+              volumeSeries.setData(this.bars.map(toVolumeData).filter((point) => point !== undefined));
+            }
           }
         }
       },
