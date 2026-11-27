@@ -1,0 +1,104 @@
+name: QNext Phase G Performance Certification
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/diagnostics/qnext_certify_microbench.py'
+      - 'scripts/diagnostics/test_certify_microbench.py'
+      - '.github/workflows/qnext-performance-certification.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/diagnostics/qnext_certify_microbench.py'
+      - 'scripts/diagnostics/test_certify_microbench.py'
+      - '.github/workflows/qnext-performance-certification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  comparative-microbenchmarks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: d1f9cab45affbc3bc959afd27eef2fdda6a7364c
+          path: baseline
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache-dependency-path: candidate/services/market-core/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test comparison gates and staging diagnostics
+        working-directory: candidate
+        run: |
+          python -m unittest discover -s scripts/diagnostics -p 'test_*.py' -v
+      - name: Compare identical Go workloads on the same runner
+        run: python candidate/scripts/diagnostics/qnext_certify_microbench.py baseline candidate "${RUNNER_TEMP}/phase-g"
+      - name: Upload evidence (not a deployable artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnext-phase-g-microbenchmark-evidence
+          path: ${{ runner.temp }}/phase-g/
+          if-no-files-found: warn
+
+  websocket-load:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: services/market-core
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache-dependency-path: services/market-core/go.sum
+      - name: Full stream regression and load certification
+        env:
+          QNEXT_WSS_LOAD_CERT: '1'
+        run: |
+          ulimit -n 65535
+          go test ./internal/stream -count=1 -v -timeout=8m
+
+  release-and-security-contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+      - name: Release inventory, component budgets and selective deployment tests
+        run: |
+          python -m unittest discover -s scripts/release -p 'test_*.py' -v
+          bash tests/certification/qnext-stage-release.sh
+          bash tests/certification/qnext-ml-dependencies.sh
+      - name: Admin security and storage regression
+        run: |
+          php services/ops-api/tests/smoke.php
+          php services/ops-api/tests/auth_migration.php
+          php services/ops-api/tests/auth_session.php
+          php services/ops-api/tests/login_throttle.php
+          php services/ops-api/tests/storage_health.php
+          php services/ops-api/tests/storage_days.php
+          php services/ops-api/tests/performance_report.php
+          ! grep -R -E 'shell_exec\(|passthru\(|system\(|exec\(' services/ops-api
