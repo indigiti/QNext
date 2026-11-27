@@ -248,7 +248,7 @@ root.innerHTML = `
           <div>
             <p class="eyebrow">Candles</p>
             <h2>Enabled timeframes</h2>
-            <p class="muted">15s and 30s are tick-built. 1m is the protected canonical source. Higher intraday/day intervals are rolled up from 1m; disabled intervals are not continuously built or stored.</p>
+            <p class="muted">5s is the locked canonical live source. 15s, 30s and live 1m are derived from complete 5s children; 2m+ roll up from 1m. Upstox 1m remains the historical recovery authority.</p>
           </div>
           <button id="reload-candle-timeframes" class="secondary">Reload</button>
         </div>
@@ -256,7 +256,7 @@ root.innerHTML = `
         <div class="actions">
           <button id="candle-defaults" class="secondary">Use defaults</button>
           <button id="save-candle-timeframes">Save & restart</button>
-          <span class="muted">1m is locked ON for automatic Upstox recovery and local rollups.</span>
+          <span class="muted">5s is always ON internally. 1m is also protected because provider 1m is the recovery authority.</span>
         </div>
       </section>
 
@@ -1031,11 +1031,13 @@ function renderCandleTimeframes(
   grid.innerHTML = available.map((timeframe) => {
     const locked = protectedSet.has(timeframe);
     const checked = enabledSet.has(timeframe) || locked;
-    const detail = locked
-      ? 'CORE / PROTECTED'
-      : checked
-        ? (defaultSet.has(timeframe) ? 'ENABLED / DEFAULT' : 'ENABLED')
-        : 'DISABLED';
+    const detail = timeframe === '5s'
+      ? 'CANONICAL / LOCKED'
+      : locked
+        ? 'CORE / PROTECTED'
+        : checked
+          ? (defaultSet.has(timeframe) ? 'ENABLED / DEFAULT' : 'ENABLED')
+          : 'DISABLED';
     return `
       <label class="market-toggle">
         <input
