@@ -6,6 +6,7 @@ import type { QNextLightweightWorkspace } from './charts/lightweight-workspace';
 import type { VelaWorkspace as VelaWorkspaceInstance } from '@luxalgo/vela/workspace';
 import type { VelaSignalTrace as VelaSignalTraceInstance } from './charts/vela-signal-trace';
 import { QNextProvider } from './qnext-provider';
+import { BrowserTabQuotes, installBrowserTab } from './browser-tab';
 import { qnextBrowserLatencySnapshot } from './live-latency';
 import './style.css';
 import { applyTheme, currentTheme } from './theme';
@@ -133,12 +134,19 @@ async function loadCustomIndicators() {
   }
 }
 
-function createProvider(trace?: VelaSignalTraceInstance): QNextProvider {
-  return new QNextProvider({
+function createProvider(trace?: VelaSignalTraceInstance, quotes?: BrowserTabQuotes): QNextProvider {
+  const provider: QNextProvider = new QNextProvider({
     apiBase: runtime.apiBase ?? defaultApiBase,
     streamUrl: runtime.streamUrl,
-    ...(trace ? { onDeliveredBar: (ticker: string, timeframe: string, bar: Parameters<VelaSignalTraceInstance['providerBar']>[2]) => trace.providerBar(ticker, timeframe, bar) } : {}),
+    onDeliveredBar: (ticker, timeframe, bar) => {
+      trace?.providerBar(ticker, timeframe, bar);
+      quotes?.observe(ticker, timeframe, bar, true, () => provider.tabFeed(ticker, timeframe));
+    },
+    onHistoryBar: (ticker, timeframe, bar) => {
+      quotes?.observe(ticker, timeframe, bar, false, () => provider.tabFeed(ticker, timeframe));
+    },
   });
+  return provider;
 }
 
 function resolveInitialTimeframe(timeframes: string[]): string {
@@ -170,6 +178,7 @@ async function bootstrapVela(timeframes: string[]) {
   registerVelaChartAlertAction(velaChartAlerts);
   const disposeWheelZoom = installVelaWheelZoomControl(document.getElementById('app')!);
   window.addEventListener('pagehide', disposeWheelZoom, { once: true });
+  const quotes = new BrowserTabQuotes();
   let workspace: VelaWorkspaceInstance;
   registerIndicatorTemplates(() => workspace);
   const catalogProvider = createProvider();
@@ -190,7 +199,7 @@ async function bootstrapVela(timeframes: string[]) {
     theme: currentTheme(),
     timezone: 'exchange',
     providers: {
-      qnext: () => createProvider(pineTrace),
+      qnext: () => createProvider(pineTrace, quotes),
     },
     engines: {
       qnext: () => withChartAlertSwitch(new QNextIndicatorEngine(), velaChartAlerts),
@@ -209,6 +218,24 @@ async function bootstrapVela(timeframes: string[]) {
   });
 
   window.__QNEXT_WORKSPACE__ = workspace;
+  const tab = installBrowserTab(quotes, () => workspace.chart.market);
+  // Selection changes are immediate; regular updates are limited to 1 Hz.
+  const tabCharts = new Map<typeof workspace.chart, () => void>();
+  const syncTabCharts = () => {
+    const charts = new Set(workspace.cells().map(cell => cell.chart));
+    for (const [chart, off] of tabCharts) if (!charts.has(chart)) { off(); tabCharts.delete(chart); }
+    for (const chart of charts) if (!tabCharts.has(chart)) tabCharts.set(chart, chart.on('market:changed', tab.selectionChanged));
+    tab.selectionChanged();
+  };
+  syncTabCharts();
+  const offTabCreated = workspace.on('cell:created', syncTabCharts);
+  const offTabDestroyed = workspace.on('cell:destroyed', syncTabCharts);
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return;
+    offTabCreated(); offTabDestroyed();
+    for (const off of tabCharts.values()) off();
+    tabCharts.clear(); tab.dispose();
+  });
   syncVelaChartAlertAction();
   installVelaPanHistory(workspace);
   if (pineTrace) installVelaSignalTrace(workspace, pineTrace);
@@ -232,7 +259,8 @@ async function bootstrapLightweight(
   const app = document.querySelector<HTMLElement>('#app');
   if (!app) throw new Error('QNext workspace root #app not found');
 
-  const provider = createProvider();
+  const quotes = new BrowserTabQuotes();
+  const provider = createProvider(undefined, quotes);
   let initialTicker = runtime.symbol ?? 'NSE:NIFTY';
   const initialTimeframe = resolveInitialTimeframe(timeframes);
 
@@ -261,7 +289,9 @@ async function bootstrapLightweight(
     ? runtime.lightweightSync ?? settings.lightweightSync
     : querySync !== '0' && querySync !== 'false';
 
-  const workspace = new QNextLightweightWorkspace({
+  let workspace: QNextLightweightWorkspace;
+  const tab = installBrowserTab(quotes, () => workspace?.activeMarket());
+  workspace = new QNextLightweightWorkspace({
     container: app,
     provider,
     screenAwake,
@@ -272,7 +302,9 @@ async function bootstrapLightweight(
     initialTimeframe,
     initialLayout: layout,
     syncCharts,
+    onActiveMarketChange: tab.selectionChanged,
   });
+  window.addEventListener('pagehide', event => { if (!event.persisted) tab.dispose(); });
 
   await workspace.mount();
   window.__QNEXT_LIGHTWEIGHT_WORKSPACE__ = workspace;
