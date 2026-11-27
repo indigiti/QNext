@@ -3,6 +3,7 @@ package stream
 import (
 	"encoding/base64"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -374,7 +375,7 @@ func (b *Broker) Stats() BrokerStats {
 	for key, state := range b.streams {
 		instrumentID, timeframe := splitStreamKey(key)
 		streamStats := BrokerStreamStats{
-			StreamID:          streamID(instrumentID, timeframe),
+			StreamID:          state.id,
 			InstrumentID:      instrumentID,
 			Timeframe:         timeframe,
 			Seq:               state.seq,
@@ -452,11 +453,7 @@ func (b *Broker) subscribe(key, id string, afterSeq *uint64) (*Subscription, err
 				b.mu.Unlock()
 				return sub, nil
 			}
-			for _, event := range state.replay.Slice() {
-				if event.Seq > *afterSeq {
-					sub.Replay = append(sub.Replay, event)
-				}
-			}
+			sub.Replay = state.replay.after(*afterSeq)
 		}
 	}
 	b.nextSubscriberID++
@@ -568,12 +565,35 @@ func (r *replayRing) Last() (BarEvent, bool) {
 }
 
 func (r *replayRing) Slice() []BarEvent {
+	if r == nil {
+		return nil
+	}
+	return r.copySuffix(0)
+}
+
+// Broker replay sequences are strictly increasing in logical ring order.
+// Copy only the missing events, not the entire replay window plus a second
+// filtered allocation. The caller owns the result even after ring overwrite.
+func (r *replayRing) after(seq uint64) []BarEvent {
 	if r == nil || r.size == 0 {
 		return nil
 	}
-	result := make([]BarEvent, r.size)
-	for i := 0; i < r.size; i++ {
-		result[i] = r.items[(r.start+i)%len(r.items)]
+	first := sort.Search(r.size, func(i int) bool {
+		return r.items[(r.start+i)%len(r.items)].Seq > seq
+	})
+	return r.copySuffix(first)
+}
+
+func (r *replayRing) copySuffix(first int) []BarEvent {
+	count := r.size - first
+	if count <= 0 {
+		return nil
+	}
+	result := make([]BarEvent, count)
+	start := (r.start + first) % len(r.items)
+	n := copy(result, r.items[start:])
+	if n < count {
+		copy(result[n:], r.items[:count-n])
 	}
 	return result
 }
@@ -638,7 +658,6 @@ func (s *subscriberState) enqueue(event BarEvent) enqueueResult {
 		}
 		if queued.Bar.OpenTime.Equal(event.Bar.OpenTime) {
 			s.queue[index] = event
-			s.signal()
 			return enqueueResult{coalesced: 1}
 		}
 	}
@@ -649,12 +668,18 @@ func (s *subscriberState) enqueue(event BarEvent) enqueueResult {
 // is exhausted, reusing the original bounded backing array rather than
 // allocating a new array on every long-running subscription.
 func (s *subscriberState) appendQueued(event BarEvent) {
+	wasEmpty := len(s.queue) == 0
 	if len(s.queue) == cap(s.queue) && len(s.queue) < cap(s.queueStorage) {
 		copy(s.queueStorage[:len(s.queue)], s.queue)
 		s.queue = s.queueStorage[:len(s.queue)]
 	}
 	s.queue = append(s.queue, event)
-	s.signal()
+	// enqueue and next share the same mutex. A consumer only waits after
+	// observing an empty queue; one wake on the empty-to-nonempty transition
+	// is sufficient. Replacements and backlog appends need no extra wake.
+	if wasEmpty {
+		s.signal()
+	}
 }
 
 func (s *subscriberState) signal() {
