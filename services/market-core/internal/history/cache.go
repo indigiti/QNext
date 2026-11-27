@@ -21,9 +21,10 @@ func (f diskFingerprint) equal(other diskFingerprint) bool {
 }
 
 type cachedSeries struct {
-	loaded bool
-	bars   map[string]domain.Bar
-	disk   diskFingerprint
+	loaded  bool
+	bars    map[string]domain.Bar
+	disk    diskFingerprint
+	ordered []domain.Bar // immutable after publication; invalidate on accepted updates
 }
 
 type currentDayCache struct {
@@ -83,7 +84,7 @@ func (s *Store) observeBar(bar domain.Bar) {
 		series = &cachedSeries{bars: make(map[string]domain.Bar)}
 		s.cache.series[key] = series
 	}
-	mergeCachedBar(series.bars, bar)
+	series.merge(bar)
 	s.cache.mu.Unlock()
 }
 
@@ -139,11 +140,11 @@ func (s *Store) loadCurrentDay(instrumentID, timeframe string, day time.Time) ([
 		s.cache.series[seriesKey] = series
 	}
 	for _, bar := range diskBars {
-		mergeCachedBar(series.bars, bar)
+		series.merge(bar)
 	}
 	series.loaded = true
 	series.disk = fingerprint
-	bars = sortedBarsCopy(series.bars)
+	bars = series.snapshot()
 	s.cache.mu.Unlock()
 
 	s.cache.diskLoads.Add(1)
@@ -238,7 +239,7 @@ func (s *Store) cachedBars(day, key string) ([]domain.Bar, bool) {
 	if series == nil || !series.loaded {
 		return nil, false
 	}
-	return sortedBarsCopy(series.bars), true
+	return series.snapshot(), true
 }
 
 func (c *currentDayCache) ensureDayLocked(day string) {
@@ -249,19 +250,22 @@ func (c *currentDayCache) ensureDayLocked(day string) {
 	c.series = make(map[string]*cachedSeries)
 }
 
-func mergeCachedBar(dst map[string]domain.Bar, bar domain.Bar) {
+// Caller holds cache.mu. Keep the same latest-revision rules as disk hydration.
+func (s *cachedSeries) merge(bar domain.Bar) {
 	key := bar.Key()
-	if previous, ok := dst[key]; !ok || bar.Revision >= previous.Revision {
-		dst[key] = bar
+	if previous, ok := s.bars[key]; !ok || bar.Revision >= previous.Revision {
+		s.bars[key] = bar
+		s.ordered = nil
 	}
 }
 
-func sortedBarsCopy(latest map[string]domain.Bar) []domain.Bar {
-	copyMap := make(map[string]domain.Bar, len(latest))
-	for key, bar := range latest {
-		copyMap[key] = bar
+// Caller holds cache.mu. Never mutate a published snapshot: range readers may
+// still hold it after the lock is released, including during day rollover.
+func (s *cachedSeries) snapshot() []domain.Bar {
+	if s.ordered == nil {
+		s.ordered = sortedBars(s.bars)
 	}
-	return sortedBars(copyMap)
+	return s.ordered
 }
 
 func cacheSeriesKey(instrumentID, timeframe string) string {

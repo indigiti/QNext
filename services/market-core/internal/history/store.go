@@ -116,6 +116,12 @@ func (s *Store) appendBarDisk(bar domain.Bar) error {
 }
 
 func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain.Bar, error) {
+	return s.loadDay(instrumentID, timeframe, day, true)
+}
+
+// With copyCurrent=false, the returned slice is read-only. LoadRange selects
+// and copies its own window rather than cloning the complete current day.
+func (s *Store) loadDay(instrumentID, timeframe string, day time.Time, copyCurrent bool) ([]domain.Bar, error) {
 	if s.root == "" {
 		return nil, errors.New("history root is required")
 	}
@@ -123,7 +129,11 @@ func (s *Store) LoadDay(instrumentID, timeframe string, day time.Time) ([]domain
 		return nil, errors.New("instrument and timeframe are required")
 	}
 	if s.isCurrentDay(day) {
-		return s.loadCurrentDay(instrumentID, timeframe, day)
+		bars, err := s.loadCurrentDay(instrumentID, timeframe, day)
+		if err != nil || !copyCurrent {
+			return bars, err
+		}
+		return append(make([]domain.Bar, 0, len(bars)), bars...), nil
 	}
 	return s.loadDayDisk(instrumentID, timeframe, day)
 }
