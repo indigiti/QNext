@@ -15,6 +15,7 @@ type subminuteState struct {
 	close                time.Time
 	expected             int
 	children             map[int64]domain.Bar
+	finals               int
 	terminalFinalEmitted bool
 }
 
@@ -75,19 +76,25 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 	childKey := source.OpenTime.UnixMilli()
 	previous, exists := state.children[childKey]
 	if !exists || newerFiveSecond(previous, source) {
+		if exists && previous.Final {
+			state.finals--
+		}
+		if source.Final {
+			state.finals++
+		}
 		state.children[childKey] = source
 	}
 	forming := aggregateSubminute(state, timeframe)
 	if forming.InstrumentID != "" {
-		_, sessionClose := r.policy.InstrumentSessionBounds(source.InstrumentID, source.OpenTime)
-		// At the cash/derivatives session close no new 5s tick will arrive to
-		// trigger a bucket rollover. Persist the actual completed last
-		// 15s/30s/1m candle on the clock final instead of leaving it forming.
-		if source.Final && state.close.Equal(sessionClose) && subminuteComplete(state) {
-			forming.Final = true
-			state.terminalFinalEmitted = true
-		} else {
-			forming.Final = false
+		// At session close there may be no next 5s tick to trigger rollover.
+		// Consult the same session policy only for a complete final bucket.
+		forming.Final = false
+		if source.Final && subminuteComplete(state) {
+			_, sessionClose := r.policy.InstrumentSessionBounds(source.InstrumentID, source.OpenTime)
+			if state.close.Equal(sessionClose) {
+				forming.Final = true
+				state.terminalFinalEmitted = true
+			}
 		}
 		updates = append(updates, forming)
 	}
@@ -95,15 +102,7 @@ func (r *subminuteRollupEngine) Apply(source domain.Bar, timeframe string) ([]do
 }
 
 func subminuteComplete(state *subminuteState) bool {
-	if state == nil || state.expected <= 0 || len(state.children) != state.expected {
-		return false
-	}
-	for _, bar := range state.children {
-		if !bar.Final {
-			return false
-		}
-	}
-	return true
+	return state != nil && state.expected > 0 && len(state.children) == state.expected && state.finals == state.expected
 }
 
 func aggregateSubminute(state *subminuteState, timeframe string) domain.Bar {

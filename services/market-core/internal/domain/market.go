@@ -16,6 +16,25 @@ const (
 	QualityInvalid   Quality = "INVALID"
 )
 
+// QualityRank preserves the historical ordering used by candle and rollup
+// engines, including the zero rank for unknown or empty quality values.
+func QualityRank(value Quality) int {
+	switch value {
+	case QualityRecovered:
+		return 1
+	case QualityPartial:
+		return 2
+	case QualityStale:
+		return 3
+	case QualityDegraded:
+		return 4
+	case QualityInvalid:
+		return 5
+	default:
+		return 0
+	}
+}
+
 type Tick struct {
 	InstrumentID     string
 	Provider         string
