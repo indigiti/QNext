@@ -6,8 +6,25 @@ const routeStyles = readFileSync(new URL('../src/admin-route-fixes.css', import.
 const bootstrap = readFileSync(new URL('../src/admin-bootstrap.ts', import.meta.url), 'utf8');
 const indicatorPage = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 const indicatorStyles = readFileSync(new URL('../src/indicator-workspace.css', import.meta.url), 'utf8');
+const canonicalFiveSecondAdmin = readFileSync(new URL('../src/canonical-5s-admin.ts', import.meta.url), 'utf8');
 
 describe('QNeXT admin UX contract', () => {
+  it('renders canonical 5s once from the timeframe list and never injects a duplicate row', () => {
+    const renderer = indicatorPage
+      .split('function renderCandleTimeframes(')[1]
+      ?.split('async function loadCandleTimeframes()')[0] ?? '';
+
+    expect(renderer).toContain('available.map((timeframe) =>');
+    expect(renderer).toContain("timeframe === '5s'");
+    expect(renderer).toContain("'CANONICAL / LOCKED'");
+    expect(renderer).toContain('protectedSet.has(timeframe)');
+    expect(canonicalFiveSecondAdmin).not.toContain('data-canonical-five-second');
+    expect(canonicalFiveSecondAdmin).not.toContain("grid.prepend(");
+    expect(canonicalFiveSecondAdmin).not.toContain("createElement('label')");
+    expect(canonicalFiveSecondAdmin).not.toContain('new MutationObserver');
+  });
+
+
   it('keeps authentication before mounting the administrative console', () => {
     expect(bootstrap.indexOf("await import('./main')")).toBeGreaterThan(bootstrap.indexOf('adminLoaded = true'));
     expect(bootstrap).toContain('if (session.authenticated)');

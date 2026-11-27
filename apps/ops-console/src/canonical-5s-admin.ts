@@ -95,7 +95,7 @@ function carryEligible(feed: FeedStatus, instrumentID: string): boolean {
     && providerAge <= 8_000;
 }
 
-function ensureCanonicalFormationRow(): void {
+function patchCanonicalFormationCopy(): void {
   const card = document.querySelector<HTMLElement>('#candle-timeframes-card');
   if (!card) return;
 
@@ -108,18 +108,6 @@ function ensureCanonicalFormationRow(): void {
   if (note) {
     note.textContent = '5s is always ON internally. 1m is also protected because provider 1m is the recovery authority.';
   }
-
-  const grid = card.querySelector<HTMLDivElement>('#candle-timeframes-grid');
-  if (!grid || grid.querySelector('[data-canonical-five-second="true"]')) return;
-
-  const locked = document.createElement('label');
-  locked.className = 'market-toggle';
-  locked.dataset.canonicalFiveSecond = 'true';
-  locked.innerHTML = `
-    <input type="checkbox" checked disabled aria-label="5s canonical candle source, locked on" />
-    <span><strong>5s</strong><small>CANONICAL / LOCKED</small></span>
-  `;
-  grid.prepend(locked);
 }
 
 function patchChartNote(): void {
@@ -242,7 +230,7 @@ function render(feed: FeedStatus): void {
 }
 
 async function refresh(): Promise<void> {
-  ensureCanonicalFormationRow();
+  patchCanonicalFormationCopy();
   patchChartNote();
   patchMarketClockLabel();
   try {
@@ -264,11 +252,6 @@ async function refresh(): Promise<void> {
       panel.innerHTML = `<div class="feed-provider-card"><strong>Canonical 5s telemetry unavailable</strong><div class="muted">${escapeHTML((error as Error).message)}</div></div>`;
     }
   }
-}
-
-const candleGrid = document.querySelector('#candle-timeframes-grid');
-if (candleGrid) {
-  new MutationObserver(() => ensureCanonicalFormationRow()).observe(candleGrid, { childList: true });
 }
 
 void refresh();
