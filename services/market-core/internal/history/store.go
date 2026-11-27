@@ -21,10 +21,25 @@ const (
 	barRecordSchema   = "QNEXT.HISTORY.BAR/2"
 )
 
+// A fixed lock table bounds memory even when callers request many paths.
+const historyLockStripes = 64
+
 type Store struct {
 	root  string
-	mu    sync.Mutex
+	locks [historyLockStripes]sync.Mutex
 	cache *currentDayCache
+}
+
+// Use the sanitized on-disk path, not the raw symbol/timeframe, so aliases
+// that map to the same file are serialized. Lock scope remains per Store.
+func (s *Store) diskLock(path string) *sync.Mutex {
+	// FNV-1a, without allocating a hash object or a byte slice.
+	hash := uint32(2166136261)
+	for i := 0; i < len(path); i++ {
+		hash ^= uint32(path[i])
+		hash *= 16777619
+	}
+	return &s.locks[hash%historyLockStripes]
 }
 
 type barRecord struct {
@@ -92,8 +107,9 @@ func (s *Store) appendBarDisk(bar domain.Bar) error {
 
 	path := s.dayPath(bar.InstrumentID, bar.Timeframe, bar.OpenTime)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	lock := s.diskLock(path)
+	lock.Lock()
+	defer lock.Unlock()
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
@@ -139,12 +155,23 @@ func (s *Store) loadDay(instrumentID, timeframe string, day time.Time, copyCurre
 }
 
 func (s *Store) loadDayDisk(instrumentID, timeframe string, day time.Time) ([]domain.Bar, error) {
-	// Keep scans mutually exclusive with append+fsync so a reader can never
-	// observe a partially-written trailing JSONL record.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	path := s.dayPath(instrumentID, timeframe, day)
+	latest, err := s.scanDayDisk(path)
+	if err != nil || latest == nil {
+		return nil, err
+	}
+	// The decoded map belongs to this reader. Sorting no longer holds the
+	// file lock or delays append+fsync to the same file.
+	return sortedBars(latest), nil
+}
+
+func (s *Store) scanDayDisk(path string) (map[string]domain.Bar, error) {
+	// A scan remains mutually exclusive with append+fsync to its file.
+	// Unrelated files can make progress unless they share a lock stripe.
+	lock := s.diskLock(path)
+	lock.Lock()
+	defer lock.Unlock()
+
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -174,7 +201,7 @@ func (s *Store) loadDayDisk(instrumentID, timeframe string, day time.Time) ([]do
 		return nil, err
 	}
 
-	return sortedBars(latest), nil
+	return latest, nil
 }
 
 func sortedBars(latest map[string]domain.Bar) []domain.Bar {
@@ -201,9 +228,10 @@ func (s *Store) dayPath(instrumentID, timeframe string, at time.Time) string {
 	)
 }
 
+var historyPathReplacer = strings.NewReplacer("/", "_", "\\", "_", ":", "_")
+
 func safeComponent(value string) string {
-	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_")
-	component := replacer.Replace(value)
+	component := historyPathReplacer.Replace(value)
 	// filepath.Join interprets "." and ".." as navigation rather than
 	// literal instrument/timeframe directory names. Keep even malformed
 	// public history queries confined to the canonical market subtree.
