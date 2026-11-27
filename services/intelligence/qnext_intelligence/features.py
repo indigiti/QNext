@@ -41,8 +41,10 @@ def build_feature_vector(
     if len(bars) < lookback:
         raise ValueError("insufficient bars for requested lookback")
 
-    ordered = sorted(bars, key=lambda bar: bar.close_time_ms)
-    eligible = [bar for bar in ordered if bar.final and bar.close_time_ms <= as_of_time_ms]
+    eligible = sorted(
+        (bar for bar in bars if bar.final and bar.close_time_ms <= as_of_time_ms),
+        key=lambda bar: bar.close_time_ms,
+    )
     if len(eligible) < lookback:
         raise ValueError("insufficient finalized bars available at as_of_time_ms")
 

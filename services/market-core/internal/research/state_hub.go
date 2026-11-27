@@ -77,9 +77,9 @@ func (h *ResearchStateHub) Observe(envelope upstox.DecodedEnvelope, plan upstox.
 		update.SpotUpdated = true
 	}
 
-	for providerKey := range plan.Contracts {
-		feed, ok := envelope.Feeds[providerKey]
-		if !ok {
+	// Sparse feed frames need not scan every subscribed contract.
+	for providerKey, feed := range envelope.Feeds {
+		if _, ok := plan.Contracts[providerKey]; !ok {
 			continue
 		}
 		market, ok := feed.ResearchState()
